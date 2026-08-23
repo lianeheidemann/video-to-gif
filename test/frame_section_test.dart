@@ -171,31 +171,59 @@ void main() {
     },
   );
 
-  testWidgets('tocar no cabeçalho de Ajuste do conteúdo revela o zoom', (
-    tester,
-  ) async {
-    await _openFrameSection(tester);
-    await tester.tap(
-      find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
-    );
-    await tester.pump();
+  testWidgets(
+    'zoom aparece somente em Expandir sem cortar e vai de 10% a 300%',
+    (tester) async {
+      await _openFrameSection(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('frameContentZoomSlider')),
-      findsNothing,
-      reason: 'a subseção começa recolhida',
-    );
+      final contentHeader = find.text('Ajuste do conteúdo');
+      final editorScroll = find.descendant(
+        of: find.byKey(const ValueKey('editorSectionsList')),
+        matching: find.byType(Scrollable),
+      );
+      await tester.scrollUntilVisible(
+        contentHeader,
+        300,
+        scrollable: editorScroll,
+      );
+      await tester.tap(contentHeader);
+      await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('Ajuste do conteúdo'));
-    await tester.tap(find.text('Ajuste do conteúdo'));
-    await tester.pump();
+      expect(
+        find.byKey(const ValueKey('frameContentZoomSlider')),
+        findsNothing,
+        reason: 'o modo automático não deve permitir zoom',
+      );
 
-    expect(
-      find.byKey(const ValueKey('frameContentZoomSlider')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const ValueKey('contentFitTile_fill')), findsOneWidget);
-  });
+      final expand = find.byKey(const ValueKey('contentFitTile_expand'));
+      await tester.scrollUntilVisible(expand, 300, scrollable: editorScroll);
+      await tester.tap(expand);
+      await tester.pumpAndSettle();
+
+      final zoomFinder = find.byKey(
+        const ValueKey('frameContentZoomSlider'),
+      );
+      expect(zoomFinder, findsOneWidget);
+      final slider = tester.widget<Slider>(zoomFinder);
+      expect(slider.min, FrameSettings.minContentZoom);
+      expect(slider.max, FrameSettings.maxContentZoom);
+
+      final fit = find.byKey(const ValueKey('contentFitTile_fit'));
+      await tester.scrollUntilVisible(fit, -300, scrollable: editorScroll);
+      await tester.tap(fit);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('frameContentZoomSlider')),
+        findsNothing,
+        reason: 'sair de Expandir sem cortar deve ocultar o zoom',
+      );
+    },
+  );
 
   testWidgets(
     'tocar no cabeçalho de Resolução da moldura alterna o modo',
@@ -204,11 +232,20 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('Resolução da moldura'));
-      await tester.tap(find.text('Resolução da moldura'));
-      await tester.pump();
+      final editorScroll = find.descendant(
+        of: find.byKey(const ValueKey('editorSectionsList')),
+        matching: find.byType(Scrollable),
+      );
+      final resolutionHeader = find.text('Resolução da moldura');
+      await tester.scrollUntilVisible(
+        resolutionHeader,
+        300,
+        scrollable: editorScroll,
+      );
+      await tester.tap(resolutionHeader);
+      await tester.pumpAndSettle();
 
       // "Igual à escolhida em Ajustar" é o modo padrão: aparece duas vezes
       // (resumo da subseção + chip), por isso `findsWidgets` em vez de
@@ -217,15 +254,24 @@ void main() {
       expect(find.text('Igual à escolhida em Ajustar'), findsWidgets);
       expect(find.text('Resolução máxima da imagem'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Resolução máxima da imagem'));
-      await tester.tap(find.text('Resolução máxima da imagem'));
-      await tester.pump();
+      final nativeResolution = find.text('Resolução máxima da imagem');
+      await tester.scrollUntilVisible(
+        nativeResolution,
+        300,
+        scrollable: editorScroll,
+      );
+      await tester.tap(nativeResolution);
+      await tester.pumpAndSettle();
 
       // Recolhe para conferir o resumo, que só mostra o valor selecionado
       // quando a subseção está fechada.
-      await tester.ensureVisible(find.text('Resolução da moldura'));
-      await tester.tap(find.text('Resolução da moldura'));
-      await tester.pump();
+      await tester.scrollUntilVisible(
+        resolutionHeader,
+        -300,
+        scrollable: editorScroll,
+      );
+      await tester.tap(resolutionHeader);
+      await tester.pumpAndSettle();
 
       expect(find.text('Resolução máxima da imagem'), findsOneWidget);
       expect(find.text('Igual à escolhida em Ajustar'), findsNothing);

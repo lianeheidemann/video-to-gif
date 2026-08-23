@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -289,6 +290,7 @@ class _EditorPageState extends State<EditorPage> {
                         Expanded(
                           flex: 5,
                           child: ListView(
+                            key: const ValueKey('editorSectionsList'),
                             padding: const EdgeInsets.fromLTRB(10, 14, 20, 28),
                             children: sections,
                           ),
@@ -296,6 +298,7 @@ class _EditorPageState extends State<EditorPage> {
                       ],
                     )
                   : ListView(
+                      key: const ValueKey('editorSectionsList'),
                       padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
                       children: [
                         _previewArea(),
@@ -519,24 +522,7 @@ class _EditorPageState extends State<EditorPage> {
             children: [
               Positioned.fromRect(
                 rect: rect,
-                child: ColoredBox(
-                  color: Colors.black,
-                  child: ClipRect(
-                    child: Transform.scale(
-                      scale: _settings.frame.contentZoom,
-                      child: FittedBox(
-                        fit: fit == ContentFitMode.fill
-                            ? BoxFit.cover
-                            : BoxFit.contain,
-                        child: SizedBox(
-                          width: 1000,
-                          height: 1000 / _contentAspectRatio,
-                          child: _croppedPreview(rounded: false),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                child: _imageFrameContentPreview(fit),
               ),
               Positioned.fill(
                 child: IgnorePointer(
@@ -551,6 +537,51 @@ class _EditorPageState extends State<EditorPage> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Conteúdo dentro da janela de uma moldura de imagem. Em "Expandir sem
+  /// cortar", o fundo ampliado e desfocado permanece preenchendo a janela,
+  /// enquanto o zoom atua apenas sobre o vídeo nítido central — a mesma
+  /// composição usada pelo FFmpeg na exportação.
+  Widget _imageFrameContentPreview(ContentFitMode fit) {
+    Widget video(BoxFit boxFit) => FittedBox(
+      fit: boxFit,
+      child: SizedBox(
+        width: 1000,
+        height: 1000 / _contentAspectRatio,
+        child: _croppedPreview(rounded: false),
+      ),
+    );
+
+    if (fit != ContentFitMode.expand) {
+      return ColoredBox(
+        color: Colors.black,
+        child: ClipRect(
+          child: video(
+            fit == ContentFitMode.fill ? BoxFit.cover : BoxFit.contain,
+          ),
+        ),
+      );
+    }
+
+    return ColoredBox(
+      color: Colors.black,
+      child: ClipRect(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: video(BoxFit.cover),
+            ),
+            Transform.scale(
+              scale: _settings.frame.effectiveContentZoom,
+              child: video(BoxFit.contain),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1228,9 +1259,12 @@ class _EditorPageState extends State<EditorPage> {
   Widget _contentFitSubsection() {
     final selected = _settings.frame.contentFit;
     final zoomPercent = (_settings.frame.contentZoom * 100).round();
+    final subtitle = selected == ContentFitMode.expand
+        ? '${selected.label} · Zoom $zoomPercent%'
+        : selected.label;
     return _collapsibleSubsection(
       label: 'Ajuste do conteúdo',
-      subtitle: '${selected.label} · Zoom $zoomPercent%',
+      subtitle: subtitle,
       expanded: _contentFitExpanded,
       onToggle: () =>
           setState(() => _contentFitExpanded = !_contentFitExpanded),
@@ -1241,18 +1275,18 @@ class _EditorPageState extends State<EditorPage> {
             _contentFitTile(mode, selected: mode == selected),
             if (mode != ContentFitMode.values.last) const SizedBox(height: 8),
           ],
-          const SizedBox(height: 14),
-          _contentZoomRow(),
+          if (selected == ContentFitMode.expand) ...[
+            const SizedBox(height: 14),
+            _contentZoomRow(),
+          ],
         ],
       ),
     );
   }
 
-  /// Slider de zoom do conteúdo dentro da janela da moldura de imagem —
-  /// mesmo formato de [_frameThicknessRow]. Vai de
-  /// [FrameSettings.minContentZoom] (sem zoom) a
-  /// [FrameSettings.maxContentZoom]; a exportação e a prévia recortam de
-  /// volta ao tamanho da janela sempre a partir do centro.
+  /// Slider disponível somente em "Expandir sem cortar". De 10% a 300%, ele
+  /// reduz ou amplia o vídeo nítido central, mantendo o fundo estendido
+  /// preenchendo toda a janela na prévia e na exportação.
   Widget _contentZoomRow() {
     final theme = Theme.of(context);
     final frame = _settings.frame;
@@ -1285,13 +1319,13 @@ class _EditorPageState extends State<EditorPage> {
           key: const ValueKey('frameContentZoomSlider'),
           min: FrameSettings.minContentZoom,
           max: FrameSettings.maxContentZoom,
-          divisions: 20,
+          divisions: 58,
           value: zoom,
           label: '$percent%',
           onChanged: (v) => _updateFrame(frame.copyWith(contentZoom: v)),
         ),
         Text(
-          'Aproxima o vídeo dentro da janela da moldura, cortando as bordas.',
+          'Reduz ou amplia o vídeo sobre o fundo estendido.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

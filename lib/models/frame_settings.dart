@@ -98,7 +98,7 @@ class FrameSettings {
     this.transparentBackground = true,
     this.imageFrame,
     this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
-    this.contentZoom = minContentZoom,
+    this.contentZoom = defaultContentZoom,
   });
 
   final FrameStyle style;
@@ -131,12 +131,20 @@ class FrameSettings {
   /// [imageFrame] definido — ver [ImageFrameResolutionMode].
   final ImageFrameResolutionMode frameResolutionMode;
 
-  /// Quanto o vídeo é ampliado dentro da janela de conteúdo da moldura de
-  /// imagem, de [minContentZoom] (sem zoom) a [maxContentZoom]. Só se aplica
-  /// com [imageFrame] definido; a exportação escala o conteúdo já ajustado
-  /// pelo [contentFit] e recorta de volta ao tamanho da janela, sempre a
-  /// partir do centro — mesmo comportamento da prévia ao vivo.
+  /// Escala do vídeo principal sobre o fundo estendido, de
+  /// [minContentZoom] a [maxContentZoom]. Só é efetiva quando há uma moldura
+  /// de imagem e [contentFit] é [ContentFitMode.expand]; nos demais modos, a
+  /// prévia e a exportação usam [defaultContentZoom].
   final double contentZoom;
+
+  /// Zoom que realmente deve ser aplicado pela prévia e pela exportação.
+  /// Manter o valor escolhido em [contentZoom] permite recuperá-lo quando o
+  /// usuário volta para "Expandir sem cortar", sem deixar que ele afete os
+  /// outros modos de ajuste.
+  double get effectiveContentZoom =>
+      hasImageFrame && contentFit == ContentFitMode.expand
+      ? contentZoom.clamp(minContentZoom, maxContentZoom).toDouble()
+      : defaultContentZoom;
 
   bool get hasImageFrame => imageFrame != null;
 
@@ -153,13 +161,12 @@ class FrameSettings {
   /// completamente arredondada (um círculo, num canvas quadrado).
   static const maxCornerRatio = 0.5;
 
-  /// Limites de [contentZoom]. Só zoom-in (>= 100%): nem o grafo do FFmpeg
-  /// nem a prévia têm hoje um caminho de padding/letterbox reaproveitável
-  /// para um zoom-out genérico nos modos "Preencher"/"Expandir" (que não têm
-  /// etapa de `pad`), e o caso de uso real (aproximar, cortar bordas) é
-  /// inerentemente zoom-in.
-  static const minContentZoom = 1.0;
-  static const maxContentZoom = 2.0;
+  /// Limites do zoom disponível exclusivamente em "Expandir sem cortar".
+  /// A escala neutra (100%) fica separada do mínimo porque o controle agora
+  /// também permite afastar o vídeo e revelar mais do fundo estendido.
+  static const minContentZoom = 0.1;
+  static const defaultContentZoom = 1.0;
+  static const maxContentZoom = 3.0;
 
   /// Nenhuma moldura: mesmo comportamento do app antes desta funcionalidade.
   factory FrameSettings.none() => const FrameSettings();

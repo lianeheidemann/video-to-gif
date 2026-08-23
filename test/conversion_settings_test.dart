@@ -127,10 +127,48 @@ void main() {
   group('moldura de imagem: resolução e zoom', () {
     final art = ImageFrameLibrary.bundled.first;
 
-    test('valores padrão de FrameSettings não têm zoom nem resolução nativa', () {
-      const frame = FrameSettings();
-      expect(frame.contentZoom, FrameSettings.minContentZoom);
-      expect(frame.frameResolutionMode, ImageFrameResolutionMode.matchAjustar);
+    test(
+      'valores padrão de FrameSettings não têm zoom nem resolução nativa',
+      () {
+        const frame = FrameSettings();
+        expect(frame.contentZoom, FrameSettings.defaultContentZoom);
+        expect(
+          frame.frameResolutionMode,
+          ImageFrameResolutionMode.matchAjustar,
+        );
+      },
+    );
+
+    test('contentZoom só é efetivo em Expandir sem cortar', () {
+      for (final mode in [
+        ContentFitMode.auto,
+        ContentFitMode.fill,
+        ContentFitMode.fit,
+      ]) {
+        final frame = FrameSettings(
+          imageFrame: art,
+          contentFit: mode,
+          contentZoom: FrameSettings.maxContentZoom,
+        );
+        expect(
+          frame.effectiveContentZoom,
+          FrameSettings.defaultContentZoom,
+          reason: 'mode=$mode',
+        );
+      }
+
+      final reduced = FrameSettings(
+        imageFrame: art,
+        contentFit: ContentFitMode.expand,
+        contentZoom: FrameSettings.minContentZoom,
+      );
+      final enlarged = FrameSettings(
+        imageFrame: art,
+        contentFit: ContentFitMode.expand,
+        contentZoom: FrameSettings.maxContentZoom,
+      );
+      expect(reduced.effectiveContentZoom, 0.1);
+      expect(enlarged.effectiveContentZoom, 3.0);
     });
 
     test('imageFrameCanvasDimensions usa a largura de Ajustar por padrão', () {
