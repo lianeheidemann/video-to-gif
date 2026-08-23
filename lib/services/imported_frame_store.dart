@@ -53,6 +53,7 @@ class ImportedFrameStore {
     final image = frame.image;
     late final NormalizedRect contentRect;
     late final double aspectRatio;
+    late final int nativeWidth;
     try {
       final raw = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       if (raw == null) {
@@ -60,6 +61,7 @@ class ImportedFrameStore {
       }
       contentRect = _detectContentRect(raw, image.width, image.height);
       aspectRatio = image.width / image.height;
+      nativeWidth = image.width;
     } finally {
       image.dispose();
     }
@@ -81,6 +83,7 @@ class ImportedFrameStore {
       source: ImageFrameSource.importedImage,
       imageFilePath: destPath,
       nativeAspectRatio: aspectRatio,
+      nativeReferenceWidth: nativeWidth,
       contentRect: contentRect,
     );
 
@@ -132,6 +135,7 @@ class ImportedFrameStore {
     'label': asset.label,
     'filePath': asset.imageFilePath,
     'aspect': asset.nativeAspectRatio,
+    'nativeWidth': asset.nativeReferenceWidth,
     'left': asset.contentRect.left,
     'top': asset.contentRect.top,
     'width': asset.contentRect.width,
@@ -147,6 +151,10 @@ class ImportedFrameStore {
         source: ImageFrameSource.importedImage,
         imageFilePath: map['filePath'] as String,
         nativeAspectRatio: (map['aspect'] as num).toDouble(),
+        // Molduras importadas antes deste campo existir nunca tiveram a
+        // largura real salva — 1080 é o mesmo padrão usado pelas artes
+        // empacotadas.
+        nativeReferenceWidth: (map['nativeWidth'] as num?)?.toInt() ?? 1080,
         contentRect: NormalizedRect(
           (map['left'] as num).toDouble(),
           (map['top'] as num).toDouble(),

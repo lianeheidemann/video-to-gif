@@ -152,4 +152,83 @@ void main() {
       reason: 'a fileira de imagem volta para "Sem moldura"',
     );
   });
+
+  testWidgets(
+    'ajuste do conteúdo e resolução só aparecem com moldura de imagem ativa',
+    (tester) async {
+      await _openFrameSection(tester);
+
+      expect(find.text('Ajuste do conteúdo'), findsNothing);
+      expect(find.text('Resolução da moldura'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+      );
+      await tester.pump();
+
+      expect(find.text('Ajuste do conteúdo'), findsOneWidget);
+      expect(find.text('Resolução da moldura'), findsOneWidget);
+    },
+  );
+
+  testWidgets('tocar no cabeçalho de Ajuste do conteúdo revela o zoom', (
+    tester,
+  ) async {
+    await _openFrameSection(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('frameContentZoomSlider')),
+      findsNothing,
+      reason: 'a subseção começa recolhida',
+    );
+
+    await tester.ensureVisible(find.text('Ajuste do conteúdo'));
+    await tester.tap(find.text('Ajuste do conteúdo'));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('frameContentZoomSlider')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('contentFitTile_fill')), findsOneWidget);
+  });
+
+  testWidgets(
+    'tocar no cabeçalho de Resolução da moldura alterna o modo',
+    (tester) async {
+      await _openFrameSection(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+      );
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Resolução da moldura'));
+      await tester.tap(find.text('Resolução da moldura'));
+      await tester.pump();
+
+      // "Igual à escolhida em Ajustar" é o modo padrão: aparece duas vezes
+      // (resumo da subseção + chip), por isso `findsWidgets` em vez de
+      // `findsOneWidget`. "Resolução máxima da imagem" ainda não está
+      // selecionada, então aparece só no chip.
+      expect(find.text('Igual à escolhida em Ajustar'), findsWidgets);
+      expect(find.text('Resolução máxima da imagem'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Resolução máxima da imagem'));
+      await tester.tap(find.text('Resolução máxima da imagem'));
+      await tester.pump();
+
+      // Recolhe para conferir o resumo, que só mostra o valor selecionado
+      // quando a subseção está fechada.
+      await tester.ensureVisible(find.text('Resolução da moldura'));
+      await tester.tap(find.text('Resolução da moldura'));
+      await tester.pump();
+
+      expect(find.text('Resolução máxima da imagem'), findsOneWidget);
+      expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
+    },
+  );
 }

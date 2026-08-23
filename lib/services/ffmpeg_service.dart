@@ -443,8 +443,28 @@ class FfmpegService {
       }
     }
 
+    // Zoom: amplia o conteúdo já ajustado pelo `fit` e recorta de volta ao
+    // tamanho exato da área — o `crop` do FFmpeg centraliza sozinho quando
+    // x/y não são passados, mesma convenção já usada acima em
+    // `ContentFitMode.fill`, e mesmo alinhamento central que a prévia ao
+    // vivo aplica com `Transform.scale`. Precisa terminar em exatamente
+    // areaWidth x areaHeight: é esse tamanho que `_imageFramedGifArgs` usa
+    // para montar a máscara de transparência e que o `pad` abaixo assume.
+    final zoom = frame.contentZoom;
+    final fittedLabel = zoom > FrameSettings.minContentZoom
+        ? 'fitted_zoomed'
+        : 'fitted';
+    if (fittedLabel == 'fitted_zoomed') {
+      final zoomedWidth = _evenRound(areaWidth * zoom);
+      final zoomedHeight = _evenRound(areaHeight * zoom);
+      parts.add(
+        '[fitted]scale=$zoomedWidth:$zoomedHeight:flags=lanczos,'
+        'crop=$areaWidth:$areaHeight[fitted_zoomed]',
+      );
+    }
+
     parts.add(
-      '[fitted]pad=$canvasWidth:$canvasHeight:$areaX:$areaY:'
+      '[$fittedLabel]pad=$canvasWidth:$canvasHeight:$areaX:$areaY:'
       'color=black[base]',
     );
     parts.add('[$artInput]setpts=PTS-STARTPTS[art]');
@@ -580,6 +600,13 @@ class FfmpegService {
       'gif',
       outputPath,
     ];
+  }
+
+  /// Arredonda para o inteiro par mais próximo — mesma exigência de
+  /// crop/scale do FFmpeg já seguida por [ConversionSettings._evenFromDouble].
+  int _evenRound(num value) {
+    final rounded = value.round();
+    return rounded - (rounded % 2);
   }
 
   String _ffmpegColor(Color color) {

@@ -43,6 +43,27 @@ enum ContentFitMode {
   final String subtitle;
 }
 
+/// Em que resolução o canvas de uma moldura de imagem é gerado — só se
+/// aplica quando [FrameSettings.imageFrame] está definido. O vídeo em si
+/// continua sendo convertido pelas configurações de "Ajustar"
+/// (fps/cores/velocidade/[ConversionSettings.targetWidth]) nos dois casos;
+/// só o tamanho do canvas/arte da moldura muda.
+enum ImageFrameResolutionMode {
+  matchAjustar(
+    'Igual à escolhida em Ajustar',
+    'Resolução do vídeo define o tamanho da moldura',
+  ),
+  nativeMax(
+    'Resolução máxima da imagem',
+    'Usa a resolução original da arte, no maior tamanho possível',
+  );
+
+  const ImageFrameResolutionMode(this.label, this.subtitle);
+
+  final String label;
+  final String subtitle;
+}
+
 /// Resolve [ContentFitMode.auto] para [ContentFitMode.fill] ou
 /// [ContentFitMode.fit] conforme a proporção do conteúdo estiver perto o
 /// suficiente da proporção da área — compartilhado entre a exportação
@@ -76,6 +97,8 @@ class FrameSettings {
     this.contentFit = ContentFitMode.auto,
     this.transparentBackground = true,
     this.imageFrame,
+    this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
+    this.contentZoom = minContentZoom,
   });
 
   final FrameStyle style;
@@ -104,6 +127,17 @@ class FrameSettings {
   /// transparente ou preta.
   final ImageFrameAsset? imageFrame;
 
+  /// Em que resolução o canvas de [imageFrame] é gerado. Só tem efeito com
+  /// [imageFrame] definido — ver [ImageFrameResolutionMode].
+  final ImageFrameResolutionMode frameResolutionMode;
+
+  /// Quanto o vídeo é ampliado dentro da janela de conteúdo da moldura de
+  /// imagem, de [minContentZoom] (sem zoom) a [maxContentZoom]. Só se aplica
+  /// com [imageFrame] definido; a exportação escala o conteúdo já ajustado
+  /// pelo [contentFit] e recorta de volta ao tamanho da janela, sempre a
+  /// partir do centro — mesmo comportamento da prévia ao vivo.
+  final double contentZoom;
+
   bool get hasImageFrame => imageFrame != null;
 
   /// Somente molduras de imagem têm canvas próprio. Molduras procedurais
@@ -118,6 +152,14 @@ class FrameSettings {
   /// Arredondamento máximo: metade do menor lado, ou seja, a forma
   /// completamente arredondada (um círculo, num canvas quadrado).
   static const maxCornerRatio = 0.5;
+
+  /// Limites de [contentZoom]. Só zoom-in (>= 100%): nem o grafo do FFmpeg
+  /// nem a prévia têm hoje um caminho de padding/letterbox reaproveitável
+  /// para um zoom-out genérico nos modos "Preencher"/"Expandir" (que não têm
+  /// etapa de `pad`), e o caso de uso real (aproximar, cortar bordas) é
+  /// inerentemente zoom-in.
+  static const minContentZoom = 1.0;
+  static const maxContentZoom = 2.0;
 
   /// Nenhuma moldura: mesmo comportamento do app antes desta funcionalidade.
   factory FrameSettings.none() => const FrameSettings();
@@ -148,6 +190,8 @@ class FrameSettings {
     bool? transparentBackground,
     ImageFrameAsset? imageFrame,
     bool clearImageFrame = false,
+    ImageFrameResolutionMode? frameResolutionMode,
+    double? contentZoom,
   }) {
     return FrameSettings(
       style: style ?? this.style,
@@ -158,6 +202,8 @@ class FrameSettings {
       transparentBackground:
           transparentBackground ?? this.transparentBackground,
       imageFrame: clearImageFrame ? null : (imageFrame ?? this.imageFrame),
+      frameResolutionMode: frameResolutionMode ?? this.frameResolutionMode,
+      contentZoom: contentZoom ?? this.contentZoom,
     );
   }
 }

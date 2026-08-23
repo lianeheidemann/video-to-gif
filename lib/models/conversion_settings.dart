@@ -149,6 +149,13 @@ class ConversionSettings {
   static const minSpeed = 0.25;
   static const maxSpeed = 4.0;
 
+  /// Teto de largura para o canvas de uma moldura de imagem no modo
+  /// [ImageFrameResolutionMode.nativeMax] — evita que uma foto importada em
+  /// resolução muito alta gere um canvas de milhares de pixels, o que deixa
+  /// a rasterização da arte e o encode do GIF lentos/pesados sem ganho
+  /// perceptível (GIFs raramente são vistos em telas grandes).
+  static const maxImageFrameNativeWidth = 1600;
+
   /// Duração do trecho selecionado no vídeo original, antes de aplicar a
   /// velocidade.
   double get sourceDurationSeconds {
@@ -241,8 +248,16 @@ class ConversionSettings {
   /// proporção do conteúdo isolado, para a arte nunca ser distorcida.
   (int, int) imageFrameCanvasDimensions(VideoInfo video) {
     final art = frame.imageFrame!;
-    final (contentWidth, _) = contentDimensions(video);
-    final canvasWidth = contentWidth / art.contentRect.width;
+    final double canvasWidth;
+    switch (frame.frameResolutionMode) {
+      case ImageFrameResolutionMode.matchAjustar:
+        final (contentWidth, _) = contentDimensions(video);
+        canvasWidth = contentWidth / art.contentRect.width;
+      case ImageFrameResolutionMode.nativeMax:
+        canvasWidth = art.nativeReferenceWidth
+            .clamp(2, maxImageFrameNativeWidth)
+            .toDouble();
+    }
     final canvasHeight = canvasWidth / art.nativeAspectRatio;
     final w = _evenFromDouble(canvasWidth);
     final h = _evenFromDouble(canvasHeight);

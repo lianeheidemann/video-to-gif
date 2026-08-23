@@ -33,6 +33,7 @@ class ImageFrameAsset {
     required this.source,
     required this.contentRect,
     required this.nativeAspectRatio,
+    required this.nativeReferenceWidth,
     this.svgAssetPath,
     this.imageFilePath,
   }) : assert(
@@ -56,6 +57,15 @@ class ImageFrameAsset {
   /// desenhar em qualquer tamanho de tela ou de exportação.
   final double nativeAspectRatio;
 
+  /// Largura de referência (px) do canvas nativo/original da arte — o
+  /// design canvas do SVG para artes empacotadas, ou a largura real do
+  /// arquivo para PNGs importados. Usado por
+  /// [ConversionSettings.imageFrameCanvasDimensions] quando
+  /// [ImageFrameResolutionMode.nativeMax] está ativo, para gerar a moldura
+  /// no maior tamanho nítido possível em vez de depender da resolução
+  /// escolhida em "Ajustar".
+  final int nativeReferenceWidth;
+
   /// Caminho do asset (`assets/frame/...`), quando [source] é [ImageFrameSource.bundledSvg].
   final String? svgAssetPath;
 
@@ -77,6 +87,7 @@ class ImageFrameLibrary {
       source: ImageFrameSource.bundledSvg,
       svgAssetPath: 'assets/frame/moldura-celular-transparente.svg',
       nativeAspectRatio: 760 / 1520,
+      nativeReferenceWidth: 760,
       contentRect: NormalizedRect(0.1066, 0.0441, 0.7868, 0.9118),
     ),
     ImageFrameAsset(
@@ -85,6 +96,7 @@ class ImageFrameLibrary {
       source: ImageFrameSource.bundledSvg,
       svgAssetPath: 'assets/frame/moldura_01_graphite_dynamic_island.svg',
       nativeAspectRatio: 1080 / 1920,
+      nativeReferenceWidth: 1080,
       contentRect: NormalizedRect(0.0935, 0.0302, 0.8130, 0.9396),
     ),
     ImageFrameAsset(
@@ -93,6 +105,7 @@ class ImageFrameLibrary {
       source: ImageFrameSource.bundledSvg,
       svgAssetPath: 'assets/frame/moldura_02_titanio_flat.svg',
       nativeAspectRatio: 1080 / 1920,
+      nativeReferenceWidth: 1080,
       contentRect: NormalizedRect(0.0954, 0.0318, 0.8093, 0.9365),
     ),
     ImageFrameAsset(
@@ -101,6 +114,7 @@ class ImageFrameLibrary {
       source: ImageFrameSource.bundledSvg,
       svgAssetPath: 'assets/frame/moldura_03_ceramica_branca.svg',
       nativeAspectRatio: 1080 / 1920,
+      nativeReferenceWidth: 1080,
       contentRect: NormalizedRect(0.0944, 0.03125, 0.8111, 0.9375),
     ),
     ImageFrameAsset(
@@ -109,6 +123,7 @@ class ImageFrameLibrary {
       source: ImageFrameSource.bundledSvg,
       svgAssetPath: 'assets/frame/moldura_04_azul_neon_gamer.svg',
       nativeAspectRatio: 1080 / 1920,
+      nativeReferenceWidth: 1080,
       // Cantos cortados na diagonal (octógono, não arredondado): retângulo
       // inscrito conservador, com margem extra contra o antialiasing do
       // corte — ver plano de implementação para a dedução dessa margem.
@@ -120,6 +135,7 @@ class ImageFrameLibrary {
       source: ImageFrameSource.bundledSvg,
       svgAssetPath: 'assets/frame/moldura_05_rose_gold_minimal.svg',
       nativeAspectRatio: 1080 / 1920,
+      nativeReferenceWidth: 1080,
       contentRect: NormalizedRect(0.0935, 0.0318, 0.8130, 0.9365),
     ),
   ];

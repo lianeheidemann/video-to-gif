@@ -74,6 +74,8 @@ class _EditorPageState extends State<EditorPage> {
   AspectPreset _aspect = AspectPreset.presets.first;
   bool _ditherExpanded = false;
   bool _paletteExpanded = false;
+  bool _contentFitExpanded = false;
+  bool _frameResolutionExpanded = false;
   _EditorTab _tab = _EditorTab.ajustar;
 
   final _widthController = TextEditingController();
@@ -358,10 +360,11 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Seções mostradas na aba "Frame", nesta ordem: a moldura procedural
-  /// (estilo + cor/espessura/cantos), as molduras de imagem, o ajuste do
-  /// conteúdo quando a moldura escolhida tem canvas próprio, o fundo
-  /// transparente e o botão de converter — para não obrigar a voltar para
-  /// "Ajustar" só para iniciar a conversão.
+  /// (estilo + cor/espessura/cantos), as molduras de imagem (que já
+  /// incluem, quando uma arte está ativa, o ajuste do conteúdo e a
+  /// resolução da moldura como subseções — ver [_imageFrameSection]), o
+  /// fundo transparente e o botão de converter — para não obrigar a voltar
+  /// para "Ajustar" só para iniciar a conversão.
   ///
   /// As duas famílias de moldura ficam em caixas separadas de propósito:
   /// só uma pode estar ativa por vez (ver [_activeFrameStyle]) e cada caixa
@@ -370,7 +373,6 @@ class _EditorPageState extends State<EditorPage> {
     return [
       _frameStyleSection(),
       _imageFrameSection(),
-      if (_settings.frame.hasFixedAspect) _contentFitSection(),
       _backgroundSection(),
       const SizedBox(height: 4),
       _convertButton(),
@@ -490,7 +492,11 @@ class _EditorPageState extends State<EditorPage> {
   /// app, ou PNG importado) sempre desenhada na sua proporção nativa (nunca
   /// distorcida), com o vídeo já cortado posicionado e ajustado (conforme
   /// [ContentFitMode]) exatamente dentro da janela de conteúdo
-  /// ([ImageFrameAsset.contentRect]) por baixo dela.
+  /// ([ImageFrameAsset.contentRect]) por baixo dela, e ampliado conforme
+  /// [FrameSettings.contentZoom] — o `Transform.scale` centraliza por
+  /// padrão, mesmo alinhamento do `crop` que a exportação usa para o zoom
+  /// (ver [FfmpegService._imageFramedGraph]), então prévia e GIF final nunca
+  /// divergem.
   Widget _imageFramedPreview(ImageFrameAsset asset) {
     return AspectRatio(
       aspectRatio: asset.nativeAspectRatio,
@@ -516,14 +522,17 @@ class _EditorPageState extends State<EditorPage> {
                 child: ColoredBox(
                   color: Colors.black,
                   child: ClipRect(
-                    child: FittedBox(
-                      fit: fit == ContentFitMode.fill
-                          ? BoxFit.cover
-                          : BoxFit.contain,
-                      child: SizedBox(
-                        width: 1000,
-                        height: 1000 / _contentAspectRatio,
-                        child: _croppedPreview(rounded: false),
+                    child: Transform.scale(
+                      scale: _settings.frame.contentZoom,
+                      child: FittedBox(
+                        fit: fit == ContentFitMode.fill
+                            ? BoxFit.cover
+                            : BoxFit.contain,
+                        child: SizedBox(
+                          width: 1000,
+                          height: 1000 / _contentAspectRatio,
+                          child: _croppedPreview(rounded: false),
+                        ),
                       ),
                     ),
                   ),
@@ -599,13 +608,42 @@ class _EditorPageState extends State<EditorPage> {
   /// Seção "Molduras de imagem": as artes prontas do app, as importadas pelo
   /// usuário e o botão de importar. Fica numa caixa própria porque é a outra
   /// família de moldura — escolher aqui desativa a de cima, e vice-versa.
+  ///
+  /// Com uma arte selecionada ([FrameSettings.hasFixedAspect]), aparecem
+  /// abaixo das miniaturas as subseções "Ajuste do conteúdo" e "Resolução
+  /// da moldura" — só fazem sentido para molduras de imagem (que têm canvas
+  /// e proporção próprios), por isso moram aqui dentro em vez de serem
+  /// caixas de topo, mesmo padrão de [_frameStyleSection] para seus
+  /// controles de cor/espessura/cantos.
   Widget _imageFrameSection() {
+    final theme = Theme.of(context);
+    final hasFixedAspect = _settings.frame.hasFixedAspect;
     return LabeledSection(
       icon: Icons.image_outlined,
       title: 'Molduras de imagem',
       value: _settings.frame.imageFrame?.label ?? FrameStyle.none.label,
       hint: 'Escolha uma opção',
-      child: _imageFrameThumbnails(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _imageFrameThumbnails(),
+          if (hasFixedAspect) ...[
+            const SizedBox(height: 18),
+            _sectionCard(
+              children: [
+                _contentFitSubsection(),
+                Divider(
+                  height: 17,
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.45,
+                  ),
+                ),
+                _frameResolutionSubsection(),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1182,21 +1220,106 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Seção "Ajuste do conteúdo": como o vídeo se encaixa quando a
-  /// proporção da moldura escolhida é diferente da do recorte.
-  Widget _contentFitSection() {
+  /// Subseção recolhível "Ajuste do conteúdo", aninhada dentro de
+  /// "Molduras de imagem": como o vídeo se encaixa quando a proporção da
+  /// moldura escolhida é diferente da do recorte, mais o quanto ele é
+  /// ampliado dentro dela. Mesmo padrão de [_collapsibleSubsection] usado
+  /// por "Suavização de cor"/"Paleta" em [_colorSection].
+  Widget _contentFitSubsection() {
     final selected = _settings.frame.contentFit;
-    return LabeledSection(
-      icon: Icons.aspect_ratio_rounded,
-      title: 'Ajuste do conteúdo',
-      value: selected.label,
+    final zoomPercent = (_settings.frame.contentZoom * 100).round();
+    return _collapsibleSubsection(
+      label: 'Ajuste do conteúdo',
+      subtitle: '${selected.label} · Zoom $zoomPercent%',
+      expanded: _contentFitExpanded,
+      onToggle: () =>
+          setState(() => _contentFitExpanded = !_contentFitExpanded),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final mode in ContentFitMode.values) ...[
             _contentFitTile(mode, selected: mode == selected),
             if (mode != ContentFitMode.values.last) const SizedBox(height: 8),
           ],
+          const SizedBox(height: 14),
+          _contentZoomRow(),
         ],
+      ),
+    );
+  }
+
+  /// Slider de zoom do conteúdo dentro da janela da moldura de imagem —
+  /// mesmo formato de [_frameThicknessRow]. Vai de
+  /// [FrameSettings.minContentZoom] (sem zoom) a
+  /// [FrameSettings.maxContentZoom]; a exportação e a prévia recortam de
+  /// volta ao tamanho da janela sempre a partir do centro.
+  Widget _contentZoomRow() {
+    final theme = Theme.of(context);
+    final frame = _settings.frame;
+    final zoom = frame.contentZoom
+        .clamp(FrameSettings.minContentZoom, FrameSettings.maxContentZoom)
+        .toDouble();
+    final percent = (zoom * 100).round();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Zoom do conteúdo',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            Text(
+              '$percent%',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          key: const ValueKey('frameContentZoomSlider'),
+          min: FrameSettings.minContentZoom,
+          max: FrameSettings.maxContentZoom,
+          divisions: 20,
+          value: zoom,
+          label: '$percent%',
+          onChanged: (v) => _updateFrame(frame.copyWith(contentZoom: v)),
+        ),
+        Text(
+          'Aproxima o vídeo dentro da janela da moldura, cortando as bordas.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Subseção recolhível "Resolução da moldura", aninhada dentro de
+  /// "Molduras de imagem": escolhe se o canvas da arte segue a resolução
+  /// de "Ajustar" (padrão) ou a resolução nativa/máxima da própria arte —
+  /// o vídeo continua sendo convertido pelas configurações de "Ajustar" em
+  /// qualquer um dos dois casos (ver [ImageFrameResolutionMode]).
+  Widget _frameResolutionSubsection() {
+    final selected = _settings.frame.frameResolutionMode;
+    return _collapsibleSubsection(
+      label: 'Resolução da moldura',
+      subtitle: selected.label,
+      expanded: _frameResolutionExpanded,
+      onToggle: () => setState(
+        () => _frameResolutionExpanded = !_frameResolutionExpanded,
+      ),
+      child: OptionChips<ImageFrameResolutionMode>(
+        options: ImageFrameResolutionMode.values,
+        selected: selected,
+        labelBuilder: (mode) => mode.label,
+        onSelected: (mode) =>
+            _updateFrame(_settings.frame.copyWith(frameResolutionMode: mode)),
       ),
     );
   }
