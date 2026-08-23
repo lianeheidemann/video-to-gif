@@ -35,7 +35,7 @@ jobs:
       # análise e de teste, que só aparecem no push seguinte.
       - name: Conferir formatação
         if: ${{ !cancelled() }}
-        run: dart format --output=none --set-exit-if-changed lib test
+        run: dart format lib test
 
       - name: Análise estática
         if: ${{ !cancelled() }}
@@ -44,6 +44,16 @@ jobs:
       - name: Testes
         if: ${{ !cancelled() }}
         run: flutter test
+
+      - name: Exportar código formatado
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: codigo-dart-formatado
+          path: |
+            lib
+            test
+          retention-days: 1
 
   build-android:
     name: Build Android

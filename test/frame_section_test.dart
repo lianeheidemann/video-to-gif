@@ -178,7 +178,7 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
       );
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       final contentHeader = find.text('Ajuste do conteúdo');
       final editorScroll = find.descendant(
@@ -191,7 +191,7 @@ void main() {
         scrollable: editorScroll,
       );
       await tester.tap(contentHeader);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(
         find.byKey(const ValueKey('frameContentZoomSlider')),
@@ -202,7 +202,7 @@ void main() {
       final expand = find.byKey(const ValueKey('contentFitTile_expand'));
       await tester.scrollUntilVisible(expand, 300, scrollable: editorScroll);
       await tester.tap(expand);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       final zoomFinder = find.byKey(
         const ValueKey('frameContentZoomSlider'),
@@ -215,7 +215,7 @@ void main() {
       final fit = find.byKey(const ValueKey('contentFitTile_fit'));
       await tester.scrollUntilVisible(fit, -300, scrollable: editorScroll);
       await tester.tap(fit);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(
         find.byKey(const ValueKey('frameContentZoomSlider')),
@@ -232,7 +232,7 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
       );
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       final editorScroll = find.descendant(
         of: find.byKey(const ValueKey('editorSectionsList')),
@@ -245,7 +245,7 @@ void main() {
         scrollable: editorScroll,
       );
       await tester.tap(resolutionHeader);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       // "Igual à escolhida em Ajustar" é o modo padrão: aparece duas vezes
       // (resumo da subseção + chip), por isso `findsWidgets` em vez de
@@ -261,7 +261,7 @@ void main() {
         scrollable: editorScroll,
       );
       await tester.tap(nativeResolution);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       // Recolhe para conferir o resumo, que só mostra o valor selecionado
       // quando a subseção está fechada.
@@ -271,7 +271,7 @@ void main() {
         scrollable: editorScroll,
       );
       await tester.tap(resolutionHeader);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('Resolução máxima da imagem'), findsOneWidget);
       expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
