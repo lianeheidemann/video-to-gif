@@ -232,7 +232,7 @@ on any device.
 | Layer | Choice | Why |
 |---|---|---|
 | Interface | Flutter 3.44 (Material 3) | one codebase, with a native Android look |
-| Conversion | `ffmpeg_kit_flutter_new_min` (FFmpeg LGPL) | variant without GPL components, allows closed-source distribution |
+| Conversion | `ffmpeg_kit_flutter_new_min` ([FFmpeg](https://github.com/FFmpeg/FFmpeg) LGPL) | variant without GPL components, allows closed-source distribution |
 | File picking | `file_picker` | uses the system picker, no media permission required |
 | Preview | `video_player` | shows the clip and crop frame before converting |
 | Output | `gal` + `share_plus` | save to gallery and share |
