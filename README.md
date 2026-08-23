@@ -37,7 +37,7 @@ spend time converting it**.
 
 <div align="center">
 
-<img width="20%" src="assets/gif/frames-demonstration-v1.gif"/>
+<img width="40%" src="assets/gif/frames-demonstration-v1.gif"/>
 
 </div>
 
