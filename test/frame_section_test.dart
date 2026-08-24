@@ -60,7 +60,29 @@ Future<void> _openFrameSection(WidgetTester tester) async {
 
 void main() {
   test('o fundo transparente vem ligado por padrão', () {
-    expect(const FrameSettings().transparentBackground, isTrue);
+    const frame = FrameSettings();
+    expect(frame.transparentBackground, isTrue);
+    expect(frame.backgroundColor, Colors.black);
+  });
+
+  testWidgets('cor do fundo aparece somente com transparência desligada', (
+    tester,
+  ) async {
+    await _openFrameSection(tester);
+
+    expect(
+      find.text('Desligado, a área fora da moldura fica preta'),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('backgroundColorRow')), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('transparentBackgroundSwitch')),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(const ValueKey('backgroundColorRow')), findsOneWidget);
+    expect(find.text('Cor do fundo'), findsOneWidget);
   });
 
   testWidgets('as duas fileiras de moldura aparecem juntas, sem erro', (
@@ -150,6 +172,46 @@ void main() {
       _checkIn('imageFrameThumb_none'),
       findsOneWidget,
       reason: 'a fileira de imagem volta para "Sem moldura"',
+    );
+  });
+
+  testWidgets('trocar a família de moldura mantém as opções no mesmo lugar', (
+    tester,
+  ) async {
+    await _openFrameSection(tester);
+    tester.view.physicalSize = const Size(1080, 2340);
+    await tester.pump();
+
+    final imageFrame = find.byKey(
+      const ValueKey('imageFrameThumb_bundled_titanio'),
+    );
+    await tester.ensureVisible(imageFrame);
+    await tester.pump();
+    final imageY = tester.getTopLeft(imageFrame).dy;
+
+    await tester.tap(imageFrame);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      tester.getTopLeft(imageFrame).dy,
+      closeTo(imageY, 1),
+      reason: 'a fileira de imagens não deve pular quando a prévia muda',
+    );
+
+    final proceduralFrame = find.byKey(
+      const ValueKey('frameStyleThumb_medium'),
+    );
+    await tester.ensureVisible(proceduralFrame);
+    await tester.pump();
+    final proceduralY = tester.getTopLeft(proceduralFrame).dy;
+
+    await tester.tap(proceduralFrame);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      tester.getTopLeft(proceduralFrame).dy,
+      closeTo(proceduralY, 1),
+      reason: 'a fileira procedural não deve pular quando a prévia muda',
     );
   });
 

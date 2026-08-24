@@ -69,8 +69,9 @@ class FrameGeometry {
 /// A moldura em si é sempre a forma arredondada, na cor escolhida. O que o
 /// "Fundo transparente" decide é só o que fica nos 4 cantos que sobram fora
 /// dela: ligado, nada (transparente no PNG exportado, ou o que houver atrás,
-/// na prévia); desligado, preto opaco. Pintar os cantos com a própria cor da
-/// moldura — como era antes — apagava o arredondamento no modo opaco.
+/// na prévia); desligado, a cor de fundo escolhida. Pintar os cantos com a
+/// própria cor da moldura — como era antes — apagava o arredondamento no modo
+/// opaco.
 void paintFrame(Canvas canvas, Size size, FrameSettings settings) {
   if (settings.style == FrameStyle.none) return;
 
@@ -78,7 +79,7 @@ void paintFrame(Canvas canvas, Size size, FrameSettings settings) {
   final geometry = FrameGeometry.of(size, settings);
 
   if (!settings.transparentBackground) {
-    canvas.drawRect(rect, Paint()..color = const Color(0xFF000000));
+    canvas.drawRect(rect, Paint()..color = settings.backgroundColor);
   }
   canvas.drawRRect(
     RRect.fromRectAndRadius(rect, Radius.circular(geometry.outerRadius)),

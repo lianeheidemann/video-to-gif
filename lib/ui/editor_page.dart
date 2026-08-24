@@ -69,6 +69,9 @@ class EditorPage extends StatefulWidget {
 class _EditorPageState extends State<EditorPage> {
   final _ffmpeg = FfmpegService();
   final _importedFrameStore = ImportedFrameStore();
+  final _sectionsScrollController = ScrollController();
+  final _frameStyleAnchorKey = GlobalKey();
+  final _imageFrameAnchorKey = GlobalKey();
   List<ImageFrameAsset> _importedImageFrames = [];
 
   late ConversionSettings _settings = widget.initialSettings;
@@ -140,6 +143,7 @@ class _EditorPageState extends State<EditorPage> {
   @override
   void dispose() {
     _player?.dispose();
+    _sectionsScrollController.dispose();
     _widthController.dispose();
     _heightController.dispose();
     _widthFocus.dispose();
@@ -298,6 +302,7 @@ class _EditorPageState extends State<EditorPage> {
                           flex: 5,
                           child: ListView(
                             key: const ValueKey('editorSectionsList'),
+                            controller: _sectionsScrollController,
                             padding: const EdgeInsets.fromLTRB(10, 14, 20, 28),
                             children: sections,
                           ),
@@ -306,6 +311,7 @@ class _EditorPageState extends State<EditorPage> {
                     )
                   : ListView(
                       key: const ValueKey('editorSectionsList'),
+                      controller: _sectionsScrollController,
                       padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
                       children: [
                         _previewArea(),
@@ -372,7 +378,7 @@ class _EditorPageState extends State<EditorPage> {
   /// Seções mostradas na aba "Frame", nesta ordem: a moldura procedural
   /// (estilo + cor/espessura/cantos), as molduras de imagem (que já
   /// incluem, quando uma arte está ativa, o ajuste do conteúdo e a
-  /// resolução da moldura como subseções — ver [_imageFrameSection]), o
+  /// resolução da moldura no mesmo painel — ver [_imageFrameSection]), o
   /// fundo transparente e o botão de converter — para não obrigar a voltar
   /// para "Ajustar" só para iniciar a conversão.
   ///
@@ -381,8 +387,14 @@ class _EditorPageState extends State<EditorPage> {
   /// mostra no cabeçalho qual das suas opções está valendo.
   List<Widget> _frameSections() {
     return [
-      _frameStyleSection(),
-      _imageFrameSection(),
+      KeyedSubtree(
+        key: _frameStyleAnchorKey,
+        child: _frameStyleSection(),
+      ),
+      KeyedSubtree(
+        key: _imageFrameAnchorKey,
+        child: _imageFrameSection(),
+      ),
       _backgroundSection(),
       const SizedBox(height: 4),
       _convertButton(),
@@ -403,6 +415,36 @@ class _EditorPageState extends State<EditorPage> {
   /// Substitui as configurações da moldura, mantendo o resto igual.
   void _updateFrame(FrameSettings next) {
     _update(_settings.copyWith(frame: next));
+  }
+
+  /// Atualiza a moldura compensando a variação de altura da prévia. Assim o
+  /// início das opções permanece na mesma posição da tela quando a troca
+  /// entre moldura procedural e moldura de imagem muda a proporção do vídeo.
+  void _updateFrameKeepingAnchorPosition(
+    FrameSettings next, {
+    required GlobalKey anchorKey,
+  }) {
+    final beforeBox = anchorKey.currentContext?.findRenderObject();
+    final beforeY = beforeBox is RenderBox
+        ? beforeBox.localToGlobal(Offset.zero).dy
+        : null;
+
+    _updateFrame(next);
+    if (beforeY == null) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_sectionsScrollController.hasClients) return;
+      final afterBox = anchorKey.currentContext?.findRenderObject();
+      if (afterBox is! RenderBox) return;
+
+      final delta = afterBox.localToGlobal(Offset.zero).dy - beforeY;
+      if (delta.abs() < 0.5) return;
+      final position = _sectionsScrollController.position;
+      final target = (_sectionsScrollController.offset + delta)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      _sectionsScrollController.jumpTo(target);
+    });
   }
 
   /// A prévia da aba atual. "Ajustar" mostra o vídeo inteiro com as alças de
@@ -463,15 +505,15 @@ class _EditorPageState extends State<EditorPage> {
 
           // A moldura é sempre a forma arredondada. O que "Fundo
           // transparente" decide é o que aparece nos 4 cantos que sobram
-          // fora dela: ligado, o que houver atrás; desligado, preto — os
-          // mesmos dois casos de `paintFrame`, que desenha a versão
-          // exportada disso.
+          // fora dela: ligado, o que houver atrás; desligado, a cor de fundo
+          // escolhida — os mesmos dois casos de `paintFrame`, que desenha a
+          // versão exportada disso.
           final rounded = ClipRRect(
             borderRadius: BorderRadius.circular(outerRadius),
             child: bordered,
           );
           if (frame.transparentBackground) return rounded;
-          return ColoredBox(color: Colors.black, child: rounded);
+          return ColoredBox(color: frame.backgroundColor, child: rounded);
         },
       );
     }
@@ -508,7 +550,7 @@ class _EditorPageState extends State<EditorPage> {
   /// (ver [FfmpegService._imageFramedGraph]), então prévia e GIF final nunca
   /// divergem.
   Widget _imageFramedPreview(ImageFrameAsset asset) {
-    return AspectRatio(
+    final preview = AspectRatio(
       aspectRatio: asset.nativeAspectRatio,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -545,6 +587,11 @@ class _EditorPageState extends State<EditorPage> {
           );
         },
       ),
+    );
+    if (_settings.frame.transparentBackground) return preview;
+    return ColoredBox(
+      color: _settings.frame.backgroundColor,
+      child: preview,
     );
   }
 
@@ -674,15 +721,17 @@ class _EditorPageState extends State<EditorPage> {
       child: _sectionCard(
         children: [
           SwitchListTile(
+            key: const ValueKey('transparentBackgroundSwitch'),
             contentPadding: EdgeInsets.zero,
             title: const Text('Fundo transparente'),
-            subtitle: const Text(
-              'Desligado, a área fora da moldura fica preta',
-            ),
             value: frame.transparentBackground,
             onChanged: (v) =>
                 _updateFrame(frame.copyWith(transparentBackground: v)),
           ),
+          if (!frame.transparentBackground) ...[
+            const Divider(height: 1),
+            _backgroundColorRow(),
+          ],
         ],
       ),
     );
@@ -870,13 +919,14 @@ class _EditorPageState extends State<EditorPage> {
   /// selecionada, já que as duas famílias são mutuamente exclusivas.
   void _selectFrameStyle(FrameStyle style) {
     final current = _settings.frame;
-    _updateFrame(
+    _updateFrameKeepingAnchorPosition(
       current.copyWith(
         style: style,
         cornerRatio: style.defaultCornerRatio,
         thicknessAtReference: style.defaultThickness,
         clearImageFrame: true,
       ),
+      anchorKey: _frameStyleAnchorKey,
     );
   }
 
@@ -916,8 +966,10 @@ class _EditorPageState extends State<EditorPage> {
       label: FrameStyle.none.label,
       selected: selected,
       padding: const EdgeInsets.all(11),
-      onTap: () =>
-          _updateFrame(_settings.frame.copyWith(clearImageFrame: true)),
+      onTap: () => _updateFrameKeepingAnchorPosition(
+        _settings.frame.copyWith(clearImageFrame: true),
+        anchorKey: _imageFrameAnchorKey,
+      ),
       child: Icon(
         Icons.crop_free_rounded,
         size: 22,
@@ -985,8 +1037,9 @@ class _EditorPageState extends State<EditorPage> {
   /// Seleciona uma moldura de imagem, sempre limpando o estilo procedural
   /// (as duas são mutuamente exclusivas).
   void _selectImageFrame(ImageFrameAsset asset) {
-    _updateFrame(
+    _updateFrameKeepingAnchorPosition(
       _settings.frame.copyWith(style: FrameStyle.none, imageFrame: asset),
+      anchorKey: _imageFrameAnchorKey,
     );
   }
 
@@ -1037,8 +1090,8 @@ class _EditorPageState extends State<EditorPage> {
     });
   }
 
-  /// Paleta de cores oferecida no seletor de "Cor da moldura".
-  static const _frameColorSwatches = <Color>[
+  /// Paleta compartilhada pelos seletores de cor da moldura e do fundo.
+  static const _colorSwatches = <Color>[
     Color(0xFFC9A8FF),
     Colors.white,
     Colors.black,
@@ -1049,23 +1102,42 @@ class _EditorPageState extends State<EditorPage> {
     Color(0xFFE6A15D),
   ];
 
-  Widget _frameColorRow() {
+  Widget _frameColorRow() => _colorPickerRow(
+    label: 'Cor da moldura',
+    color: _settings.frame.color,
+    onTap: _pickFrameColor,
+  );
+
+  Widget _backgroundColorRow() => _colorPickerRow(
+    key: const ValueKey('backgroundColorRow'),
+    label: 'Cor do fundo',
+    color: _settings.frame.backgroundColor,
+    onTap: _pickBackgroundColor,
+  );
+
+  Widget _colorPickerRow({
+    Key? key,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     final theme = Theme.of(context);
     return InkWell(
-      onTap: _pickFrameColor,
+      key: key,
+      onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
             Expanded(
-              child: Text('Cor da moldura', style: theme.textTheme.bodyMedium),
+              child: Text(label, style: theme.textTheme.bodyMedium),
             ),
             Container(
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: _settings.frame.color,
+                color: color,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: theme.colorScheme.outlineVariant,
@@ -1079,8 +1151,26 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Abre a folha inferior com a grade de cores para a moldura.
-  void _pickFrameColor() {
+  void _pickFrameColor() => _pickColor(
+    title: 'Cor da moldura',
+    selectedColor: _settings.frame.color,
+    onSelected: (color) =>
+        _updateFrame(_settings.frame.copyWith(color: color)),
+  );
+
+  void _pickBackgroundColor() => _pickColor(
+    title: 'Cor do fundo',
+    selectedColor: _settings.frame.backgroundColor,
+    onSelected: (color) =>
+        _updateFrame(_settings.frame.copyWith(backgroundColor: color)),
+  );
+
+  /// Abre a folha inferior com a mesma grade para qualquer seletor de cor.
+  void _pickColor({
+    required String title,
+    required Color selectedColor,
+    required ValueChanged<Color> onSelected,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1095,7 +1185,7 @@ class _EditorPageState extends State<EditorPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Cor da moldura',
+                  title,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -1105,8 +1195,15 @@ class _EditorPageState extends State<EditorPage> {
                   spacing: 14,
                   runSpacing: 14,
                   children: [
-                    for (final color in _frameColorSwatches)
-                      _colorSwatchButton(color),
+                    for (final color in _colorSwatches)
+                      _colorSwatchButton(
+                        color,
+                        selected: color == selectedColor,
+                        onTap: () {
+                          onSelected(color);
+                          Navigator.of(sheetContext).pop();
+                        },
+                      ),
                   ],
                 ),
               ],
@@ -1117,14 +1214,14 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  Widget _colorSwatchButton(Color color) {
+  Widget _colorSwatchButton(
+    Color color, {
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
     final theme = Theme.of(context);
-    final selected = _settings.frame.color == color;
     return GestureDetector(
-      onTap: () {
-        _updateFrame(_settings.frame.copyWith(color: color));
-        Navigator.of(context).pop();
-      },
+      onTap: onTap,
       child: Container(
         width: 40,
         height: 40,
