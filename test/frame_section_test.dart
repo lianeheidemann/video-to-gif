@@ -229,7 +229,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Ajuste do conteúdo'), findsOneWidget);
-      expect(find.text('Resolução da moldura'), findsNothing);
+      expect(find.text('Resolução da moldura'), findsOneWidget);
     },
   );
 
@@ -252,6 +252,7 @@ void main() {
         reason: 'o modo automático não deve permitir zoom',
       );
       expect(find.text('Ajuste automático'), findsOneWidget);
+      expect(find.text('Modo de encaixe'), findsNothing);
       expect(find.text('Resolução da moldura'), findsOneWidget);
       expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
       expect(find.byKey(const ValueKey('contentFitTile_auto')), findsOneWidget);
@@ -300,10 +301,12 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.tap(find.text('Ajuste do conteúdo'));
-    await tester.pump(const Duration(milliseconds: 300));
-
     expect(find.text('Resolução da moldura'), findsOneWidget);
+    expect(
+      find.text('Ajuste automático'),
+      findsNothing,
+      reason: 'a resolução deve ficar visível fora do painel recolhível',
+    );
     expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
     expect(
       find.byKey(const ValueKey('frameResolutionSegment_matchAjustar')),
