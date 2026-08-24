@@ -412,6 +412,15 @@ class _EditorPageState extends State<EditorPage> {
   /// rolagem quadro a quadro.
   static const _previewTransitionDuration = Duration(milliseconds: 220);
 
+  /// Incrementado a cada [_updateFrameKeepingAnchorPosition], para
+  /// [_correctAnchorScrollUntilSettled] saber se a cadeia de correção que
+  /// está rodando ainda é a mais recente. Sem isso, tocar em várias opções
+  /// de moldura em sequência rápida (antes dos ~220ms da correção anterior
+  /// terminarem) deixava várias cadeias ativas ao mesmo tempo, cada uma
+  /// perseguindo um alvo de rolagem diferente e brigando pela posição —
+  /// visível como a tela "pulando" de forma imprevisível.
+  int _frameTransitionGeneration = 0;
+
   /// Substitui as configurações da moldura, mantendo o resto igual.
   void _updateFrame(FrameSettings next) {
     _update(_settings.copyWith(frame: next));
@@ -440,7 +449,9 @@ class _EditorPageState extends State<EditorPage> {
     _updateFrame(next);
     if (beforeY == null) return;
 
+    final generation = ++_frameTransitionGeneration;
     _correctAnchorScrollUntilSettled(
+      generation,
       anchorKey,
       beforeY,
       _previewTransitionDuration,
@@ -451,12 +462,21 @@ class _EditorPageState extends State<EditorPage> {
   /// partir de agora — cobrindo toda a animação de [_previewArea] — para que
   /// [anchorKey] termine exatamente na posição [targetY] da tela mesmo com a
   /// prévia mudando de tamanho aos poucos.
+  ///
+  /// [generation] é o valor de [_frameTransitionGeneration] capturado por
+  /// [_updateFrameKeepingAnchorPosition] no momento do toque que iniciou
+  /// esta cadeia. Se um toque mais recente já incrementou o contador, esta
+  /// cadeia parou de corresponder ao estado atual da tela — encerra sem
+  /// corrigir nem se reagendar, deixando a cadeia mais nova (a única com a
+  /// posição "antes" certa) no controle.
   void _correctAnchorScrollUntilSettled(
+    int generation,
     GlobalKey anchorKey,
     double targetY,
     Duration remaining,
   ) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (generation != _frameTransitionGeneration) return;
       if (!mounted || !_sectionsScrollController.hasClients) return;
       final afterBox = anchorKey.currentContext?.findRenderObject();
       if (afterBox is RenderBox) {
@@ -471,6 +491,7 @@ class _EditorPageState extends State<EditorPage> {
       }
       if (remaining > Duration.zero) {
         _correctAnchorScrollUntilSettled(
+          generation,
           anchorKey,
           targetY,
           remaining - const Duration(milliseconds: 16),
