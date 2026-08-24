@@ -16,9 +16,82 @@ const _video = VideoInfo(
   codec: 'h264',
 );
 
+// Vídeo bem menor que [ConversionSettings.minFramedCanvasWidth] — o caso em
+// que a moldura procedural, sem o piso, ficava presa a poucos pixels e a
+// borda saía serrilhada.
+const _smallVideo = VideoInfo(
+  path: '/tmp/pequeno.mp4',
+  fileName: 'pequeno.mp4',
+  rawWidth: 350,
+  rawHeight: 320,
+  durationSeconds: 5,
+  frameRate: 30,
+  bitrateBps: 1000000,
+  fileSizeBytes: 500000,
+  codec: 'h264',
+);
+
 void main() {
   test('720 px está disponível para preservar a resolução de vídeos HD', () {
     expect(ConversionSettings.widthOptions, contains(720));
+  });
+
+  group('moldura procedural: piso de resolução em vídeos pequenos', () {
+    const framedSettings = FrameSettings(
+      style: FrameStyle.medium,
+      thicknessAtReference: 10,
+      cornerRatio: 0.12,
+    );
+
+    test(
+      'vídeo menor que o piso sobe até minFramedCanvasWidth com moldura ativa',
+      () {
+        final settings = ConversionSettings(
+          startSeconds: 0,
+          endSeconds: 5,
+          targetWidth: 720,
+          frame: framedSettings,
+        );
+
+        final (w, _) = settings.contentDimensions(_smallVideo);
+        expect(w, ConversionSettings.minFramedCanvasWidth);
+      },
+    );
+
+    test('o piso nunca ultrapassa a largura escolhida em "Resolução"', () {
+      final settings = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 400,
+        frame: framedSettings,
+      );
+
+      final (w, _) = settings.contentDimensions(_smallVideo);
+      expect(w, 400);
+    });
+
+    test('sem moldura, vídeo pequeno continua sem nenhum upscaling', () {
+      final settings = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 720,
+      );
+
+      final (w, _) = settings.contentDimensions(_smallVideo);
+      expect(w, 350);
+    });
+
+    test('moldura de imagem não recebe o piso — o contorno já é vetorial', () {
+      final settings = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 720,
+        frame: FrameSettings(imageFrame: ImageFrameLibrary.bundled.first),
+      );
+
+      final (w, _) = settings.contentDimensions(_smallVideo);
+      expect(w, 350);
+    });
   });
 
   group('moldura: espessura e canvas', () {

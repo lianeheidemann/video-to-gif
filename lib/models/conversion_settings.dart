@@ -156,6 +156,13 @@ class ConversionSettings {
   /// perceptível (GIFs raramente são vistos em telas grandes).
   static const maxImageFrameNativeWidth = 1600;
 
+  /// Piso de largura do canvas para uma moldura procedural ativa — ver
+  /// [contentDimensions]. Sem ele, um vídeo de origem menor que a largura
+  /// escolhida em "Resolução" limitava a borda e o arredondamento dos
+  /// cantos a poucos pixels, saindo serrilhados (espessura/raio são
+  /// proporcionais ao canvas, ver [FrameSettings]).
+  static const minFramedCanvasWidth = 480;
+
   /// Duração do trecho selecionado no vídeo original, antes de aplicar a
   /// velocidade.
   double get sourceDurationSeconds {
@@ -175,12 +182,30 @@ class ConversionSettings {
   /// Largura/altura do vídeo já cortado e escalado pela largura alvo,
   /// mantendo a proporção da área recortada (ou do vídeo inteiro, sem
   /// recorte) — a área de conteúdo, antes de qualquer moldura.
+  ///
+  /// Normalmente nunca ultrapassa a largura de origem (`srcWidth`), para
+  /// não ampliar o vídeo à toa. Mas com uma moldura procedural ativa
+  /// ([FrameSettings.style] diferente de [FrameStyle.none] e sem
+  /// [FrameSettings.imageFrame], cujo contorno já é vetorial e sempre
+  /// nítido), o canvas é o que define a espessura/arredondamento da borda
+  /// em pixels — um vídeo bem menor que a largura escolhida em "Resolução"
+  /// prendia a moldura a poucos pixels e o arredondamento saía serrilhado.
+  /// Nesse caso o canvas sobe até [minFramedCanvasWidth], nunca além da
+  /// largura que a pessoa escolheu (`targetWidth`).
   (int, int) contentDimensions(VideoInfo video) {
     final srcWidth = crop?.width ?? video.width;
     final srcHeight = crop?.height ?? video.height;
     if (srcWidth <= 0 || srcHeight <= 0) return (2, 2);
 
     var w = targetWidth > srcWidth ? srcWidth : targetWidth;
+    final proceduralFrameActive =
+        frame.style != FrameStyle.none && frame.imageFrame == null;
+    if (proceduralFrameActive && srcWidth < targetWidth) {
+      final floor = minFramedCanvasWidth < targetWidth
+          ? minFramedCanvasWidth
+          : targetWidth;
+      if (w < floor) w = floor;
+    }
     if (w < 2) w = 2;
     var h = (w * srcHeight / srcWidth).round();
 
