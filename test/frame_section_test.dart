@@ -191,6 +191,7 @@ void main() {
 
     await tester.tap(imageFrame);
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
 
     expect(
       tester.getTopLeft(imageFrame).dy,
@@ -207,6 +208,7 @@ void main() {
 
     await tester.tap(proceduralFrame);
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
 
     expect(
       tester.getTopLeft(proceduralFrame).dy,
