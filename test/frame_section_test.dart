@@ -202,6 +202,19 @@ void main() {
     final proceduralFrame = find.byKey(
       const ValueKey('frameStyleThumb_medium'),
     );
+    final sectionsList = tester.widget<ListView>(
+      find.byKey(const ValueKey('editorSectionsList')),
+    );
+    final sectionsController = sectionsList.controller!;
+    sectionsController.jumpTo(
+      (sectionsController.offset + 1000)
+          .clamp(
+            sectionsController.position.minScrollExtent,
+            sectionsController.position.maxScrollExtent,
+          )
+          .toDouble(),
+    );
+    await tester.pump();
     await tester.ensureVisible(proceduralFrame);
     await tester.pump();
     final proceduralY = tester.getTopLeft(proceduralFrame).dy;
