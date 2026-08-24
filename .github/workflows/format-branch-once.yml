@@ -1,0 +1,40 @@
+name: Formatar branch uma vez
+
+on:
+  push:
+    branches:
+      - codex/separar-resolucao-moldura
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.0'
+
+jobs:
+  formatar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/separar-resolucao-moldura
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Formatar arquivos
+        run: dart format lib/ui/editor_page.dart test/frame_section_test.dart test/conversion_settings_test.dart test/frame_painter_test.dart
+
+      - name: Publicar formatação
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- lib/ui/editor_page.dart test/frame_section_test.dart test/conversion_settings_test.dart test/frame_painter_test.dart
+          git commit -m "Aplicar formatação do Dart"
+          git push origin HEAD:codex/separar-resolucao-moldura
