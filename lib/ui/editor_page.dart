@@ -84,7 +84,6 @@ class _EditorPageState extends State<EditorPage> {
   bool _ditherExpanded = false;
   bool _paletteExpanded = false;
   bool _contentFitExpanded = false;
-  bool _frameResolutionExpanded = false;
   _EditorTab _tab = _EditorTab.ajustar;
 
   final _widthController = TextEditingController();
@@ -639,14 +638,11 @@ class _EditorPageState extends State<EditorPage> {
   /// usuário e o botão de importar. Fica numa caixa própria porque é a outra
   /// família de moldura — escolher aqui desativa a de cima, e vice-versa.
   ///
-  /// Com uma arte selecionada ([FrameSettings.hasFixedAspect]), aparecem
-  /// abaixo das miniaturas as subseções "Ajuste do conteúdo" e "Resolução
-  /// da moldura" — só fazem sentido para molduras de imagem (que têm canvas
-  /// e proporção próprios), por isso moram aqui dentro em vez de serem
-  /// caixas de topo, mesmo padrão de [_frameStyleSection] para seus
-  /// controles de cor/espessura/cantos.
+  /// Com uma arte selecionada ([FrameSettings.hasFixedAspect]), aparece
+  /// abaixo das miniaturas o painel "Ajuste do conteúdo", que reúne os modos
+  /// de encaixe, o zoom exclusivo de "Expandir sem cortar" e a resolução
+  /// geral da moldura.
   Widget _imageFrameSection() {
-    final theme = Theme.of(context);
     final hasFixedAspect = _settings.frame.hasFixedAspect;
     return LabeledSection(
       icon: Icons.image_outlined,
@@ -659,18 +655,7 @@ class _EditorPageState extends State<EditorPage> {
           _imageFrameThumbnails(),
           if (hasFixedAspect) ...[
             const SizedBox(height: 18),
-            _sectionCard(
-              children: [
-                _contentFitSubsection(),
-                Divider(
-                  height: 17,
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.45,
-                  ),
-                ),
-                _frameResolutionSubsection(),
-              ],
-            ),
+            _sectionCard(children: [_contentFitSubsection()]),
           ],
         ],
       ),
@@ -1256,37 +1241,42 @@ class _EditorPageState extends State<EditorPage> {
   /// ampliado dentro dela. Mesmo padrão de [_collapsibleSubsection] usado
   /// por "Suavização de cor"/"Paleta" em [_colorSection].
   Widget _contentFitSubsection() {
+    final theme = Theme.of(context);
     final selected = _settings.frame.contentFit;
-    final zoomPercent = (_settings.frame.contentZoom * 100).round();
-    final subtitle = selected == ContentFitMode.expand
-        ? '${selected.label} · Zoom $zoomPercent%'
-        : selected.label;
     return _collapsibleSubsection(
       label: 'Ajuste do conteúdo',
-      subtitle: subtitle,
       expanded: _contentFitExpanded,
       onToggle: () =>
           setState(() => _contentFitExpanded = !_contentFitExpanded),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            'Modo de encaixe',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
           for (final mode in _selectableContentFitModes) ...[
             _contentFitTile(mode, selected: mode == selected),
             if (mode != _selectableContentFitModes.last)
               const SizedBox(height: 8),
           ],
-          if (selected == ContentFitMode.expand) ...[
-            const SizedBox(height: 14),
-            _contentZoomRow(),
-          ],
+          const SizedBox(height: 14),
+          Divider(
+            height: 1,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+          ),
+          const SizedBox(height: 14),
+          _frameResolutionSelector(),
         ],
       ),
     );
   }
 
   /// Slider disponível somente em "Expandir sem cortar". De 10% a 300%, ele
-  /// reduz ou amplia o vídeo nítido central, mantendo o fundo estendido
-  /// preenchendo toda a janela na prévia e na exportação.
+  /// reduz ou amplia o vídeo nítido central sobre o fundo preto.
   Widget _contentZoomRow() {
     final theme = Theme.of(context);
     final frame = _settings.frame;
@@ -1324,91 +1314,133 @@ class _EditorPageState extends State<EditorPage> {
           label: '$percent%',
           onChanged: (v) => _updateFrame(frame.copyWith(contentZoom: v)),
         ),
-        Text(
-          'Reduz ou amplia o vídeo sobre o fundo estendido.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+      ],
+    );
+  }
+
+  /// Resolução geral do painel de ajuste. Fica fora dos cartões de modo para
+  /// não parecer uma configuração exclusiva de "Expandir sem cortar".
+  Widget _frameResolutionSelector() {
+    final theme = Theme.of(context);
+    final selected = _settings.frame.frameResolutionMode;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Resolução da moldura', style: theme.textTheme.bodySmall),
+        const SizedBox(height: 8),
+        SegmentedButton<ImageFrameResolutionMode>(
+          key: const ValueKey('frameResolutionSegmentedButton'),
+          segments: const [
+            ButtonSegment(
+              value: ImageFrameResolutionMode.matchAjustar,
+              label: Text(
+                'Ajustar',
+                key: ValueKey('frameResolutionSegment_matchAjustar'),
+              ),
+            ),
+            ButtonSegment(
+              value: ImageFrameResolutionMode.nativeMax,
+              label: Text(
+                'Máxima',
+                key: ValueKey('frameResolutionSegment_nativeMax'),
+              ),
+            ),
+          ],
+          selected: {selected},
+          showSelectedIcon: true,
+          expandedInsets: EdgeInsets.zero,
+          onSelectionChanged: (selection) => _updateFrame(
+            _settings.frame.copyWith(frameResolutionMode: selection.single),
           ),
         ),
       ],
     );
   }
 
-  /// Subseção recolhível "Resolução da moldura", aninhada dentro de
-  /// "Molduras de imagem": escolhe se o canvas da arte segue a resolução
-  /// de "Ajustar" (padrão) ou a resolução nativa/máxima da própria arte —
-  /// o vídeo continua sendo convertido pelas configurações de "Ajustar" em
-  /// qualquer um dos dois casos (ver [ImageFrameResolutionMode]).
-  Widget _frameResolutionSubsection() {
-    final selected = _settings.frame.frameResolutionMode;
-    return _collapsibleSubsection(
-      label: 'Resolução da moldura',
-      subtitle: selected.label,
-      expanded: _frameResolutionExpanded,
-      onToggle: () =>
-          setState(() => _frameResolutionExpanded = !_frameResolutionExpanded),
-      child: OptionChips<ImageFrameResolutionMode>(
-        options: ImageFrameResolutionMode.values,
-        selected: selected,
-        labelBuilder: (mode) => mode.label,
-        onSelected: (mode) =>
-            _updateFrame(_settings.frame.copyWith(frameResolutionMode: mode)),
+  Widget _contentFitTile(ContentFitMode mode, {required bool selected}) {
+    final theme = Theme.of(context);
+    final showZoom = selected && mode == ContentFitMode.expand;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.10)
+            : theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.4)
+              : theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            key: ValueKey('contentFitTile_${mode.name}'),
+            onTap: () =>
+                _updateFrame(_settings.frame.copyWith(contentFit: mode)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: _contentFitTileHeader(mode, selected: selected),
+            ),
+          ),
+          if (showZoom)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                children: [
+                  Divider(
+                    height: 1,
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.55,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _contentZoomRow(),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _contentFitTile(ContentFitMode mode, {required bool selected}) {
+  Widget _contentFitTileHeader(
+    ContentFitMode mode, {
+    required bool selected,
+  }) {
     final theme = Theme.of(context);
-    return InkWell(
-      key: ValueKey('contentFitTile_${mode.name}'),
-      onTap: () => _updateFrame(_settings.frame.copyWith(contentFit: mode)),
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? theme.colorScheme.primary.withValues(alpha: 0.10)
-              : theme.colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.4)
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            _contentFitIcon(mode),
+            size: 20,
+            color: theme.colorScheme.primary,
           ),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                _contentFitIcon(mode),
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            mode.label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                mode.label,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            if (selected)
-              Icon(
-                Icons.check_circle_rounded,
-                color: theme.colorScheme.primary,
-                size: 20,
-              ),
-          ],
+          ),
         ),
-      ),
+        if (selected)
+          Icon(
+            Icons.check_circle_rounded,
+            color: theme.colorScheme.primary,
+            size: 20,
+          ),
+      ],
     );
   }
 

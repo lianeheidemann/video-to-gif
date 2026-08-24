@@ -154,7 +154,7 @@ void main() {
   });
 
   testWidgets(
-    'ajuste do conteúdo e resolução só aparecem com moldura de imagem ativa',
+    'painel de ajuste só aparece com moldura de imagem ativa',
     (tester) async {
       await _openFrameSection(tester);
 
@@ -167,7 +167,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Ajuste do conteúdo'), findsOneWidget);
-      expect(find.text('Resolução da moldura'), findsOneWidget);
+      expect(find.text('Resolução da moldura'), findsNothing);
     },
   );
 
@@ -189,6 +189,9 @@ void main() {
         findsNothing,
         reason: 'o modo automático não deve permitir zoom',
       );
+      expect(find.text('Ajuste automático'), findsOneWidget);
+      expect(find.text('Resolução da moldura'), findsOneWidget);
+      expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
       expect(find.byKey(const ValueKey('contentFitTile_auto')), findsOneWidget);
       expect(find.byKey(const ValueKey('contentFitTile_fill')), findsOneWidget);
       expect(
@@ -226,7 +229,7 @@ void main() {
     },
   );
 
-  testWidgets('tocar no cabeçalho de Resolução da moldura alterna o modo', (
+  testWidgets('resolução da moldura aparece como seletor geral do painel', (
     tester,
   ) async {
     await _openFrameSection(tester);
@@ -235,27 +238,41 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
 
-    final resolutionHeader = find.text('Resolução da moldura');
-    await tester.tap(resolutionHeader);
+    await tester.tap(find.text('Ajuste do conteúdo'));
     await tester.pump(const Duration(milliseconds: 300));
 
-    // "Igual à escolhida em Ajustar" é o modo padrão: aparece duas vezes
-    // (resumo da subseção + chip), por isso `findsWidgets` em vez de
-    // `findsOneWidget`. "Resolução máxima da imagem" ainda não está
-    // selecionada, então aparece só no chip.
-    expect(find.text('Igual à escolhida em Ajustar'), findsWidgets);
-    expect(find.text('Resolução máxima da imagem'), findsOneWidget);
+    expect(find.text('Resolução da moldura'), findsOneWidget);
+    expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('frameResolutionSegment_matchAjustar')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('frameResolutionSegment_nativeMax')),
+      findsOneWidget,
+    );
 
-    final nativeResolution = find.text('Resolução máxima da imagem');
+    final selector = find.byKey(
+      const ValueKey('frameResolutionSegmentedButton'),
+    );
+    expect(
+      tester
+          .widget<SegmentedButton<ImageFrameResolutionMode>>(selector)
+          .selected,
+      {ImageFrameResolutionMode.matchAjustar},
+    );
+
+    final nativeResolution = find.byKey(
+      const ValueKey('frameResolutionSegment_nativeMax'),
+    );
     await tester.tap(nativeResolution);
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Recolhe para conferir o resumo, que só mostra o valor selecionado
-    // quando a subseção está fechada.
-    await tester.tap(resolutionHeader);
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.text('Resolução máxima da imagem'), findsOneWidget);
-    expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
+    expect(
+      tester
+          .widget<SegmentedButton<ImageFrameResolutionMode>>(selector)
+          .selected,
+      {ImageFrameResolutionMode.nativeMax},
+    );
   });
 }
