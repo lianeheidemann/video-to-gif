@@ -1627,8 +1627,9 @@ class _EditorPageState extends State<EditorPage> {
         borderRadius: rounded ? BorderRadius.circular(22) : null,
         border: rounded
             ? Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant
-                    .withValues(alpha: 0.45),
+                color: Theme.of(
+                  context,
+                ).colorScheme.outlineVariant.withValues(alpha: 0.45),
               )
             : null,
       ),
@@ -2413,7 +2414,8 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Velocidade',
       value: '${_formatSpeed(_settings.speed)}x',
       originalValue: '${_formatSpeed(1.0)}x',
-      hint: 'Acelerar encurta o GIF e economiza espaço; velocidades menores aumentam a duração.',
+      hint:
+          'Acelerar encurta o GIF e economiza espaço; velocidades menores aumentam a duração.',
       child: Column(
         children: [
           Slider(
@@ -2485,7 +2487,8 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Quadros por segundo (FPS)',
       value: '${_settings.fps} FPS',
       originalValue: '${_video.frameRate.round()} FPS',
-      hint: 'Mais FPS deixa a animação mais fluida, mas aumenta o tamanho do arquivo.',
+      hint:
+          'Mais FPS deixa a animação mais fluida, mas aumenta o tamanho do arquivo.',
       tip: '12 FPS é um bom equilíbrio entre fluidez e tamanho.',
       child: OptionChips<int>(
         options: ConversionSettings.fpsOptions,
@@ -2511,7 +2514,8 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Qualidade das cores',
       value: '${_settings.colors} cores',
       originalValue: 'Cores ilimitadas',
-      tip: '128 cores costuma equilibrar bem qualidade e tamanho; 256 preserva mais detalhes.',
+      tip:
+          '128 cores costuma equilibrar bem qualidade e tamanho; 256 preserva mais detalhes.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
