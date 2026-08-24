@@ -233,7 +233,13 @@ void main() {
     await tester.pump();
 
     expect(find.text('Ajuste do conteúdo'), findsOneWidget);
-    expect(find.text('Resolução da moldura'), findsNothing);
+    expect(
+      find.text('Resolução da moldura'),
+      findsOneWidget,
+      reason:
+          'resolução da moldura é um card independente, não deve depender '
+          'de Ajuste do conteúdo estar expandido',
+    );
   });
 
   testWidgets(
@@ -295,7 +301,7 @@ void main() {
     },
   );
 
-  testWidgets('resolução da moldura aparece como seletor geral do painel', (
+  testWidgets('resolução da moldura aparece como card próprio do painel', (
     tester,
   ) async {
     await _openFrameSection(tester);
@@ -304,10 +310,11 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
 
-    await tester.tap(find.text('Ajuste do conteúdo'));
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.text('Resolução da moldura'), findsOneWidget);
+    expect(
+      find.text('Resolução da moldura'),
+      findsOneWidget,
+      reason: 'não deve exigir Ajuste do conteúdo expandido para aparecer',
+    );
     expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
     expect(
       find.byKey(const ValueKey('frameResolutionSegment_matchAjustar')),

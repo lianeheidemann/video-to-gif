@@ -72,6 +72,7 @@ class _EditorPageState extends State<EditorPage> {
   final _sectionsScrollController = ScrollController();
   final _frameStyleAnchorKey = GlobalKey();
   final _imageFrameAnchorKey = GlobalKey();
+  final _previewAreaKey = GlobalKey();
   List<ImageFrameAsset> _importedImageFrames = [];
 
   late ConversionSettings _settings = widget.initialSettings;
@@ -314,7 +315,10 @@ class _EditorPageState extends State<EditorPage> {
                       controller: _sectionsScrollController,
                       padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
                       children: [
-                        _previewArea(),
+                        KeyedSubtree(
+                          key: _previewAreaKey,
+                          child: _previewArea(),
+                        ),
                         const SizedBox(height: 18),
                         ...sections,
                       ],
@@ -483,9 +487,33 @@ class _EditorPageState extends State<EditorPage> {
         final delta = afterBox.localToGlobal(Offset.zero).dy - targetY;
         if (delta.abs() >= 0.5) {
           final position = _sectionsScrollController.position;
-          final target = (_sectionsScrollController.offset + delta)
+          var target = (_sectionsScrollController.offset + delta)
               .clamp(position.minScrollExtent, position.maxScrollExtent)
               .toDouble();
+
+          // Nunca deixa essa compensação empurrar o topo da prévia (com a
+          // borda da moldura) para fora da tela só para manter o cabeçalho
+          // da seção fixo — ver [_previewAreaKey]. Uma moldura bem mais alta
+          // que a anterior pode exigir mais rolagem do que a prévia tem
+          // altura para ceder sem desaparecer; aqui cede o cabeçalho (que
+          // volta a acompanhar a prévia assim que ela terminar de crescer)
+          // em vez da prévia. Só entra em ação com a prévia já visível — uma
+          // rolagem manual da pessoa para longe dela continua intocada.
+          final previewBox = _previewAreaKey.currentContext
+              ?.findRenderObject();
+          if (previewBox is RenderBox) {
+            final previewTop = previewBox.localToGlobal(Offset.zero).dy;
+            if (previewTop >= 0) {
+              final maxTarget = _sectionsScrollController.offset + previewTop;
+              if (target > maxTarget) {
+                target = maxTarget.clamp(
+                  position.minScrollExtent,
+                  position.maxScrollExtent,
+                );
+              }
+            }
+          }
+
           _sectionsScrollController.jumpTo(target);
         }
       }
@@ -753,12 +781,13 @@ class _EditorPageState extends State<EditorPage> {
   /// usuário e o botão de importar. Fica numa caixa própria porque é a outra
   /// família de moldura — escolher aqui desativa a de cima, e vice-versa.
   ///
-  /// Com uma arte selecionada ([FrameSettings.hasFixedAspect]), aparece
-  /// abaixo das miniaturas o painel "Ajuste do conteúdo", que reúne os modos
-  /// de encaixe e o zoom exclusivo de "Expandir sem cortar". A resolução da
-  /// moldura permanece como um controle geral da seção, fora desse painel.
+  /// Com uma arte selecionada ([FrameSettings.hasFixedAspect]), aparecem
+  /// abaixo das miniaturas dois cards independentes: "Ajuste do conteúdo"
+  /// (como o vídeo se encaixa na moldura) e "Resolução da moldura" (o
+  /// tamanho/qualidade do arquivo final). São perguntas diferentes, então
+  /// cada uma tem seu próprio card e a segunda nunca depende de a primeira
+  /// estar expandida.
   Widget _imageFrameSection() {
-    final theme = Theme.of(context);
     final hasFixedAspect = _settings.frame.hasFixedAspect;
     return LabeledSection(
       icon: Icons.image_outlined,
@@ -772,15 +801,8 @@ class _EditorPageState extends State<EditorPage> {
           if (hasFixedAspect) ...[
             const SizedBox(height: 18),
             _sectionCard(children: [_contentFitSubsection()]),
-            if (_contentFitExpanded) ...[
-              const SizedBox(height: 14),
-              Divider(
-                height: 1,
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
-              ),
-              const SizedBox(height: 14),
-              _frameResolutionSelector(),
-            ],
+            const SizedBox(height: 18),
+            _sectionCard(children: [_frameResolutionSelector()]),
           ],
         ],
       ),
@@ -1475,42 +1497,47 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Resolução geral de "Molduras de imagem". Fica fora do painel
-  /// "Ajuste do conteúdo" para não parecer parte de um modo de encaixe.
+  /// Card próprio de "Resolução da moldura": o tamanho/qualidade do GIF
+  /// final, independente de "Ajuste do conteúdo" (como o vídeo se encaixa
+  /// na moldura) — por isso sempre visível, não atrelada ao estado
+  /// recolhido/expandido daquele outro card.
   Widget _frameResolutionSelector() {
     final theme = Theme.of(context);
     final selected = _settings.frame.frameResolutionMode;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Resolução da moldura', style: theme.textTheme.bodySmall),
-        const SizedBox(height: 8),
-        SegmentedButton<ImageFrameResolutionMode>(
-          key: const ValueKey('frameResolutionSegmentedButton'),
-          segments: const [
-            ButtonSegment(
-              value: ImageFrameResolutionMode.matchAjustar,
-              label: Text(
-                'Ajustar',
-                key: ValueKey('frameResolutionSegment_matchAjustar'),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Resolução da moldura', style: theme.textTheme.bodySmall),
+          const SizedBox(height: 8),
+          SegmentedButton<ImageFrameResolutionMode>(
+            key: const ValueKey('frameResolutionSegmentedButton'),
+            segments: const [
+              ButtonSegment(
+                value: ImageFrameResolutionMode.matchAjustar,
+                label: Text(
+                  'Ajustar',
+                  key: ValueKey('frameResolutionSegment_matchAjustar'),
+                ),
               ),
-            ),
-            ButtonSegment(
-              value: ImageFrameResolutionMode.nativeMax,
-              label: Text(
-                'Máxima',
-                key: ValueKey('frameResolutionSegment_nativeMax'),
+              ButtonSegment(
+                value: ImageFrameResolutionMode.nativeMax,
+                label: Text(
+                  'Máxima',
+                  key: ValueKey('frameResolutionSegment_nativeMax'),
+                ),
               ),
+            ],
+            selected: {selected},
+            showSelectedIcon: true,
+            expandedInsets: EdgeInsets.zero,
+            onSelectionChanged: (selection) => _updateFrame(
+              _settings.frame.copyWith(frameResolutionMode: selection.single),
             ),
-          ],
-          selected: {selected},
-          showSelectedIcon: true,
-          expandedInsets: EdgeInsets.zero,
-          onSelectionChanged: (selection) => _updateFrame(
-            _settings.frame.copyWith(frameResolutionMode: selection.single),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
