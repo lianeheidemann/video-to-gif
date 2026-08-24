@@ -17,6 +17,13 @@ const _video = VideoInfo(
 );
 
 void main() {
+  test(
+    '720 px está disponível para preservar a resolução de vídeos HD',
+    () {
+      expect(ConversionSettings.widthOptions, contains(720));
+    },
+  );
+
   group('moldura: espessura e canvas', () {
     test(
       'o deslocamento do pad nunca ultrapassa o canvas, em qualquer largura',
@@ -121,6 +128,24 @@ void main() {
           );
         }
       }
+    });
+
+    test('moldura procedural 9:16 é exportada exatamente em 720×1280', () {
+      final settings = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 720,
+        crop: CropRect.centered(_video, 9 / 16),
+        frame: const FrameSettings(
+          style: FrameStyle.medium,
+          thicknessAtReference: 10,
+          cornerRatio: 0.12,
+          transparentBackground: true,
+        ),
+      );
+
+      expect(settings.contentDimensions(_video), (720, 1280));
+      expect(settings.outputDimensions(_video), (720, 1280));
     });
   });
 

@@ -325,9 +325,10 @@ class FfmpegService {
   /// Com "Fundo transparente" ligado, basta o retângulo na cor da moldura:
   /// a máscara externa ([_prepareMaskFile]) recorta os cantos depois. Com o
   /// toggle desligado não há máscara nenhuma, então é aqui que a forma
-  /// arredondada precisa aparecer — cor da moldura dentro dela, preto nos
-  /// cantos que sobram. Sem isso o modo opaco pintava o canvas inteiro com
-  /// a cor da moldura e o arredondamento sumia, divergindo de `paintFrame`.
+  /// arredondada precisa aparecer — cor da moldura dentro dela e a cor de
+  /// fundo escolhida nos cantos que sobram. Sem isso o modo opaco pintava o
+  /// canvas inteiro com a cor da moldura e o arredondamento sumia, divergindo
+  /// de `paintFrame`.
   List<String> _frameBackgroundParts(
     ConversionSettings settings, {
     required int canvasWidth,
@@ -343,9 +344,11 @@ class FfmpegService {
       return ['$flat[frame_background]'];
     }
 
+    final backgroundHex = _ffmpegColor(settings.frame.backgroundColor);
     return [
-      'color=black:s=${canvasWidth}x$canvasHeight:r=${settings.fps}:'
-          'd=${_seconds(settings.outputDurationSeconds)}[bg_black]',
+      'color=c=$backgroundHex:s=${canvasWidth}x$canvasHeight:'
+          'r=${settings.fps}:d=${_seconds(settings.outputDurationSeconds)}'
+          '[bg_opaque]',
       '$flat,format=rgba[frame_color]',
       '${_grayCanvas(settings, canvasWidth, canvasHeight)}'
           '${_roundedLumaChain(outerRadius)}[outer_mask]',
@@ -353,7 +356,7 @@ class FfmpegService {
       // `format=rgb`: sem isso o overlay compõe em yuv420 e a borda
       // arredondada, que é antisserrilhada, perde definição na
       // subamostragem de croma logo antes de virar paleta de GIF.
-      '[bg_black][frame_rrect]overlay=0:0:shortest=1:format=rgb'
+      '[bg_opaque][frame_rrect]overlay=0:0:shortest=1:format=rgb'
           '[frame_background]',
     ];
   }
@@ -378,8 +381,8 @@ class FfmpegService {
   /// arquivo temporário; só é usada nesse caso, e por isso é opcional.
   ///
   /// Com o toggle desligado, nada disso é necessário: o `pad` que centraliza
-  /// o conteúdo já preenche o canvas de preto, que é exatamente o fundo
-  /// opaco pedido, e o grafo termina no `overlay` da arte.
+  /// o conteúdo já preenche o canvas com a cor de fundo escolhida, e o grafo
+  /// termina no `overlay` da arte.
   String _imageFramedGraph(
     ConversionSettings settings,
     VideoInfo video, {
@@ -397,6 +400,7 @@ class FfmpegService {
     final (canvasWidth, canvasHeight) = settings.imageFrameCanvasDimensions(
       video,
     );
+    final backgroundHex = _ffmpegColor(frame.backgroundColor);
 
     final parts = <String>['[$input]$contentFilter[content]'];
 
@@ -445,7 +449,7 @@ class FfmpegService {
 
     parts.add(
       '[fitted]pad=$canvasWidth:$canvasHeight:$areaX:$areaY:'
-      'color=black[base]',
+      'color=$backgroundHex[base]',
     );
     parts.add('[$artInput]setpts=PTS-STARTPTS[art]');
     // A arte e a máscara são entradas em loop. Sem `shortest`, o overlay

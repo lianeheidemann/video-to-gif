@@ -143,7 +143,7 @@ class ConversionSettings {
 
   /// Presets exibidos no editor redesenhado.
   static const fpsOptions = <int>[5, 8, 10, 12, 15, 20, 24];
-  static const widthOptions = <int>[160, 240, 320, 400, 480, 640, 800];
+  static const widthOptions = <int>[160, 240, 320, 400, 480, 640, 720, 800];
   static const colorOptions = <int>[32, 64, 96, 128, 192, 256];
   static const primaryColorOptions = <int>[64, 128, 256];
   static const minSpeed = 0.25;

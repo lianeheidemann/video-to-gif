@@ -6,6 +6,7 @@ import 'package:video_to_gif/ui/widgets/frame_painter.dart';
 
 const _side = 64;
 const _frameColor = ui.Color(0xFFC9A8FF);
+const _backgroundColor = ui.Color(0xFF58C78C);
 
 /// Rasteriza [settings] num quadrado de [_side] px e devolve os pixels já
 /// convertidos para ARGB, na mesma ordem de [ui.Color.toARGB32].
@@ -62,10 +63,29 @@ void main() {
     }
   });
 
+  test(
+    'supersampling mantém as dimensões finais exatas da máscara',
+    () async {
+      const width = 720;
+      const height = 1280;
+      final png = await rasterizeCornerMask(width, height, 86.4);
+      final codec = await ui.instantiateImageCodec(png);
+      final frame = await codec.getNextFrame();
+
+      try {
+        expect(frame.image.width, width);
+        expect(frame.image.height, height);
+      } finally {
+        frame.image.dispose();
+        codec.dispose();
+      }
+    },
+  );
+
   // A moldura é sempre a forma arredondada, na cor escolhida. O toggle
   // "Fundo transparente" decide só o que sobra nos 4 cantos fora dela.
-  // Antes, o modo opaco pintava o canvas inteiro com a cor da moldura e o
-  // arredondamento simplesmente não aparecia no GIF.
+  // No modo opaco, os cantos usam a cor de fundo escolhida sem cobrir a
+  // moldura nem apagar o arredondamento.
   group('cantos fora da moldura', () {
     const rounded = FrameSettings(
       style: FrameStyle.thick,
@@ -83,15 +103,18 @@ void main() {
       expect(_at(pixels, 32, 32), _frameColor.toARGB32());
     });
 
-    test('sem fundo transparente, ficam pretos opacos', () async {
+    test('sem fundo transparente, usam a cor de fundo escolhida', () async {
       final pixels = await _argbPixels(
-        rounded.copyWith(transparentBackground: false),
+        rounded.copyWith(
+          transparentBackground: false,
+          backgroundColor: _backgroundColor,
+        ),
       );
 
       expect(
         _at(pixels, 0, 0),
-        0xFF000000,
-        reason: 'o canto tem que ser preto opaco, não a cor da moldura',
+        _backgroundColor.toARGB32(),
+        reason: 'o canto deve usar a cor de fundo, não a cor da moldura',
       );
       expect(
         _at(pixels, 32, 32),

@@ -96,6 +96,7 @@ class FrameSettings {
     this.cornerRatio = 0,
     this.contentFit = ContentFitMode.auto,
     this.transparentBackground = true,
+    this.backgroundColor = const Color(0xFF000000),
     this.imageFrame,
     this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
     this.contentZoom = defaultContentZoom,
@@ -117,14 +118,19 @@ class FrameSettings {
   final ContentFitMode contentFit;
 
   /// Ligado (padrão), a área fora da moldura sai transparente no GIF.
-  /// Desligado, ela sai preta — ver `paintFrame` e `FfmpegService`.
+  /// Desligado, ela usa [backgroundColor] — ver `paintFrame` e
+  /// `FfmpegService`.
   final bool transparentBackground;
+
+  /// Cor usada na área externa à moldura quando [transparentBackground] está
+  /// desligado. O preto preserva o comportamento anterior como padrão.
+  final Color backgroundColor;
 
   /// Quando não-nula, substitui totalmente a moldura procedural (style/
   /// color/thickness/cornerRatio ficam ignorados) por uma arte de imagem — a
   /// arte já embute cor, espessura e cantos. [transparentBackground]
   /// continua valendo: é ele que decide se a área fora da arte sai
-  /// transparente ou preta.
+  /// transparente ou com [backgroundColor].
   final ImageFrameAsset? imageFrame;
 
   /// Em que resolução o canvas de [imageFrame] é gerado. Só tem efeito com
@@ -195,6 +201,7 @@ class FrameSettings {
     double? cornerRatio,
     ContentFitMode? contentFit,
     bool? transparentBackground,
+    Color? backgroundColor,
     ImageFrameAsset? imageFrame,
     bool clearImageFrame = false,
     ImageFrameResolutionMode? frameResolutionMode,
@@ -208,6 +215,7 @@ class FrameSettings {
       contentFit: contentFit ?? this.contentFit,
       transparentBackground:
           transparentBackground ?? this.transparentBackground,
+      backgroundColor: backgroundColor ?? this.backgroundColor,
       imageFrame: clearImageFrame ? null : (imageFrame ?? this.imageFrame),
       frameResolutionMode: frameResolutionMode ?? this.frameResolutionMode,
       contentZoom: contentZoom ?? this.contentZoom,

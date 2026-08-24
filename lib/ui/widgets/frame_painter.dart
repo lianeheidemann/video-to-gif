@@ -69,8 +69,9 @@ class FrameGeometry {
 /// A moldura em si é sempre a forma arredondada, na cor escolhida. O que o
 /// "Fundo transparente" decide é só o que fica nos 4 cantos que sobram fora
 /// dela: ligado, nada (transparente no PNG exportado, ou o que houver atrás,
-/// na prévia); desligado, preto opaco. Pintar os cantos com a própria cor da
-/// moldura — como era antes — apagava o arredondamento no modo opaco.
+/// na prévia); desligado, a cor de fundo escolhida. Pintar os cantos com a
+/// própria cor da moldura — como era antes — apagava o arredondamento no modo
+/// opaco.
 void paintFrame(Canvas canvas, Size size, FrameSettings settings) {
   if (settings.style == FrameStyle.none) return;
 
@@ -78,7 +79,7 @@ void paintFrame(Canvas canvas, Size size, FrameSettings settings) {
   final geometry = FrameGeometry.of(size, settings);
 
   if (!settings.transparentBackground) {
-    canvas.drawRect(rect, Paint()..color = const Color(0xFF000000));
+    canvas.drawRect(rect, Paint()..color = settings.backgroundColor);
   }
   canvas.drawRRect(
     RRect.fromRectAndRadius(rect, Radius.circular(geometry.outerRadius)),
@@ -126,7 +127,7 @@ Future<Uint8List> rasterizeCornerMask(
   int width,
   int height,
   double outerRadius,
-) => rasterizeCanvas(width, height, (canvas, size) {
+) => rasterizeCanvasSupersampled(width, height, (canvas, size) {
   final rect = Offset.zero & size;
   canvas.drawRect(rect, Paint()..color = Colors.black);
   canvas.drawRRect(
@@ -214,5 +215,52 @@ Future<Uint8List> rasterizeCanvas(
     }
   } finally {
     picture.dispose();
+  }
+}
+
+/// Rasteriza primeiro em 2× e reduz para o tamanho final com filtragem de
+/// alta qualidade. A etapa extra preserva melhor a cobertura subpixel das
+/// curvas antes de o GIF converter a transparência para uma máscara binária.
+Future<Uint8List> rasterizeCanvasSupersampled(
+  int width,
+  int height,
+  void Function(Canvas canvas, Size size) paint,
+) async {
+  const scale = 2;
+  final highWidth = width * scale;
+  final highHeight = height * scale;
+  final highRecorder = ui.PictureRecorder();
+  final highCanvas = Canvas(highRecorder)..scale(scale.toDouble());
+  paint(highCanvas, Size(width.toDouble(), height.toDouble()));
+  final highPicture = highRecorder.endRecording();
+
+  try {
+    final highImage = await highPicture.toImage(highWidth, highHeight);
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawImageRect(
+        highImage,
+        Rect.fromLTWH(0, 0, highWidth.toDouble(), highHeight.toDouble()),
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        Paint()..filterQuality = FilterQuality.high,
+      );
+      final picture = recorder.endRecording();
+      try {
+        final image = await picture.toImage(width, height);
+        try {
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          return bytes!.buffer.asUint8List();
+        } finally {
+          image.dispose();
+        }
+      } finally {
+        picture.dispose();
+      }
+    } finally {
+      highImage.dispose();
+    }
+  } finally {
+    highPicture.dispose();
   }
 }
