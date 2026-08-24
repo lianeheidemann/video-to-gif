@@ -70,6 +70,8 @@ class _EditorPageState extends State<EditorPage> {
   final _ffmpeg = FfmpegService();
   final _importedFrameStore = ImportedFrameStore();
   final _sectionsScrollController = ScrollController();
+  final _frameStyleAnchorKey = GlobalKey();
+  final _imageFrameAnchorKey = GlobalKey();
   List<ImageFrameAsset> _importedImageFrames = [];
 
   late ConversionSettings _settings = widget.initialSettings;
@@ -385,8 +387,8 @@ class _EditorPageState extends State<EditorPage> {
   /// mostra no cabeçalho qual das suas opções está valendo.
   List<Widget> _frameSections() {
     return [
-      _frameStyleSection(),
-      _imageFrameSection(),
+      KeyedSubtree(key: _frameStyleAnchorKey, child: _frameStyleSection()),
+      KeyedSubtree(key: _imageFrameAnchorKey, child: _imageFrameSection()),
       _backgroundSection(),
       const SizedBox(height: 4),
       _convertButton(),
@@ -404,9 +406,77 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
+  /// Duração da animação de tamanho da prévia ao trocar de moldura (ver
+  /// [_previewArea]) — também o horizonte de tempo que
+  /// [_updateFrameKeepingAnchorPosition] cobre ao reaplicar a compensação de
+  /// rolagem quadro a quadro.
+  static const _previewTransitionDuration = Duration(milliseconds: 220);
+
   /// Substitui as configurações da moldura, mantendo o resto igual.
   void _updateFrame(FrameSettings next) {
     _update(_settings.copyWith(frame: next));
+  }
+
+  /// Atualiza a moldura compensando a variação de altura da prévia. Assim o
+  /// início das opções permanece na mesma posição da tela quando a troca
+  /// entre moldura procedural e moldura de imagem muda a proporção do vídeo.
+  ///
+  /// A prévia muda de tamanho aos poucos (a [AnimatedSize] de
+  /// [_previewArea]), não de uma vez — então a compensação também precisa
+  /// ser reaplicada quadro a quadro enquanto ela anima, em vez de uma única
+  /// vez. Uma correção única bastava quando a prévia mudava de tamanho
+  /// instantaneamente, mas contra uma mudança gradual ela só corrigia o
+  /// primeiro quadro (quase nenhuma diferença ainda) e deixava a rolagem
+  /// desacompanhar nos quadros seguintes, terminando torta.
+  void _updateFrameKeepingAnchorPosition(
+    FrameSettings next, {
+    required GlobalKey anchorKey,
+  }) {
+    final beforeBox = anchorKey.currentContext?.findRenderObject();
+    final beforeY = beforeBox is RenderBox
+        ? beforeBox.localToGlobal(Offset.zero).dy
+        : null;
+
+    _updateFrame(next);
+    if (beforeY == null) return;
+
+    _correctAnchorScrollUntilSettled(
+      anchorKey,
+      beforeY,
+      _previewTransitionDuration,
+    );
+  }
+
+  /// Reaplica a compensação de rolagem a cada quadro, por [remaining] a
+  /// partir de agora — cobrindo toda a animação de [_previewArea] — para que
+  /// [anchorKey] termine exatamente na posição [targetY] da tela mesmo com a
+  /// prévia mudando de tamanho aos poucos.
+  void _correctAnchorScrollUntilSettled(
+    GlobalKey anchorKey,
+    double targetY,
+    Duration remaining,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_sectionsScrollController.hasClients) return;
+      final afterBox = anchorKey.currentContext?.findRenderObject();
+      if (afterBox is RenderBox) {
+        final delta = afterBox.localToGlobal(Offset.zero).dy - targetY;
+        if (delta.abs() >= 0.5) {
+          final position = _sectionsScrollController.position;
+          final target = (_sectionsScrollController.offset + delta)
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+          _sectionsScrollController.jumpTo(target);
+        }
+      }
+      if (remaining > Duration.zero) {
+        _correctAnchorScrollUntilSettled(
+          anchorKey,
+          targetY,
+          remaining - const Duration(milliseconds: 16),
+        );
+      }
+    });
   }
 
   /// A prévia da aba atual. "Ajustar" mostra o vídeo inteiro com as alças de
@@ -417,15 +487,17 @@ class _EditorPageState extends State<EditorPage> {
   /// A [AnimatedSize] existe porque trocar de moldura (ou entre "Moldura" e
   /// "Moldura de imagem") quase sempre muda a proporção da prévia — cada
   /// arte de moldura tem sua própria proporção nativa. Sem ela, a mudança de
-  /// altura empurra tudo abaixo instantaneamente na mesma rolagem, o que a
-  /// pessoa vê como uma tremida; com ela, a lista de opções desliza suave
-  /// para o novo lugar.
+  /// altura empurrava tudo abaixo instantaneamente na mesma rolagem — e a
+  /// correção de [_updateFrameKeepingAnchorPosition], que só reagia depois
+  /// de pronto, aparecia como uma tremida. Com a mudança de tamanho gradual,
+  /// a correção acompanha quadro a quadro e nunca precisa de um salto
+  /// grande.
   Widget _previewArea() {
     final preview = _tab == _EditorTab.ajustar
         ? _timelined(_preview())
         : _framedPreview();
     return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
+      duration: _previewTransitionDuration,
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
       child: preview,
@@ -567,10 +639,7 @@ class _EditorPageState extends State<EditorPage> {
       ),
     );
     if (_settings.frame.transparentBackground) return preview;
-    return ColoredBox(
-      color: _settings.frame.backgroundColor,
-      child: preview,
-    );
+    return ColoredBox(color: _settings.frame.backgroundColor, child: preview);
   }
 
   /// Conteúdo dentro da janela de uma moldura de imagem. Em "Expandir sem
@@ -665,9 +734,10 @@ class _EditorPageState extends State<EditorPage> {
   ///
   /// Com uma arte selecionada ([FrameSettings.hasFixedAspect]), aparece
   /// abaixo das miniaturas o painel "Ajuste do conteúdo", que reúne os modos
-  /// de encaixe, o zoom exclusivo de "Expandir sem cortar" e a resolução
-  /// geral da moldura.
+  /// de encaixe e o zoom exclusivo de "Expandir sem cortar". A resolução da
+  /// moldura permanece como um controle geral da seção, fora desse painel.
   Widget _imageFrameSection() {
+    final theme = Theme.of(context);
     final hasFixedAspect = _settings.frame.hasFixedAspect;
     return LabeledSection(
       icon: Icons.image_outlined,
@@ -681,6 +751,15 @@ class _EditorPageState extends State<EditorPage> {
           if (hasFixedAspect) ...[
             const SizedBox(height: 18),
             _sectionCard(children: [_contentFitSubsection()]),
+            if (_contentFitExpanded) ...[
+              const SizedBox(height: 14),
+              Divider(
+                height: 1,
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+              ),
+              const SizedBox(height: 14),
+              _frameResolutionSelector(),
+            ],
           ],
         ],
       ),
@@ -897,13 +976,14 @@ class _EditorPageState extends State<EditorPage> {
   /// selecionada, já que as duas famílias são mutuamente exclusivas.
   void _selectFrameStyle(FrameStyle style) {
     final current = _settings.frame;
-    _updateFrame(
+    _updateFrameKeepingAnchorPosition(
       current.copyWith(
         style: style,
         cornerRatio: style.defaultCornerRatio,
         thicknessAtReference: style.defaultThickness,
         clearImageFrame: true,
       ),
+      anchorKey: _frameStyleAnchorKey,
     );
   }
 
@@ -943,8 +1023,10 @@ class _EditorPageState extends State<EditorPage> {
       label: FrameStyle.none.label,
       selected: selected,
       padding: const EdgeInsets.all(11),
-      onTap: () =>
-          _updateFrame(_settings.frame.copyWith(clearImageFrame: true)),
+      onTap: () => _updateFrameKeepingAnchorPosition(
+        _settings.frame.copyWith(clearImageFrame: true),
+        anchorKey: _imageFrameAnchorKey,
+      ),
       child: Icon(
         Icons.crop_free_rounded,
         size: 22,
@@ -1012,8 +1094,9 @@ class _EditorPageState extends State<EditorPage> {
   /// Seleciona uma moldura de imagem, sempre limpando o estilo procedural
   /// (as duas são mutuamente exclusivas).
   void _selectImageFrame(ImageFrameAsset asset) {
-    _updateFrame(
+    _updateFrameKeepingAnchorPosition(
       _settings.frame.copyWith(style: FrameStyle.none, imageFrame: asset),
+      anchorKey: _imageFrameAnchorKey,
     );
   }
 
@@ -1104,9 +1187,7 @@ class _EditorPageState extends State<EditorPage> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            Expanded(
-              child: Text(label, style: theme.textTheme.bodyMedium),
-            ),
+            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
             Container(
               width: 28,
               height: 28,
@@ -1128,8 +1209,7 @@ class _EditorPageState extends State<EditorPage> {
   void _pickFrameColor() => _pickColor(
     title: 'Cor da moldura',
     selectedColor: _settings.frame.color,
-    onSelected: (color) =>
-        _updateFrame(_settings.frame.copyWith(color: color)),
+    onSelected: (color) => _updateFrame(_settings.frame.copyWith(color: color)),
   );
 
   void _pickBackgroundColor() => _pickColor(
@@ -1312,7 +1392,6 @@ class _EditorPageState extends State<EditorPage> {
   /// ampliado dentro dela. Mesmo padrão de [_collapsibleSubsection] usado
   /// por "Suavização de cor"/"Paleta" em [_colorSection].
   Widget _contentFitSubsection() {
-    final theme = Theme.of(context);
     final selected = _settings.frame.contentFit;
     return _collapsibleSubsection(
       label: 'Ajuste do conteúdo',
@@ -1322,25 +1401,11 @@ class _EditorPageState extends State<EditorPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Modo de encaixe',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
           for (final mode in _selectableContentFitModes) ...[
             _contentFitTile(mode, selected: mode == selected),
             if (mode != _selectableContentFitModes.last)
               const SizedBox(height: 8),
           ],
-          const SizedBox(height: 14),
-          Divider(
-            height: 1,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
-          ),
-          const SizedBox(height: 14),
-          _frameResolutionSelector(),
         ],
       ),
     );
@@ -1389,8 +1454,8 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Resolução geral do painel de ajuste. Fica fora dos cartões de modo para
-  /// não parecer uma configuração exclusiva de "Expandir sem cortar".
+  /// Resolução geral de "Molduras de imagem". Fica fora do painel
+  /// "Ajuste do conteúdo" para não parecer parte de um modo de encaixe.
   Widget _frameResolutionSelector() {
     final theme = Theme.of(context);
     final selected = _settings.frame.frameResolutionMode;
@@ -1476,10 +1541,7 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  Widget _contentFitTileHeader(
-    ContentFitMode mode, {
-    required bool selected,
-  }) {
+  Widget _contentFitTileHeader(ContentFitMode mode, {required bool selected}) {
     final theme = Theme.of(context);
     return Row(
       children: [

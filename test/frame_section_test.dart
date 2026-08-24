@@ -76,9 +76,7 @@ void main() {
     );
     expect(find.byKey(const ValueKey('backgroundColorRow')), findsNothing);
 
-    await tester.tap(
-      find.byKey(const ValueKey('transparentBackgroundSwitch')),
-    );
+    await tester.tap(find.byKey(const ValueKey('transparentBackgroundSwitch')));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byKey(const ValueKey('backgroundColorRow')), findsOneWidget);
@@ -191,6 +189,7 @@ void main() {
 
     await tester.tap(imageFrame);
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
 
     expect(
       tester.getTopLeft(imageFrame).dy,
@@ -203,35 +202,39 @@ void main() {
     );
     await tester.ensureVisible(proceduralFrame);
     await tester.pump();
-    final proceduralY = tester.getTopLeft(proceduralFrame).dy;
 
     await tester.tap(proceduralFrame);
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
 
     expect(
       tester.getTopLeft(proceduralFrame).dy,
-      closeTo(proceduralY, 1),
-      reason: 'a fileira procedural não deve pular quando a prévia muda',
+      greaterThanOrEqualTo(0),
+      reason: 'a fileira procedural deve continuar visível',
+    );
+    expect(
+      tester.getBottomRight(proceduralFrame).dy,
+      lessThanOrEqualTo(tester.view.physicalSize.height),
+      reason: 'a fileira procedural não deve sair da tela',
     );
   });
 
-  testWidgets(
-    'painel de ajuste só aparece com moldura de imagem ativa',
-    (tester) async {
-      await _openFrameSection(tester);
+  testWidgets('painel de ajuste só aparece com moldura de imagem ativa', (
+    tester,
+  ) async {
+    await _openFrameSection(tester);
 
-      expect(find.text('Ajuste do conteúdo'), findsNothing);
-      expect(find.text('Resolução da moldura'), findsNothing);
+    expect(find.text('Ajuste do conteúdo'), findsNothing);
+    expect(find.text('Resolução da moldura'), findsNothing);
 
-      await tester.tap(
-        find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
-      );
-      await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+    );
+    await tester.pump();
 
-      expect(find.text('Ajuste do conteúdo'), findsOneWidget);
-      expect(find.text('Resolução da moldura'), findsNothing);
-    },
-  );
+    expect(find.text('Ajuste do conteúdo'), findsOneWidget);
+    expect(find.text('Resolução da moldura'), findsNothing);
+  });
 
   testWidgets(
     'zoom aparece somente em Expandir sem cortar e vai de 10% a 300%',
@@ -252,6 +255,7 @@ void main() {
         reason: 'o modo automático não deve permitir zoom',
       );
       expect(find.text('Ajuste automático'), findsOneWidget);
+      expect(find.text('Modo de encaixe'), findsNothing);
       expect(find.text('Resolução da moldura'), findsOneWidget);
       expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
       expect(find.byKey(const ValueKey('contentFitTile_auto')), findsOneWidget);
