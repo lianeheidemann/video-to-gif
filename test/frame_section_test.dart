@@ -189,6 +189,14 @@ void main() {
         findsNothing,
         reason: 'o modo automático não deve permitir zoom',
       );
+      expect(find.text('Ajuste automático'), findsOneWidget);
+      expect(find.text('Preencher'), findsOneWidget);
+      expect(find.text('Expandir sem cortar'), findsOneWidget);
+      expect(
+        find.text('Encaixar'),
+        findsNothing,
+        reason: 'Encaixar duplicava o comportamento do ajuste automático',
+      );
 
       final expand = find.byKey(const ValueKey('contentFitTile_expand'));
       await tester.tap(expand);
@@ -200,8 +208,8 @@ void main() {
       expect(slider.min, FrameSettings.minContentZoom);
       expect(slider.max, FrameSettings.maxContentZoom);
 
-      final fit = find.byKey(const ValueKey('contentFitTile_fit'));
-      await tester.tap(fit);
+      final auto = find.byKey(const ValueKey('contentFitTile_auto'));
+      await tester.tap(auto);
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(

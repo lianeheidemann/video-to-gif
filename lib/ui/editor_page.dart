@@ -22,6 +22,15 @@ import 'widgets/size_panel.dart';
 
 const _customAspectPreset = AspectPreset('Personalizados', -1);
 
+/// Opções apresentadas ao usuário. `fit` continua como resultado interno do
+/// ajuste automático quando é preciso preservar o vídeo inteiro, mas não é
+/// exibido como uma escolha duplicada na interface.
+const _selectableContentFitModes = [
+  ContentFitMode.auto,
+  ContentFitMode.fill,
+  ContentFitMode.expand,
+];
+
 /// As alças de canto e de borda usadas para redimensionar a janela de
 /// recorte. As de borda (top/bottom/left/right) só aparecem no preset
 /// "Personalizados", onde largura e altura são independentes.
@@ -1271,9 +1280,10 @@ class _EditorPageState extends State<EditorPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final mode in ContentFitMode.values) ...[
+          for (final mode in _selectableContentFitModes) ...[
             _contentFitTile(mode, selected: mode == selected),
-            if (mode != ContentFitMode.values.last) const SizedBox(height: 8),
+            if (mode != _selectableContentFitModes.last)
+              const SizedBox(height: 8),
           ],
           if (selected == ContentFitMode.expand) ...[
             const SizedBox(height: 14),
