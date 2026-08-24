@@ -687,9 +687,10 @@ class _EditorPageState extends State<EditorPage> {
   ///
   /// Com uma arte selecionada ([FrameSettings.hasFixedAspect]), aparece
   /// abaixo das miniaturas o painel "Ajuste do conteúdo", que reúne os modos
-  /// de encaixe, o zoom exclusivo de "Expandir sem cortar" e a resolução
-  /// geral da moldura.
+  /// de encaixe e o zoom exclusivo de "Expandir sem cortar". A resolução da
+  /// moldura permanece como um controle geral da seção, fora desse painel.
   Widget _imageFrameSection() {
+    final theme = Theme.of(context);
     final hasFixedAspect = _settings.frame.hasFixedAspect;
     return LabeledSection(
       icon: Icons.image_outlined,
@@ -703,6 +704,13 @@ class _EditorPageState extends State<EditorPage> {
           if (hasFixedAspect) ...[
             const SizedBox(height: 18),
             _sectionCard(children: [_contentFitSubsection()]),
+            const SizedBox(height: 14),
+            Divider(
+              height: 1,
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+            ),
+            const SizedBox(height: 14),
+            _frameResolutionSelector(),
           ],
         ],
       ),
@@ -1338,7 +1346,6 @@ class _EditorPageState extends State<EditorPage> {
   /// ampliado dentro dela. Mesmo padrão de [_collapsibleSubsection] usado
   /// por "Suavização de cor"/"Paleta" em [_colorSection].
   Widget _contentFitSubsection() {
-    final theme = Theme.of(context);
     final selected = _settings.frame.contentFit;
     return _collapsibleSubsection(
       label: 'Ajuste do conteúdo',
@@ -1348,25 +1355,11 @@ class _EditorPageState extends State<EditorPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Modo de encaixe',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
           for (final mode in _selectableContentFitModes) ...[
             _contentFitTile(mode, selected: mode == selected),
             if (mode != _selectableContentFitModes.last)
               const SizedBox(height: 8),
           ],
-          const SizedBox(height: 14),
-          Divider(
-            height: 1,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
-          ),
-          const SizedBox(height: 14),
-          _frameResolutionSelector(),
         ],
       ),
     );
@@ -1415,8 +1408,8 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Resolução geral do painel de ajuste. Fica fora dos cartões de modo para
-  /// não parecer uma configuração exclusiva de "Expandir sem cortar".
+  /// Resolução geral de "Molduras de imagem". Fica fora do painel
+  /// "Ajuste do conteúdo" para não parecer parte de um modo de encaixe.
   Widget _frameResolutionSelector() {
     final theme = Theme.of(context);
     final selected = _settings.frame.frameResolutionMode;
