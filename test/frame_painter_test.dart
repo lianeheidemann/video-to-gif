@@ -64,7 +64,7 @@ void main() {
   });
 
   test(
-    'supersampling mantém as dimensões finais exatas da máscara',
+    'máscara é rasterizada nas dimensões finais exatas, mesmo com raio grande',
     () async {
       const width = 720;
       const height = 1280;

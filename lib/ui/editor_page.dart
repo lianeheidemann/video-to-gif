@@ -70,8 +70,6 @@ class _EditorPageState extends State<EditorPage> {
   final _ffmpeg = FfmpegService();
   final _importedFrameStore = ImportedFrameStore();
   final _sectionsScrollController = ScrollController();
-  final _frameStyleAnchorKey = GlobalKey();
-  final _imageFrameAnchorKey = GlobalKey();
   List<ImageFrameAsset> _importedImageFrames = [];
 
   late ConversionSettings _settings = widget.initialSettings;
@@ -387,14 +385,8 @@ class _EditorPageState extends State<EditorPage> {
   /// mostra no cabeçalho qual das suas opções está valendo.
   List<Widget> _frameSections() {
     return [
-      KeyedSubtree(
-        key: _frameStyleAnchorKey,
-        child: _frameStyleSection(),
-      ),
-      KeyedSubtree(
-        key: _imageFrameAnchorKey,
-        child: _imageFrameSection(),
-      ),
+      _frameStyleSection(),
+      _imageFrameSection(),
       _backgroundSection(),
       const SizedBox(height: 4),
       _convertButton(),
@@ -417,42 +409,28 @@ class _EditorPageState extends State<EditorPage> {
     _update(_settings.copyWith(frame: next));
   }
 
-  /// Atualiza a moldura compensando a variação de altura da prévia. Assim o
-  /// início das opções permanece na mesma posição da tela quando a troca
-  /// entre moldura procedural e moldura de imagem muda a proporção do vídeo.
-  void _updateFrameKeepingAnchorPosition(
-    FrameSettings next, {
-    required GlobalKey anchorKey,
-  }) {
-    final beforeBox = anchorKey.currentContext?.findRenderObject();
-    final beforeY = beforeBox is RenderBox
-        ? beforeBox.localToGlobal(Offset.zero).dy
-        : null;
-
-    _updateFrame(next);
-    if (beforeY == null) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_sectionsScrollController.hasClients) return;
-      final afterBox = anchorKey.currentContext?.findRenderObject();
-      if (afterBox is! RenderBox) return;
-
-      final delta = afterBox.localToGlobal(Offset.zero).dy - beforeY;
-      if (delta.abs() < 0.5) return;
-      final position = _sectionsScrollController.position;
-      final target = (_sectionsScrollController.offset + delta)
-          .clamp(position.minScrollExtent, position.maxScrollExtent)
-          .toDouble();
-      _sectionsScrollController.jumpTo(target);
-    });
-  }
-
   /// A prévia da aba atual. "Ajustar" mostra o vídeo inteiro com as alças de
   /// recorte (é lá que o tamanho do GIF é definido); "Frame" mostra o vídeo
   /// já cortado dentro da moldura escolhida, sem nenhum controle de recorte
   /// — o que a pessoa vê ali é o que vai sair no GIF.
-  Widget _previewArea() =>
-      _tab == _EditorTab.ajustar ? _timelined(_preview()) : _framedPreview();
+  ///
+  /// A [AnimatedSize] existe porque trocar de moldura (ou entre "Moldura" e
+  /// "Moldura de imagem") quase sempre muda a proporção da prévia — cada
+  /// arte de moldura tem sua própria proporção nativa. Sem ela, a mudança de
+  /// altura empurra tudo abaixo instantaneamente na mesma rolagem, o que a
+  /// pessoa vê como uma tremida; com ela, a lista de opções desliza suave
+  /// para o novo lugar.
+  Widget _previewArea() {
+    final preview = _tab == _EditorTab.ajustar
+        ? _timelined(_preview())
+        : _framedPreview();
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: preview,
+    );
+  }
 
   /// Coloca a linha do tempo como a última camada por cima de [preview].
   /// Assim os controles nunca ficam atrás de uma moldura de imagem nem são
@@ -681,7 +659,7 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Seção "Molduras de imagem": as artes prontas do app, as importadas pelo
+  /// Seção "Moldura de imagem": as artes prontas do app, as importadas pelo
   /// usuário e o botão de importar. Fica numa caixa própria porque é a outra
   /// família de moldura — escolher aqui desativa a de cima, e vice-versa.
   ///
@@ -693,7 +671,7 @@ class _EditorPageState extends State<EditorPage> {
     final hasFixedAspect = _settings.frame.hasFixedAspect;
     return LabeledSection(
       icon: Icons.image_outlined,
-      title: 'Molduras de imagem',
+      title: 'Moldura de imagem',
       value: _settings.frame.imageFrame?.label ?? FrameStyle.none.label,
       hint: 'Escolha uma opção',
       child: Column(
@@ -919,14 +897,13 @@ class _EditorPageState extends State<EditorPage> {
   /// selecionada, já que as duas famílias são mutuamente exclusivas.
   void _selectFrameStyle(FrameStyle style) {
     final current = _settings.frame;
-    _updateFrameKeepingAnchorPosition(
+    _updateFrame(
       current.copyWith(
         style: style,
         cornerRatio: style.defaultCornerRatio,
         thicknessAtReference: style.defaultThickness,
         clearImageFrame: true,
       ),
-      anchorKey: _frameStyleAnchorKey,
     );
   }
 
@@ -966,10 +943,8 @@ class _EditorPageState extends State<EditorPage> {
       label: FrameStyle.none.label,
       selected: selected,
       padding: const EdgeInsets.all(11),
-      onTap: () => _updateFrameKeepingAnchorPosition(
-        _settings.frame.copyWith(clearImageFrame: true),
-        anchorKey: _imageFrameAnchorKey,
-      ),
+      onTap: () =>
+          _updateFrame(_settings.frame.copyWith(clearImageFrame: true)),
       child: Icon(
         Icons.crop_free_rounded,
         size: 22,
@@ -1037,9 +1012,8 @@ class _EditorPageState extends State<EditorPage> {
   /// Seleciona uma moldura de imagem, sempre limpando o estilo procedural
   /// (as duas são mutuamente exclusivas).
   void _selectImageFrame(ImageFrameAsset asset) {
-    _updateFrameKeepingAnchorPosition(
+    _updateFrame(
       _settings.frame.copyWith(style: FrameStyle.none, imageFrame: asset),
-      anchorKey: _imageFrameAnchorKey,
     );
   }
 
@@ -1333,7 +1307,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Subseção recolhível "Ajuste do conteúdo", aninhada dentro de
-  /// "Molduras de imagem": como o vídeo se encaixa quando a proporção da
+  /// "Moldura de imagem": como o vídeo se encaixa quando a proporção da
   /// moldura escolhida é diferente da do recorte, mais o quanto ele é
   /// ampliado dentro dela. Mesmo padrão de [_collapsibleSubsection] usado
   /// por "Suavização de cor"/"Paleta" em [_colorSection].

@@ -333,8 +333,10 @@ class ConversionSettings {
   }
 
   /// Configurações iniciais sugeridas para um vídeo recém-carregado: corta
-  /// em até 10 segundos e escolhe a maior largura de até 480px que caiba
-  /// no vídeo original.
+  /// em até 10 segundos e escolhe a maior largura de até 720px que caiba
+  /// no vídeo original — 720px preserva melhor textos e cantos de molduras
+  /// (ver dica em [widthOptions]), mesmo padrão que uma pessoa teria que
+  /// escolher manualmente em "Ajustar" hoje.
   factory ConversionSettings.recommendedFor(VideoInfo video) {
     const maxSeconds = 10.0;
     final end = video.durationSeconds < maxSeconds
@@ -343,7 +345,7 @@ class ConversionSettings {
 
     final width = ConversionSettings.widthOptions
         .where((w) => w <= video.width)
-        .fold<int>(160, (best, w) => w <= 480 && w > best ? w : best);
+        .fold<int>(160, (best, w) => w <= 720 && w > best ? w : best);
 
     return ConversionSettings(
       startSeconds: 0,

@@ -580,6 +580,11 @@ class FfmpegService {
       // através de todos os filtros complexos.
       '-shortest',
       if (frameLimit != null) ...['-frames:v', '$frameLimit'],
+      // Ver o comentário equivalente em [_paletteUseArgs]: sem isso a área
+      // estática da arte (o corpo do mockup, o fundo fora dele) sai verde em
+      // visualizadores que não descartam (disposal) o quadro anterior
+      // corretamente.
+      if (transparent) ...['-gifflags', '-transdiff'],
       '-f',
       'gif',
       outputPath,
@@ -729,6 +734,15 @@ class FfmpegService {
       settings.loop ? '0' : '-1',
       '-an',
       if (frameLimit != null) ...['-frames:v', '$frameLimit'],
+      // Sem isso, o muxer do GIF reaproveita pixels idênticos ao quadro
+      // anterior como "transparentes" para economizar espaço, contando com
+      // o descarte (disposal) do quadro anterior para redesenhá-los depois.
+      // Toda a área estática da moldura (que não muda de um quadro para o
+      // outro) acaba marcada assim — e visualizadores que não implementam
+      // esse descarte corretamente (vários apps de galeria e mensagens)
+      // pintam essa área com a cor reservada para transparência, que sai
+      // verde. Desligar mantém cada quadro completo e correto sozinho.
+      if (transparent) ...['-gifflags', '-transdiff'],
       '-f',
       'gif',
       outputPath,
@@ -780,6 +794,11 @@ class FfmpegService {
       settings.loop ? '0' : '-1',
       '-an',
       if (frameLimit != null) ...['-frames:v', '$frameLimit'],
+      // Ver o comentário equivalente em [_paletteUseArgs]: sem isso a área
+      // estática da moldura sai verde em visualizadores que não descartam
+      // (disposal) o quadro anterior corretamente.
+      '-gifflags',
+      '-transdiff',
       '-f',
       'gif',
       outputPath,

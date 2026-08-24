@@ -6,7 +6,7 @@ import 'package:video_to_gif/models/video_info.dart';
 import 'package:video_to_gif/ui/editor_page.dart';
 
 // A aba "Frame" tem duas famílias de moldura em caixas separadas — as
-// procedurais ("Moldura") e as artes prontas ("Molduras de imagem") — e só
+// procedurais ("Moldura") e as artes prontas ("Moldura de imagem") — e só
 // uma pode estar ativa por vez. Cada fileira tem a sua própria miniatura
 // "Sem moldura" e mostra sempre exatamente uma opção marcada: é assim que se
 // vê que escolher de um lado desativou o outro. Estes testes garantem que as
@@ -53,7 +53,7 @@ Future<void> _openFrameSection(WidgetTester tester) async {
   // As duas famílias moram em seções recolhidas separadas; abrir as duas.
   await tester.tap(find.text('Moldura'));
   await tester.pump();
-  await tester.tap(find.text('Molduras de imagem'));
+  await tester.tap(find.text('Moldura de imagem'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
 }
