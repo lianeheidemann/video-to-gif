@@ -189,14 +189,8 @@ void main() {
         findsNothing,
         reason: 'o modo automático não deve permitir zoom',
       );
-      expect(
-        find.byKey(const ValueKey('contentFitTile_auto')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('contentFitTile_fill')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('contentFitTile_auto')), findsOneWidget);
+      expect(find.byKey(const ValueKey('contentFitTile_fill')), findsOneWidget);
       expect(
         find.byKey(const ValueKey('contentFitTile_expand')),
         findsOneWidget,
