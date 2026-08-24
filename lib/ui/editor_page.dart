@@ -432,7 +432,7 @@ class _EditorPageState extends State<EditorPage> {
     _updateFrame(next);
     if (beforeY == null) return;
 
-    void restoreAnchor() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_sectionsScrollController.hasClients) return;
       final afterBox = anchorKey.currentContext?.findRenderObject();
       if (afterBox is! RenderBox) return;
@@ -444,15 +444,6 @@ class _EditorPageState extends State<EditorPage> {
           .clamp(position.minScrollExtent, position.maxScrollExtent)
           .toDouble();
       _sectionsScrollController.jumpTo(target);
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      restoreAnchor();
-
-      // A prévia e os ExpansionTiles podem terminar a mudança de tamanho
-      // depois do primeiro layout. Uma segunda correção ao fim da animação
-      // evita que a fileira salte alguns instantes depois do toque.
-      Future<void>.delayed(const Duration(milliseconds: 220), restoreAnchor);
     });
   }
 
