@@ -17,12 +17,9 @@ const _video = VideoInfo(
 );
 
 void main() {
-  test(
-    '720 px está disponível para preservar a resolução de vídeos HD',
-    () {
-      expect(ConversionSettings.widthOptions, contains(720));
-    },
-  );
+  test('720 px está disponível para preservar a resolução de vídeos HD', () {
+    expect(ConversionSettings.widthOptions, contains(720));
+  });
 
   group('moldura: espessura e canvas', () {
     test(

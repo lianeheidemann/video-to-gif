@@ -387,14 +387,8 @@ class _EditorPageState extends State<EditorPage> {
   /// mostra no cabeçalho qual das suas opções está valendo.
   List<Widget> _frameSections() {
     return [
-      KeyedSubtree(
-        key: _frameStyleAnchorKey,
-        child: _frameStyleSection(),
-      ),
-      KeyedSubtree(
-        key: _imageFrameAnchorKey,
-        child: _imageFrameSection(),
-      ),
+      KeyedSubtree(key: _frameStyleAnchorKey, child: _frameStyleSection()),
+      KeyedSubtree(key: _imageFrameAnchorKey, child: _imageFrameSection()),
       _backgroundSection(),
       const SizedBox(height: 4),
       _convertButton(),
@@ -589,10 +583,7 @@ class _EditorPageState extends State<EditorPage> {
       ),
     );
     if (_settings.frame.transparentBackground) return preview;
-    return ColoredBox(
-      color: _settings.frame.backgroundColor,
-      child: preview,
-    );
+    return ColoredBox(color: _settings.frame.backgroundColor, child: preview);
   }
 
   /// Conteúdo dentro da janela de uma moldura de imagem. Em "Expandir sem
@@ -708,9 +699,7 @@ class _EditorPageState extends State<EditorPage> {
               const SizedBox(height: 14),
               Divider(
                 height: 1,
-                color: theme.colorScheme.outlineVariant.withValues(
-                  alpha: 0.45,
-                ),
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
               ),
               const SizedBox(height: 14),
               _frameResolutionSelector(),
@@ -1142,9 +1131,7 @@ class _EditorPageState extends State<EditorPage> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            Expanded(
-              child: Text(label, style: theme.textTheme.bodyMedium),
-            ),
+            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
             Container(
               width: 28,
               height: 28,
@@ -1166,8 +1153,7 @@ class _EditorPageState extends State<EditorPage> {
   void _pickFrameColor() => _pickColor(
     title: 'Cor da moldura',
     selectedColor: _settings.frame.color,
-    onSelected: (color) =>
-        _updateFrame(_settings.frame.copyWith(color: color)),
+    onSelected: (color) => _updateFrame(_settings.frame.copyWith(color: color)),
   );
 
   void _pickBackgroundColor() => _pickColor(
@@ -1499,10 +1485,7 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  Widget _contentFitTileHeader(
-    ContentFitMode mode, {
-    required bool selected,
-  }) {
+  Widget _contentFitTileHeader(ContentFitMode mode, {required bool selected}) {
     final theme = Theme.of(context);
     return Row(
       children: [
@@ -1644,9 +1627,8 @@ class _EditorPageState extends State<EditorPage> {
         borderRadius: rounded ? BorderRadius.circular(22) : null,
         border: rounded
             ? Border.all(
-                color: Theme.of(
-                  context,
-                ).colorScheme.outlineVariant.withValues(alpha: 0.45),
+                color: Theme.of(context).colorScheme.outlineVariant
+                    .withValues(alpha: 0.45),
               )
             : null,
       ),
@@ -2431,8 +2413,7 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Velocidade',
       value: '${_formatSpeed(_settings.speed)}x',
       originalValue: '${_formatSpeed(1.0)}x',
-      hint:
-          'Acelerar encurta o GIF e economiza espaço; velocidades menores aumentam a duração.',
+      hint: 'Acelerar encurta o GIF e economiza espaço; velocidades menores aumentam a duração.',
       child: Column(
         children: [
           Slider(
@@ -2504,8 +2485,7 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Quadros por segundo (FPS)',
       value: '${_settings.fps} FPS',
       originalValue: '${_video.frameRate.round()} FPS',
-      hint:
-          'Mais FPS deixa a animação mais fluida, mas aumenta o tamanho do arquivo.',
+      hint: 'Mais FPS deixa a animação mais fluida, mas aumenta o tamanho do arquivo.',
       tip: '12 FPS é um bom equilíbrio entre fluidez e tamanho.',
       child: OptionChips<int>(
         options: ConversionSettings.fpsOptions,
@@ -2531,8 +2511,7 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Qualidade das cores',
       value: '${_settings.colors} cores',
       originalValue: 'Cores ilimitadas',
-      tip:
-          '128 cores costuma equilibrar bem qualidade e tamanho; 256 preserva mais detalhes.',
+      tip: '128 cores costuma equilibrar bem qualidade e tamanho; 256 preserva mais detalhes.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

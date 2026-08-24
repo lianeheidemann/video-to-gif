@@ -76,9 +76,7 @@ void main() {
     );
     expect(find.byKey(const ValueKey('backgroundColorRow')), findsNothing);
 
-    await tester.tap(
-      find.byKey(const ValueKey('transparentBackgroundSwitch')),
-    );
+    await tester.tap(find.byKey(const ValueKey('transparentBackgroundSwitch')));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byKey(const ValueKey('backgroundColorRow')), findsOneWidget);
@@ -221,23 +219,22 @@ void main() {
     );
   });
 
-  testWidgets(
-    'painel de ajuste só aparece com moldura de imagem ativa',
-    (tester) async {
-      await _openFrameSection(tester);
+  testWidgets('painel de ajuste só aparece com moldura de imagem ativa', (
+    tester,
+  ) async {
+    await _openFrameSection(tester);
 
-      expect(find.text('Ajuste do conteúdo'), findsNothing);
-      expect(find.text('Resolução da moldura'), findsNothing);
+    expect(find.text('Ajuste do conteúdo'), findsNothing);
+    expect(find.text('Resolução da moldura'), findsNothing);
 
-      await tester.tap(
-        find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
-      );
-      await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+    );
+    await tester.pump();
 
-      expect(find.text('Ajuste do conteúdo'), findsOneWidget);
-      expect(find.text('Resolução da moldura'), findsNothing);
-    },
-  );
+    expect(find.text('Ajuste do conteúdo'), findsOneWidget);
+    expect(find.text('Resolução da moldura'), findsNothing);
+  });
 
   testWidgets(
     'zoom aparece somente em Expandir sem cortar e vai de 10% a 300%',
