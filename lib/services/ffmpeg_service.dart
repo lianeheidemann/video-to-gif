@@ -255,17 +255,12 @@ class FfmpegService {
             'crop=$areaWidth:$areaHeight[fitted]',
           );
         case ContentFitMode.expand:
-          parts.add('[content]split=2[bg][fg]');
           parts.add(
-            '[bg]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=increase:flags=lanczos,'
-            'crop=$areaWidth:$areaHeight,boxblur=12:3[bg2]',
+            '[content]scale=$areaWidth:$areaHeight:'
+            'force_original_aspect_ratio=decrease:flags=lanczos,'
+            'pad=$areaWidth:$areaHeight:(ow-iw)/2:(oh-ih)/2:'
+            'color=black[fitted]',
           );
-          parts.add(
-            '[fg]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=decrease:flags=lanczos[fg2]',
-          );
-          parts.add('[bg2][fg2]overlay=(W-w)/2:(H-h)/2[fitted]');
         case ContentFitMode.auto:
         case ContentFitMode.fit:
           parts.add(
@@ -412,9 +407,9 @@ class FfmpegService {
     );
 
     if (fit == ContentFitMode.expand) {
-      // O fundo sempre cobre toda a janela e permanece parado. O zoom atua
-      // somente no vídeo nítido central: abaixo de 100% revela mais do fundo
-      // estendido; acima de 100% aproxima e o overlay recorta o excedente.
+      // O fundo permanece preto. O zoom atua somente no vídeo nítido central:
+      // abaixo de 100% revela mais da área preta; acima de 100% aproxima e o
+      // overlay recorta o excedente.
       final widthScale = areaWidth / contentWidth;
       final heightScale = areaHeight / contentHeight;
       final fitScale = widthScale < heightScale ? widthScale : heightScale;
@@ -426,9 +421,8 @@ class FfmpegService {
 
       parts.add('[content]split=2[bg][fg]');
       parts.add(
-        '[bg]scale=$areaWidth:$areaHeight:'
-        'force_original_aspect_ratio=increase:flags=lanczos,'
-        'crop=$areaWidth:$areaHeight,boxblur=12:3[bg2]',
+        '[bg]scale=$areaWidth:$areaHeight:flags=lanczos,'
+        'drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill[bg2]',
       );
       parts.add('[fg]scale=$zoomedWidth:$zoomedHeight:flags=lanczos[fg2]');
       parts.add('[bg2][fg2]overlay=(W-w)/2:(H-h)/2[fitted]');

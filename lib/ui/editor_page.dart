@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -551,9 +550,9 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Conteúdo dentro da janela de uma moldura de imagem. Em "Expandir sem
-  /// cortar", o fundo ampliado e desfocado permanece preenchendo a janela,
-  /// enquanto o zoom atua apenas sobre o vídeo nítido central — a mesma
-  /// composição usada pelo FFmpeg na exportação.
+  /// cortar", a área que não é ocupada pelo vídeo permanece preta, enquanto
+  /// o zoom atua apenas sobre o vídeo nítido central — a mesma composição
+  /// usada pelo FFmpeg na exportação.
   Widget _imageFrameContentPreview(ContentFitMode fit) {
     Widget video(BoxFit boxFit) => FittedBox(
       fit: boxFit,
@@ -578,18 +577,9 @@ class _EditorPageState extends State<EditorPage> {
     return ColoredBox(
       color: Colors.black,
       child: ClipRect(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: video(BoxFit.cover),
-            ),
-            Transform.scale(
-              scale: _settings.frame.effectiveContentZoom,
-              child: video(BoxFit.contain),
-            ),
-          ],
+        child: Transform.scale(
+          scale: _settings.frame.effectiveContentZoom,
+          child: video(BoxFit.contain),
         ),
       ),
     );
@@ -1403,22 +1393,11 @@ class _EditorPageState extends State<EditorPage> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    mode.label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    mode.subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+              child: Text(
+                mode.label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             if (selected)

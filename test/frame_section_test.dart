@@ -200,6 +200,9 @@ void main() {
         findsNothing,
         reason: 'Encaixar duplicava o comportamento do ajuste automático',
       );
+      expect(find.text('Melhor enquadramento para o vídeo'), findsNothing);
+      expect(find.text('Preenche toda a moldura (pode cortar)'), findsNothing);
+      expect(find.text('Preenche com fundo estendido'), findsNothing);
 
       final expand = find.byKey(const ValueKey('contentFitTile_expand'));
       await tester.tap(expand);
