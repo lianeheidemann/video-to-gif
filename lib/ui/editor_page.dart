@@ -2487,7 +2487,9 @@ class _EditorPageState extends State<EditorPage> {
       originalValue: '${_video.width}×${_video.height}',
       hint:
           'Reduzir a largura diminui significativamente o tamanho do arquivo.',
-      tip: '480 px oferece boa qualidade para a maioria dos casos.',
+      tip:
+          '720 px preserva melhor textos e cantos de molduras; '
+          '480 px gera arquivos menores.',
       child: OptionChips<int>(
         options: ConversionSettings.widthOptions,
         selected: selected,

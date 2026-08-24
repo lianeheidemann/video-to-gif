@@ -63,6 +63,25 @@ void main() {
     }
   });
 
+  test(
+    'supersampling mantém as dimensões finais exatas da máscara',
+    () async {
+      const width = 720;
+      const height = 1280;
+      final png = await rasterizeCornerMask(width, height, 86.4);
+      final codec = await ui.instantiateImageCodec(png);
+      final frame = await codec.getNextFrame();
+
+      try {
+        expect(frame.image.width, width);
+        expect(frame.image.height, height);
+      } finally {
+        frame.image.dispose();
+        codec.dispose();
+      }
+    },
+  );
+
   // A moldura é sempre a forma arredondada, na cor escolhida. O toggle
   // "Fundo transparente" decide só o que sobra nos 4 cantos fora dela.
   // No modo opaco, os cantos usam a cor de fundo escolhida sem cobrir a

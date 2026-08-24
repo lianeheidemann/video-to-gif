@@ -127,7 +127,7 @@ Future<Uint8List> rasterizeCornerMask(
   int width,
   int height,
   double outerRadius,
-) => rasterizeCanvas(width, height, (canvas, size) {
+) => rasterizeCanvasSupersampled(width, height, (canvas, size) {
   final rect = Offset.zero & size;
   canvas.drawRect(rect, Paint()..color = Colors.black);
   canvas.drawRRect(
@@ -215,5 +215,52 @@ Future<Uint8List> rasterizeCanvas(
     }
   } finally {
     picture.dispose();
+  }
+}
+
+/// Rasteriza primeiro em 2× e reduz para o tamanho final com filtragem de
+/// alta qualidade. A etapa extra preserva melhor a cobertura subpixel das
+/// curvas antes de o GIF converter a transparência para uma máscara binária.
+Future<Uint8List> rasterizeCanvasSupersampled(
+  int width,
+  int height,
+  void Function(Canvas canvas, Size size) paint,
+) async {
+  const scale = 2;
+  final highWidth = width * scale;
+  final highHeight = height * scale;
+  final highRecorder = ui.PictureRecorder();
+  final highCanvas = Canvas(highRecorder)..scale(scale.toDouble());
+  paint(highCanvas, Size(width.toDouble(), height.toDouble()));
+  final highPicture = highRecorder.endRecording();
+
+  try {
+    final highImage = await highPicture.toImage(highWidth, highHeight);
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawImageRect(
+        highImage,
+        Rect.fromLTWH(0, 0, highWidth.toDouble(), highHeight.toDouble()),
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        Paint()..filterQuality = FilterQuality.high,
+      );
+      final picture = recorder.endRecording();
+      try {
+        final image = await picture.toImage(width, height);
+        try {
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          return bytes!.buffer.asUint8List();
+        } finally {
+          image.dispose();
+        }
+      } finally {
+        picture.dispose();
+      }
+    } finally {
+      highImage.dispose();
+    }
+  } finally {
+    highPicture.dispose();
   }
 }
