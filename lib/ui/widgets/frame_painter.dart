@@ -219,4 +219,3 @@ Future<Uint8List> rasterizeCanvas(
     picture.dispose();
   }
 }
-
