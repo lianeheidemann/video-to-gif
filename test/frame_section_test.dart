@@ -184,7 +184,7 @@ void main() {
       final editorScroll = find.byType(Scrollable).first;
       await tester.scrollUntilVisible(
         contentHeader,
-        300,
+        -300,
         scrollable: editorScroll,
       );
       await tester.tap(contentHeader);
@@ -197,7 +197,7 @@ void main() {
       );
 
       final expand = find.byKey(const ValueKey('contentFitTile_expand'));
-      await tester.scrollUntilVisible(expand, 300, scrollable: editorScroll);
+      await tester.scrollUntilVisible(expand, -300, scrollable: editorScroll);
       await tester.tap(expand);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -208,7 +208,7 @@ void main() {
       expect(slider.max, FrameSettings.maxContentZoom);
 
       final fit = find.byKey(const ValueKey('contentFitTile_fit'));
-      await tester.scrollUntilVisible(fit, -300, scrollable: editorScroll);
+      await tester.scrollUntilVisible(fit, 300, scrollable: editorScroll);
       await tester.tap(fit);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -231,9 +231,9 @@ void main() {
 
     final editorScroll = find.byType(Scrollable).first;
     final resolutionHeader = find.text('Resolução da moldura');
-    await tester.scrollUntilVisible(
-      resolutionHeader,
-      300,
+      await tester.scrollUntilVisible(
+        resolutionHeader,
+        -300,
       scrollable: editorScroll,
     );
     await tester.tap(resolutionHeader);
@@ -247,9 +247,9 @@ void main() {
     expect(find.text('Resolução máxima da imagem'), findsOneWidget);
 
     final nativeResolution = find.text('Resolução máxima da imagem');
-    await tester.scrollUntilVisible(
-      nativeResolution,
-      300,
+      await tester.scrollUntilVisible(
+        nativeResolution,
+        -300,
       scrollable: editorScroll,
     );
     await tester.tap(nativeResolution);
@@ -257,9 +257,9 @@ void main() {
 
     // Recolhe para conferir o resumo, que só mostra o valor selecionado
     // quando a subseção está fechada.
-    await tester.scrollUntilVisible(
-      resolutionHeader,
-      -300,
+      await tester.scrollUntilVisible(
+        resolutionHeader,
+        300,
       scrollable: editorScroll,
     );
     await tester.tap(resolutionHeader);
