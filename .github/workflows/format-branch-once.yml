@@ -25,6 +25,9 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
+      - name: Carregar configuração do projeto
+        run: flutter pub get
+
       - name: Estabilizar formatação
         run: |
           dart format lib/ui/editor_page.dart test/frame_section_test.dart test/conversion_settings_test.dart test/frame_painter_test.dart
