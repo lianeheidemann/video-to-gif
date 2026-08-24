@@ -189,9 +189,18 @@ void main() {
         findsNothing,
         reason: 'o modo automático não deve permitir zoom',
       );
-      expect(find.text('Ajuste automático'), findsOneWidget);
-      expect(find.text('Preencher'), findsOneWidget);
-      expect(find.text('Expandir sem cortar'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('contentFitTile_auto')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('contentFitTile_fill')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('contentFitTile_expand')),
+        findsOneWidget,
+      );
       expect(
         find.text('Encaixar'),
         findsNothing,
