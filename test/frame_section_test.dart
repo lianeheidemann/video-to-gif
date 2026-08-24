@@ -33,7 +33,7 @@ Future<void> _openFrameSection(WidgetTester tester) async {
   // Viewport retrato: em paisagem o app esconde as abas "Ajustar"/"Frame"
   // para aproveitar o espaço vertical, e o tamanho padrão de teste
   // (800x600) é "paisagem".
-  tester.view.physicalSize = const Size(1080, 2340);
+  tester.view.physicalSize = const Size(1080, 5000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -181,12 +181,6 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       final contentHeader = find.text('Ajuste do conteúdo');
-      final editorScroll = find.byType(Scrollable).first;
-      await tester.scrollUntilVisible(
-        contentHeader,
-        -300,
-        scrollable: editorScroll,
-      );
       await tester.tap(contentHeader);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -197,7 +191,6 @@ void main() {
       );
 
       final expand = find.byKey(const ValueKey('contentFitTile_expand'));
-      await tester.scrollUntilVisible(expand, -300, scrollable: editorScroll);
       await tester.tap(expand);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -208,7 +201,6 @@ void main() {
       expect(slider.max, FrameSettings.maxContentZoom);
 
       final fit = find.byKey(const ValueKey('contentFitTile_fit'));
-      await tester.scrollUntilVisible(fit, 300, scrollable: editorScroll);
       await tester.tap(fit);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -229,13 +221,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
 
-    final editorScroll = find.byType(Scrollable).first;
     final resolutionHeader = find.text('Resolução da moldura');
-      await tester.scrollUntilVisible(
-        resolutionHeader,
-        -300,
-      scrollable: editorScroll,
-    );
     await tester.tap(resolutionHeader);
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -247,21 +233,11 @@ void main() {
     expect(find.text('Resolução máxima da imagem'), findsOneWidget);
 
     final nativeResolution = find.text('Resolução máxima da imagem');
-      await tester.scrollUntilVisible(
-        nativeResolution,
-        -300,
-      scrollable: editorScroll,
-    );
     await tester.tap(nativeResolution);
     await tester.pump(const Duration(milliseconds: 300));
 
     // Recolhe para conferir o resumo, que só mostra o valor selecionado
     // quando a subseção está fechada.
-      await tester.scrollUntilVisible(
-        resolutionHeader,
-        300,
-      scrollable: editorScroll,
-    );
     await tester.tap(resolutionHeader);
     await tester.pump(const Duration(milliseconds: 300));
 
