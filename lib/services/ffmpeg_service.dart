@@ -430,9 +430,7 @@ class FfmpegService {
         'force_original_aspect_ratio=increase:flags=lanczos,'
         'crop=$areaWidth:$areaHeight,boxblur=12:3[bg2]',
       );
-      parts.add(
-        '[fg]scale=$zoomedWidth:$zoomedHeight:flags=lanczos[fg2]',
-      );
+      parts.add('[fg]scale=$zoomedWidth:$zoomedHeight:flags=lanczos[fg2]');
       parts.add('[bg2][fg2]overlay=(W-w)/2:(H-h)/2[fitted]');
     } else if (contentWidth == areaWidth && contentHeight == areaHeight) {
       parts.add('[content]copy[fitted]');

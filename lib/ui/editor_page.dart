@@ -1345,9 +1345,8 @@ class _EditorPageState extends State<EditorPage> {
       label: 'Resolução da moldura',
       subtitle: selected.label,
       expanded: _frameResolutionExpanded,
-      onToggle: () => setState(
-        () => _frameResolutionExpanded = !_frameResolutionExpanded,
-      ),
+      onToggle: () =>
+          setState(() => _frameResolutionExpanded = !_frameResolutionExpanded),
       child: OptionChips<ImageFrameResolutionMode>(
         options: ImageFrameResolutionMode.values,
         selected: selected,

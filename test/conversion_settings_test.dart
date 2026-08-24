@@ -214,8 +214,7 @@ void main() {
         expect(
           canvases.length,
           1,
-          reason:
-              'o canvas no modo nativeMax não deve variar com targetWidth',
+          reason: 'o canvas no modo nativeMax não deve variar com targetWidth',
         );
       },
     );
@@ -246,32 +245,29 @@ void main() {
       );
     });
 
-    test(
-      'contentZoom não altera a geometria compartilhada com o FFmpeg',
-      () {
-        final base = ConversionSettings(
-          startSeconds: 0,
-          endSeconds: 5,
-          frame: FrameSettings(imageFrame: art),
-        );
-        final zoomed = ConversionSettings(
-          startSeconds: 0,
-          endSeconds: 5,
-          frame: FrameSettings(
-            imageFrame: art,
-            contentZoom: FrameSettings.maxContentZoom,
-          ),
-        );
+    test('contentZoom não altera a geometria compartilhada com o FFmpeg', () {
+      final base = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        frame: FrameSettings(imageFrame: art),
+      );
+      final zoomed = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        frame: FrameSettings(
+          imageFrame: art,
+          contentZoom: FrameSettings.maxContentZoom,
+        ),
+      );
 
-        expect(
-          zoomed.imageFrameCanvasDimensions(_video),
-          base.imageFrameCanvasDimensions(_video),
-        );
-        expect(
-          zoomed.imageFrameContentAreaPx(_video),
-          base.imageFrameContentAreaPx(_video),
-        );
-      },
-    );
+      expect(
+        zoomed.imageFrameCanvasDimensions(_video),
+        base.imageFrameCanvasDimensions(_video),
+      );
+      expect(
+        zoomed.imageFrameContentAreaPx(_video),
+        base.imageFrameContentAreaPx(_video),
+      );
+    });
   });
 }
