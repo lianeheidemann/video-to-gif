@@ -704,13 +704,17 @@ class _EditorPageState extends State<EditorPage> {
           if (hasFixedAspect) ...[
             const SizedBox(height: 18),
             _sectionCard(children: [_contentFitSubsection()]),
-            const SizedBox(height: 14),
-            Divider(
-              height: 1,
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
-            ),
-            const SizedBox(height: 14),
-            _frameResolutionSelector(),
+            if (_contentFitExpanded) ...[
+              const SizedBox(height: 14),
+              Divider(
+                height: 1,
+                color: theme.colorScheme.outlineVariant.withValues(
+                  alpha: 0.45,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _frameResolutionSelector(),
+            ],
           ],
         ],
       ),
