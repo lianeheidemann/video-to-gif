@@ -7,7 +7,7 @@ publish_to: "none"
 # version = <versionName>+<versionCode>
 # O número depois do "+" é o versionCode do Android e PRECISA aumentar a
 # cada envio para a Play Store, senão o upload é recusado.
-version: 1.1.25+25
+version: 1.1.26+26
 
 environment:
   sdk: ^3.12.0

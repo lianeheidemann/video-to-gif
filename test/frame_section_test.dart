@@ -33,7 +33,7 @@ Future<void> _openFrameSection(WidgetTester tester) async {
   // Viewport retrato: em paisagem o app esconde as abas "Ajustar"/"Frame"
   // para aproveitar o espaço vertical, e o tamanho padrão de teste
   // (800x600) é "paisagem".
-  tester.view.physicalSize = const Size(1080, 2340);
+  tester.view.physicalSize = const Size(1080, 5000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -151,5 +151,111 @@ void main() {
       findsOneWidget,
       reason: 'a fileira de imagem volta para "Sem moldura"',
     );
+  });
+
+  testWidgets(
+    'ajuste do conteúdo e resolução só aparecem com moldura de imagem ativa',
+    (tester) async {
+      await _openFrameSection(tester);
+
+      expect(find.text('Ajuste do conteúdo'), findsNothing);
+      expect(find.text('Resolução da moldura'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+      );
+      await tester.pump();
+
+      expect(find.text('Ajuste do conteúdo'), findsOneWidget);
+      expect(find.text('Resolução da moldura'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'zoom aparece somente em Expandir sem cortar e vai de 10% a 300%',
+    (tester) async {
+      await _openFrameSection(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final contentHeader = find.text('Ajuste do conteúdo');
+      await tester.tap(contentHeader);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        find.byKey(const ValueKey('frameContentZoomSlider')),
+        findsNothing,
+        reason: 'o modo automático não deve permitir zoom',
+      );
+      expect(find.byKey(const ValueKey('contentFitTile_auto')), findsOneWidget);
+      expect(find.byKey(const ValueKey('contentFitTile_fill')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('contentFitTile_expand')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Encaixar'),
+        findsNothing,
+        reason: 'Encaixar duplicava o comportamento do ajuste automático',
+      );
+      expect(find.text('Melhor enquadramento para o vídeo'), findsNothing);
+      expect(find.text('Preenche toda a moldura (pode cortar)'), findsNothing);
+      expect(find.text('Preenche com fundo estendido'), findsNothing);
+
+      final expand = find.byKey(const ValueKey('contentFitTile_expand'));
+      await tester.tap(expand);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      final zoomFinder = find.byKey(const ValueKey('frameContentZoomSlider'));
+      expect(zoomFinder, findsOneWidget);
+      final slider = tester.widget<Slider>(zoomFinder);
+      expect(slider.min, FrameSettings.minContentZoom);
+      expect(slider.max, FrameSettings.maxContentZoom);
+
+      final auto = find.byKey(const ValueKey('contentFitTile_auto'));
+      await tester.tap(auto);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        find.byKey(const ValueKey('frameContentZoomSlider')),
+        findsNothing,
+        reason: 'sair de Expandir sem cortar deve ocultar o zoom',
+      );
+    },
+  );
+
+  testWidgets('tocar no cabeçalho de Resolução da moldura alterna o modo', (
+    tester,
+  ) async {
+    await _openFrameSection(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final resolutionHeader = find.text('Resolução da moldura');
+    await tester.tap(resolutionHeader);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // "Igual à escolhida em Ajustar" é o modo padrão: aparece duas vezes
+    // (resumo da subseção + chip), por isso `findsWidgets` em vez de
+    // `findsOneWidget`. "Resolução máxima da imagem" ainda não está
+    // selecionada, então aparece só no chip.
+    expect(find.text('Igual à escolhida em Ajustar'), findsWidgets);
+    expect(find.text('Resolução máxima da imagem'), findsOneWidget);
+
+    final nativeResolution = find.text('Resolução máxima da imagem');
+    await tester.tap(nativeResolution);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Recolhe para conferir o resumo, que só mostra o valor selecionado
+    // quando a subseção está fechada.
+    await tester.tap(resolutionHeader);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Resolução máxima da imagem'), findsOneWidget);
+    expect(find.text('Igual à escolhida em Ajustar'), findsNothing);
   });
 }

@@ -255,17 +255,12 @@ class FfmpegService {
             'crop=$areaWidth:$areaHeight[fitted]',
           );
         case ContentFitMode.expand:
-          parts.add('[content]split=2[bg][fg]');
           parts.add(
-            '[bg]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=increase:flags=lanczos,'
-            'crop=$areaWidth:$areaHeight,boxblur=12:3[bg2]',
+            '[content]scale=$areaWidth:$areaHeight:'
+            'force_original_aspect_ratio=decrease:flags=lanczos,'
+            'pad=$areaWidth:$areaHeight:(ow-iw)/2:(oh-ih)/2:'
+            'color=black[fitted]',
           );
-          parts.add(
-            '[fg]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=decrease:flags=lanczos[fg2]',
-          );
-          parts.add('[bg2][fg2]overlay=(W-w)/2:(H-h)/2[fitted]');
         case ContentFitMode.auto:
         case ContentFitMode.fit:
           parts.add(
@@ -405,42 +400,47 @@ class FfmpegService {
 
     final parts = <String>['[$input]$contentFilter[content]'];
 
-    if (contentWidth == areaWidth && contentHeight == areaHeight) {
-      parts.add('[content]copy[fitted]');
-    } else {
-      final fit = resolveContentFit(
-        frame.contentFit,
-        contentWidth / contentHeight,
-        areaWidth / areaHeight,
+    final fit = resolveContentFit(
+      frame.contentFit,
+      contentWidth / contentHeight,
+      areaWidth / areaHeight,
+    );
+
+    if (fit == ContentFitMode.expand) {
+      // O fundo permanece preto. O zoom atua somente no vídeo nítido central:
+      // abaixo de 100% revela mais da área preta; acima de 100% aproxima e o
+      // overlay recorta o excedente.
+      final widthScale = areaWidth / contentWidth;
+      final heightScale = areaHeight / contentHeight;
+      final fitScale = widthScale < heightScale ? widthScale : heightScale;
+      final fittedWidth = _evenAtLeast2(contentWidth * fitScale);
+      final fittedHeight = _evenAtLeast2(contentHeight * fitScale);
+      final zoom = frame.effectiveContentZoom;
+      final zoomedWidth = _evenAtLeast2(fittedWidth * zoom);
+      final zoomedHeight = _evenAtLeast2(fittedHeight * zoom);
+
+      parts.add('[content]split=2[bg][fg]');
+      parts.add(
+        '[bg]scale=$areaWidth:$areaHeight:flags=lanczos,'
+        'drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill[bg2]',
       );
-      switch (fit) {
-        case ContentFitMode.fill:
-          parts.add(
-            '[content]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=increase:flags=lanczos,'
-            'crop=$areaWidth:$areaHeight[fitted]',
-          );
-        case ContentFitMode.expand:
-          parts.add('[content]split=2[bg][fg]');
-          parts.add(
-            '[bg]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=increase:flags=lanczos,'
-            'crop=$areaWidth:$areaHeight,boxblur=12:3[bg2]',
-          );
-          parts.add(
-            '[fg]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=decrease:flags=lanczos[fg2]',
-          );
-          parts.add('[bg2][fg2]overlay=(W-w)/2:(H-h)/2[fitted]');
-        case ContentFitMode.auto:
-        case ContentFitMode.fit:
-          parts.add(
-            '[content]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=decrease:flags=lanczos,'
-            'pad=$areaWidth:$areaHeight:(ow-iw)/2:(oh-ih)/2:'
-            'color=black[fitted]',
-          );
-      }
+      parts.add('[fg]scale=$zoomedWidth:$zoomedHeight:flags=lanczos[fg2]');
+      parts.add('[bg2][fg2]overlay=(W-w)/2:(H-h)/2[fitted]');
+    } else if (contentWidth == areaWidth && contentHeight == areaHeight) {
+      parts.add('[content]copy[fitted]');
+    } else if (fit == ContentFitMode.fill) {
+      parts.add(
+        '[content]scale=$areaWidth:$areaHeight:'
+        'force_original_aspect_ratio=increase:flags=lanczos,'
+        'crop=$areaWidth:$areaHeight[fitted]',
+      );
+    } else {
+      parts.add(
+        '[content]scale=$areaWidth:$areaHeight:'
+        'force_original_aspect_ratio=decrease:flags=lanczos,'
+        'pad=$areaWidth:$areaHeight:(ow-iw)/2:(oh-ih)/2:'
+        'color=black[fitted]',
+      );
     }
 
     parts.add(
@@ -580,6 +580,18 @@ class FfmpegService {
       'gif',
       outputPath,
     ];
+  }
+
+  /// Arredonda para o inteiro par mais próximo — mesma exigência de
+  /// crop/scale do FFmpeg já seguida por [ConversionSettings._evenFromDouble].
+  int _evenRound(num value) {
+    final rounded = value.round();
+    return rounded - (rounded % 2);
+  }
+
+  int _evenAtLeast2(num value) {
+    final even = _evenRound(value);
+    return even < 2 ? 2 : even;
   }
 
   String _ffmpegColor(Color color) {

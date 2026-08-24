@@ -43,6 +43,27 @@ enum ContentFitMode {
   final String subtitle;
 }
 
+/// Em que resolução o canvas de uma moldura de imagem é gerado — só se
+/// aplica quando [FrameSettings.imageFrame] está definido. O vídeo em si
+/// continua sendo convertido pelas configurações de "Ajustar"
+/// (fps/cores/velocidade/[ConversionSettings.targetWidth]) nos dois casos;
+/// só o tamanho do canvas/arte da moldura muda.
+enum ImageFrameResolutionMode {
+  matchAjustar(
+    'Igual à escolhida em Ajustar',
+    'Resolução do vídeo define o tamanho da moldura',
+  ),
+  nativeMax(
+    'Resolução máxima da imagem',
+    'Usa a resolução original da arte, no maior tamanho possível',
+  );
+
+  const ImageFrameResolutionMode(this.label, this.subtitle);
+
+  final String label;
+  final String subtitle;
+}
+
 /// Resolve [ContentFitMode.auto] para [ContentFitMode.fill] ou
 /// [ContentFitMode.fit] conforme a proporção do conteúdo estiver perto o
 /// suficiente da proporção da área — compartilhado entre a exportação
@@ -76,6 +97,8 @@ class FrameSettings {
     this.contentFit = ContentFitMode.auto,
     this.transparentBackground = true,
     this.imageFrame,
+    this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
+    this.contentZoom = defaultContentZoom,
   });
 
   final FrameStyle style;
@@ -104,6 +127,25 @@ class FrameSettings {
   /// transparente ou preta.
   final ImageFrameAsset? imageFrame;
 
+  /// Em que resolução o canvas de [imageFrame] é gerado. Só tem efeito com
+  /// [imageFrame] definido — ver [ImageFrameResolutionMode].
+  final ImageFrameResolutionMode frameResolutionMode;
+
+  /// Escala do vídeo principal sobre o fundo estendido, de
+  /// [minContentZoom] a [maxContentZoom]. Só é efetiva quando há uma moldura
+  /// de imagem e [contentFit] é [ContentFitMode.expand]; nos demais modos, a
+  /// prévia e a exportação usam [defaultContentZoom].
+  final double contentZoom;
+
+  /// Zoom que realmente deve ser aplicado pela prévia e pela exportação.
+  /// Manter o valor escolhido em [contentZoom] permite recuperá-lo quando o
+  /// usuário volta para "Expandir sem cortar", sem deixar que ele afete os
+  /// outros modos de ajuste.
+  double get effectiveContentZoom =>
+      hasImageFrame && contentFit == ContentFitMode.expand
+      ? contentZoom.clamp(minContentZoom, maxContentZoom).toDouble()
+      : defaultContentZoom;
+
   bool get hasImageFrame => imageFrame != null;
 
   /// Somente molduras de imagem têm canvas próprio. Molduras procedurais
@@ -118,6 +160,13 @@ class FrameSettings {
   /// Arredondamento máximo: metade do menor lado, ou seja, a forma
   /// completamente arredondada (um círculo, num canvas quadrado).
   static const maxCornerRatio = 0.5;
+
+  /// Limites do zoom disponível exclusivamente em "Expandir sem cortar".
+  /// A escala neutra (100%) fica separada do mínimo porque o controle agora
+  /// também permite afastar o vídeo e revelar mais do fundo estendido.
+  static const minContentZoom = 0.1;
+  static const defaultContentZoom = 1.0;
+  static const maxContentZoom = 3.0;
 
   /// Nenhuma moldura: mesmo comportamento do app antes desta funcionalidade.
   factory FrameSettings.none() => const FrameSettings();
@@ -148,6 +197,8 @@ class FrameSettings {
     bool? transparentBackground,
     ImageFrameAsset? imageFrame,
     bool clearImageFrame = false,
+    ImageFrameResolutionMode? frameResolutionMode,
+    double? contentZoom,
   }) {
     return FrameSettings(
       style: style ?? this.style,
@@ -158,6 +209,8 @@ class FrameSettings {
       transparentBackground:
           transparentBackground ?? this.transparentBackground,
       imageFrame: clearImageFrame ? null : (imageFrame ?? this.imageFrame),
+      frameResolutionMode: frameResolutionMode ?? this.frameResolutionMode,
+      contentZoom: contentZoom ?? this.contentZoom,
     );
   }
 }

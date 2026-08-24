@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_to_gif/models/conversion_settings.dart';
 import 'package:video_to_gif/models/frame_settings.dart';
+import 'package:video_to_gif/models/image_frame.dart';
 import 'package:video_to_gif/models/video_info.dart';
 
 const _video = VideoInfo(
@@ -120,6 +121,153 @@ void main() {
           );
         }
       }
+    });
+  });
+
+  group('moldura de imagem: resolução e zoom', () {
+    final art = ImageFrameLibrary.bundled.first;
+
+    test(
+      'valores padrão de FrameSettings não têm zoom nem resolução nativa',
+      () {
+        const frame = FrameSettings();
+        expect(frame.contentZoom, FrameSettings.defaultContentZoom);
+        expect(
+          frame.frameResolutionMode,
+          ImageFrameResolutionMode.matchAjustar,
+        );
+      },
+    );
+
+    test('contentZoom só é efetivo em Expandir sem cortar', () {
+      for (final mode in [
+        ContentFitMode.auto,
+        ContentFitMode.fill,
+        ContentFitMode.fit,
+      ]) {
+        final frame = FrameSettings(
+          imageFrame: art,
+          contentFit: mode,
+          contentZoom: FrameSettings.maxContentZoom,
+        );
+        expect(
+          frame.effectiveContentZoom,
+          FrameSettings.defaultContentZoom,
+          reason: 'mode=$mode',
+        );
+      }
+
+      final reduced = FrameSettings(
+        imageFrame: art,
+        contentFit: ContentFitMode.expand,
+        contentZoom: FrameSettings.minContentZoom,
+      );
+      final enlarged = FrameSettings(
+        imageFrame: art,
+        contentFit: ContentFitMode.expand,
+        contentZoom: FrameSettings.maxContentZoom,
+      );
+      expect(reduced.effectiveContentZoom, 0.1);
+      expect(enlarged.effectiveContentZoom, 3.0);
+    });
+
+    test('imageFrameCanvasDimensions usa a largura de Ajustar por padrão', () {
+      for (final targetWidth in [160, 320, 480, 800]) {
+        final settings = ConversionSettings(
+          startSeconds: 0,
+          endSeconds: 5,
+          targetWidth: targetWidth,
+          frame: FrameSettings(imageFrame: art),
+        );
+
+        final (contentWidth, _) = settings.contentDimensions(_video);
+        final expectedWidth = contentWidth / art.contentRect.width;
+        final (canvasWidth, _) = settings.imageFrameCanvasDimensions(_video);
+
+        expect(
+          canvasWidth,
+          closeTo(expectedWidth, 2),
+          reason: 'targetWidth=$targetWidth',
+        );
+      }
+    });
+
+    test(
+      'imageFrameCanvasDimensions usa a resolução nativa da arte quando pedido',
+      () {
+        final canvases = <int>{};
+        for (final targetWidth in [160, 320, 480, 800]) {
+          final settings = ConversionSettings(
+            startSeconds: 0,
+            endSeconds: 5,
+            targetWidth: targetWidth,
+            frame: FrameSettings(
+              imageFrame: art,
+              frameResolutionMode: ImageFrameResolutionMode.nativeMax,
+            ),
+          );
+
+          final (canvasWidth, _) = settings.imageFrameCanvasDimensions(_video);
+          canvases.add(canvasWidth);
+        }
+
+        expect(
+          canvases.length,
+          1,
+          reason: 'o canvas no modo nativeMax não deve variar com targetWidth',
+        );
+      },
+    );
+
+    test('resolução nativa é limitada por maxImageFrameNativeWidth', () {
+      final hugeArt = ImageFrameAsset(
+        id: 'teste_gigante',
+        label: 'Foto gigante',
+        source: ImageFrameSource.importedImage,
+        imageFilePath: '/tmp/foto-gigante-inexistente.png',
+        nativeAspectRatio: art.nativeAspectRatio,
+        nativeReferenceWidth: 6000,
+        contentRect: art.contentRect,
+      );
+      final settings = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        frame: FrameSettings(
+          imageFrame: hugeArt,
+          frameResolutionMode: ImageFrameResolutionMode.nativeMax,
+        ),
+      );
+
+      final (canvasWidth, _) = settings.imageFrameCanvasDimensions(_video);
+      expect(
+        canvasWidth,
+        lessThanOrEqualTo(ConversionSettings.maxImageFrameNativeWidth),
+      );
+    });
+
+    test('contentZoom não altera a geometria compartilhada com o FFmpeg', () {
+      final base = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        frame: FrameSettings(imageFrame: art),
+      );
+      final zoomed = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        frame: FrameSettings(
+          imageFrame: art,
+          contentZoom: FrameSettings.maxContentZoom,
+        ),
+      );
+
+      expect(
+        zoomed.imageFrameCanvasDimensions(_video),
+        base.imageFrameCanvasDimensions(_video),
+      );
+      expect(
+        zoomed.imageFrameContentAreaPx(_video),
+        base.imageFrameContentAreaPx(_video),
+      );
     });
   });
 }
