@@ -72,6 +72,7 @@ class _EditorPageState extends State<EditorPage> {
   final _sectionsScrollController = ScrollController();
   final _frameStyleAnchorKey = GlobalKey();
   final _imageFrameAnchorKey = GlobalKey();
+  final _previewAreaKey = GlobalKey();
   List<ImageFrameAsset> _importedImageFrames = [];
 
   late ConversionSettings _settings = widget.initialSettings;
@@ -314,7 +315,10 @@ class _EditorPageState extends State<EditorPage> {
                       controller: _sectionsScrollController,
                       padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
                       children: [
-                        _previewArea(),
+                        KeyedSubtree(
+                          key: _previewAreaKey,
+                          child: _previewArea(),
+                        ),
                         const SizedBox(height: 18),
                         ...sections,
                       ],
@@ -483,9 +487,33 @@ class _EditorPageState extends State<EditorPage> {
         final delta = afterBox.localToGlobal(Offset.zero).dy - targetY;
         if (delta.abs() >= 0.5) {
           final position = _sectionsScrollController.position;
-          final target = (_sectionsScrollController.offset + delta)
+          var target = (_sectionsScrollController.offset + delta)
               .clamp(position.minScrollExtent, position.maxScrollExtent)
               .toDouble();
+
+          // Nunca deixa essa compensação empurrar o topo da prévia (com a
+          // borda da moldura) para fora da tela só para manter o cabeçalho
+          // da seção fixo — ver [_previewAreaKey]. Uma moldura bem mais alta
+          // que a anterior pode exigir mais rolagem do que a prévia tem
+          // altura para ceder sem desaparecer; aqui cede o cabeçalho (que
+          // volta a acompanhar a prévia assim que ela terminar de crescer)
+          // em vez da prévia. Só entra em ação com a prévia já visível — uma
+          // rolagem manual da pessoa para longe dela continua intocada.
+          final previewBox = _previewAreaKey.currentContext
+              ?.findRenderObject();
+          if (previewBox is RenderBox) {
+            final previewTop = previewBox.localToGlobal(Offset.zero).dy;
+            if (previewTop >= 0) {
+              final maxTarget = _sectionsScrollController.offset + previewTop;
+              if (target > maxTarget) {
+                target = maxTarget.clamp(
+                  position.minScrollExtent,
+                  position.maxScrollExtent,
+                );
+              }
+            }
+          }
+
           _sectionsScrollController.jumpTo(target);
         }
       }
