@@ -119,15 +119,17 @@ class FramePainter extends CustomPainter {
   );
 }
 
-/// Rasteriza uma máscara em escala de cinza com antialias para o contorno
-/// arredondado. O FFmpeg reutiliza esta cobertura suave no recorte interno do
-/// vídeo e a converte em transparência binária ditherizada apenas na borda
-/// externa do GIF.
+/// Rasteriza uma máscara em preto e branco para o contorno arredondado, no
+/// tamanho final exato — sem suavização extra. O GIF só suporta
+/// transparência binária (`alpha_threshold` corta em 0 ou 255, nunca um
+/// meio-termo), então qualquer borda em degradê de cinza vira uma faixa de
+/// pixels tratados de forma inconsistente entre um quadro e outro, visível
+/// como uma linha colorida ao redor da moldura. Ver [rasterizeCanvas].
 Future<Uint8List> rasterizeCornerMask(
   int width,
   int height,
   double outerRadius,
-) => rasterizeCanvasSupersampled(width, height, (canvas, size) {
+) => rasterizeCanvas(width, height, (canvas, size) {
   final rect = Offset.zero & size;
   canvas.drawRect(rect, Paint()..color = Colors.black);
   canvas.drawRRect(
@@ -218,49 +220,3 @@ Future<Uint8List> rasterizeCanvas(
   }
 }
 
-/// Rasteriza primeiro em 2× e reduz para o tamanho final com filtragem de
-/// alta qualidade. A etapa extra preserva melhor a cobertura subpixel das
-/// curvas antes de o GIF converter a transparência para uma máscara binária.
-Future<Uint8List> rasterizeCanvasSupersampled(
-  int width,
-  int height,
-  void Function(Canvas canvas, Size size) paint,
-) async {
-  const scale = 2;
-  final highWidth = width * scale;
-  final highHeight = height * scale;
-  final highRecorder = ui.PictureRecorder();
-  final highCanvas = Canvas(highRecorder)..scale(scale.toDouble());
-  paint(highCanvas, Size(width.toDouble(), height.toDouble()));
-  final highPicture = highRecorder.endRecording();
-
-  try {
-    final highImage = await highPicture.toImage(highWidth, highHeight);
-    try {
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      canvas.drawImageRect(
-        highImage,
-        Rect.fromLTWH(0, 0, highWidth.toDouble(), highHeight.toDouble()),
-        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-        Paint()..filterQuality = FilterQuality.high,
-      );
-      final picture = recorder.endRecording();
-      try {
-        final image = await picture.toImage(width, height);
-        try {
-          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          return bytes!.buffer.asUint8List();
-        } finally {
-          image.dispose();
-        }
-      } finally {
-        picture.dispose();
-      }
-    } finally {
-      highImage.dispose();
-    }
-  } finally {
-    highPicture.dispose();
-  }
-}

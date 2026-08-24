@@ -406,6 +406,12 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
+  /// Duração da animação de tamanho da prévia ao trocar de moldura (ver
+  /// [_previewArea]) — também o horizonte de tempo que
+  /// [_updateFrameKeepingAnchorPosition] cobre ao reaplicar a compensação de
+  /// rolagem quadro a quadro.
+  static const _previewTransitionDuration = Duration(milliseconds: 220);
+
   /// Substitui as configurações da moldura, mantendo o resto igual.
   void _updateFrame(FrameSettings next) {
     _update(_settings.copyWith(frame: next));
@@ -414,6 +420,14 @@ class _EditorPageState extends State<EditorPage> {
   /// Atualiza a moldura compensando a variação de altura da prévia. Assim o
   /// início das opções permanece na mesma posição da tela quando a troca
   /// entre moldura procedural e moldura de imagem muda a proporção do vídeo.
+  ///
+  /// A prévia muda de tamanho aos poucos (a [AnimatedSize] de
+  /// [_previewArea]), não de uma vez — então a compensação também precisa
+  /// ser reaplicada quadro a quadro enquanto ela anima, em vez de uma única
+  /// vez. Uma correção única bastava quando a prévia mudava de tamanho
+  /// instantaneamente, mas contra uma mudança gradual ela só corrigia o
+  /// primeiro quadro (quase nenhuma diferença ainda) e deixava a rolagem
+  /// desacompanhar nos quadros seguintes, terminando torta.
   void _updateFrameKeepingAnchorPosition(
     FrameSettings next, {
     required GlobalKey anchorKey,
@@ -426,18 +440,42 @@ class _EditorPageState extends State<EditorPage> {
     _updateFrame(next);
     if (beforeY == null) return;
 
+    _correctAnchorScrollUntilSettled(
+      anchorKey,
+      beforeY,
+      _previewTransitionDuration,
+    );
+  }
+
+  /// Reaplica a compensação de rolagem a cada quadro, por [remaining] a
+  /// partir de agora — cobrindo toda a animação de [_previewArea] — para que
+  /// [anchorKey] termine exatamente na posição [targetY] da tela mesmo com a
+  /// prévia mudando de tamanho aos poucos.
+  void _correctAnchorScrollUntilSettled(
+    GlobalKey anchorKey,
+    double targetY,
+    Duration remaining,
+  ) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_sectionsScrollController.hasClients) return;
       final afterBox = anchorKey.currentContext?.findRenderObject();
-      if (afterBox is! RenderBox) return;
-
-      final delta = afterBox.localToGlobal(Offset.zero).dy - beforeY;
-      if (delta.abs() < 0.5) return;
-      final position = _sectionsScrollController.position;
-      final target = (_sectionsScrollController.offset + delta)
-          .clamp(position.minScrollExtent, position.maxScrollExtent)
-          .toDouble();
-      _sectionsScrollController.jumpTo(target);
+      if (afterBox is RenderBox) {
+        final delta = afterBox.localToGlobal(Offset.zero).dy - targetY;
+        if (delta.abs() >= 0.5) {
+          final position = _sectionsScrollController.position;
+          final target = (_sectionsScrollController.offset + delta)
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+          _sectionsScrollController.jumpTo(target);
+        }
+      }
+      if (remaining > Duration.zero) {
+        _correctAnchorScrollUntilSettled(
+          anchorKey,
+          targetY,
+          remaining - const Duration(milliseconds: 16),
+        );
+      }
     });
   }
 
@@ -445,8 +483,26 @@ class _EditorPageState extends State<EditorPage> {
   /// recorte (é lá que o tamanho do GIF é definido); "Frame" mostra o vídeo
   /// já cortado dentro da moldura escolhida, sem nenhum controle de recorte
   /// — o que a pessoa vê ali é o que vai sair no GIF.
-  Widget _previewArea() =>
-      _tab == _EditorTab.ajustar ? _timelined(_preview()) : _framedPreview();
+  ///
+  /// A [AnimatedSize] existe porque trocar de moldura (ou entre "Moldura" e
+  /// "Moldura de imagem") quase sempre muda a proporção da prévia — cada
+  /// arte de moldura tem sua própria proporção nativa. Sem ela, a mudança de
+  /// altura empurrava tudo abaixo instantaneamente na mesma rolagem — e a
+  /// correção de [_updateFrameKeepingAnchorPosition], que só reagia depois
+  /// de pronto, aparecia como uma tremida. Com a mudança de tamanho gradual,
+  /// a correção acompanha quadro a quadro e nunca precisa de um salto
+  /// grande.
+  Widget _previewArea() {
+    final preview = _tab == _EditorTab.ajustar
+        ? _timelined(_preview())
+        : _framedPreview();
+    return AnimatedSize(
+      duration: _previewTransitionDuration,
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: preview,
+    );
+  }
 
   /// Coloca a linha do tempo como a última camada por cima de [preview].
   /// Assim os controles nunca ficam atrás de uma moldura de imagem nem são
@@ -672,7 +728,7 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Seção "Molduras de imagem": as artes prontas do app, as importadas pelo
+  /// Seção "Moldura de imagem": as artes prontas do app, as importadas pelo
   /// usuário e o botão de importar. Fica numa caixa própria porque é a outra
   /// família de moldura — escolher aqui desativa a de cima, e vice-versa.
   ///
@@ -685,7 +741,7 @@ class _EditorPageState extends State<EditorPage> {
     final hasFixedAspect = _settings.frame.hasFixedAspect;
     return LabeledSection(
       icon: Icons.image_outlined,
-      title: 'Molduras de imagem',
+      title: 'Moldura de imagem',
       value: _settings.frame.imageFrame?.label ?? FrameStyle.none.label,
       hint: 'Escolha uma opção',
       child: Column(
@@ -1331,7 +1387,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Subseção recolhível "Ajuste do conteúdo", aninhada dentro de
-  /// "Molduras de imagem": como o vídeo se encaixa quando a proporção da
+  /// "Moldura de imagem": como o vídeo se encaixa quando a proporção da
   /// moldura escolhida é diferente da do recorte, mais o quanto ele é
   /// ampliado dentro dela. Mesmo padrão de [_collapsibleSubsection] usado
   /// por "Suavização de cor"/"Paleta" em [_colorSection].
