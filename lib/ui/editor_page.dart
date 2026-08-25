@@ -499,8 +499,7 @@ class _EditorPageState extends State<EditorPage> {
           // volta a acompanhar a prévia assim que ela terminar de crescer)
           // em vez da prévia. Só entra em ação com a prévia já visível — uma
           // rolagem manual da pessoa para longe dela continua intocada.
-          final previewBox = _previewAreaKey.currentContext
-              ?.findRenderObject();
+          final previewBox = _previewAreaKey.currentContext?.findRenderObject();
           if (previewBox is RenderBox) {
             final previewTop = previewBox.localToGlobal(Offset.zero).dy;
             if (previewTop >= 0) {
