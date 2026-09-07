@@ -8,6 +8,7 @@ import '../models/conversion_settings.dart';
 import '../models/photo_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../theme_controller.dart';
+import 'collage_page.dart';
 import 'editor_page.dart';
 import 'photo_frame_page.dart';
 
@@ -122,6 +123,71 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Abre o seletor de arquivos permitindo escolher várias fotos de uma vez
+  /// (`FilePicker.pickFiles` com seleção múltipla, ao contrário de
+  /// `_pickPhoto`'s `pickFile` singular) e navega para [CollagePage], onde o
+  /// usuário monta a colagem. Exige pelo menos duas fotos — uma única foto já
+  /// tem sua própria tela dedicada em "Colocar moldura em uma foto".
+  Future<void> _pickPhotosForCollage() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final picked = await FilePicker.pickFiles(
+        type: FileType.image,
+        dialogTitle: 'Escolha as fotos da montagem',
+      );
+
+      if (picked.length < 2) {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = picked.isEmpty
+                ? null
+                : 'Escolha pelo menos duas fotos para montar uma colagem.';
+          });
+        }
+        return;
+      }
+
+      final photos = <PhotoInfo>[];
+      for (final file in picked) {
+        final path = file.path;
+        if (path == null) continue;
+        final bytes = await File(path).readAsBytes();
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        photos.add(
+          PhotoInfo(path: path, width: frame.image.width, height: frame.image.height),
+        );
+        frame.image.dispose();
+      }
+      if (!mounted) return;
+
+      if (photos.length < 2) {
+        setState(() {
+          _loading = false;
+          _error = 'Escolha pelo menos duas fotos para montar uma colagem.';
+        });
+        return;
+      }
+
+      setState(() => _loading = false);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => CollagePage(photos: photos)),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Não foi possível abrir essas fotos.';
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -222,6 +288,12 @@ class _HomePageState extends State<HomePage> {
                   onPressed: _loading ? null : _pickPhoto,
                   icon: const Icon(Icons.photo_filter_outlined),
                   label: const Text('Colocar moldura em uma foto'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _loading ? null : _pickPhotosForCollage,
+                  icon: const Icon(Icons.dashboard_customize_outlined),
+                  label: const Text('Montagem de fotos'),
                 ),
                 const SizedBox(height: 28),
                 const _SupportedFormatsCard(),
