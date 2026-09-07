@@ -95,6 +95,12 @@ How this works under the hood is documented in
 - **Color quality** — palette of 64, 128 or 256 colors, five dithering
   levels and three palette strategies
 - **Looping** — infinite loop or play once
+- **Frame** — decorate the GIF with a procedural border (thin, medium or
+  thick, with custom color and corner rounding) or a phone-mockup image
+  frame (bundled SVGs, or your own image imported with an
+  automatically-detected transparent window), with content-fit modes
+  (auto, fill, fit, expand with zoom) for when the video doesn't match the
+  frame's aspect ratio
 - **Two-pass conversion** (`palettegen` + `paletteuse`), which is what
   separates a good-looking GIF from a "washed out" one
 - **Progress with cancellation**
@@ -147,7 +153,7 @@ flutter build apk --release
 
 The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. To
 build split APKs per ABI instead of a single universal one (smaller
-downloads, closer to what the [Release](https://github.com/lianeheidemann/aplicativo-video-to-gif/releases) page ships), add `--split-per-abi`:
+downloads, closer to what the [Release](https://github.com/lianeheidemann/video-to-gif/releases) page ships), add `--split-per-abi`:
 
 ```bash
 flutter build apk --release --split-per-abi
@@ -160,27 +166,37 @@ lib/
 ├── main.dart                       # entry point
 ├── licenses.dart                   # FFmpeg license notice (LGPL)
 ├── theme.dart                      # Material 3 theme and verdict colors
+├── theme_controller.dart           # light/dark mode, persisted
 ├── models/
 │   ├── video_info.dart             # metadata read via FFprobe
 │   ├── conversion_settings.dart    # everything the user controls
-│   └── size_estimate.dart          # estimate result and classification
+│   ├── size_estimate.dart          # estimate result and classification
+│   ├── frame_settings.dart         # procedural frame style/geometry
+│   └── image_frame.dart            # image-frame assets and bundled library
 ├── services/
 │   ├── size_estimator.dart         # the size-prediction model (pure Dart)
 │   ├── ffmpeg_service.dart         # reading, measuring and converting
-│   └── output_service.dart         # gallery and sharing
+│   ├── output_service.dart         # gallery and sharing
+│   └── imported_frame_store.dart   # import/persist user image frames
 └── ui/
     ├── home_page.dart              # video selection
-    ├── editor_page.dart            # controls + preview with cropping
+    ├── editor_page.dart            # controls + preview, "Ajustar"/"Frame" tabs
     ├── converting_page.dart        # progress and cancellation
     ├── result_page.dart            # finished GIF, save and share
     └── widgets/
         ├── labeled_section.dart    # expandable card and option chips
-        └── size_panel.dart         # size and compatibility panel
+        ├── size_panel.dart         # size and compatibility panel
+        ├── cropped_view.dart       # crop preview for the "Frame" tab
+        └── frame_painter.dart      # draws procedural/image frame geometry
 
 test/
-├── size_estimator_test.dart        # 30 tests for the estimation model
+├── size_estimator_test.dart           # 30 tests for the estimation model
 ├── size_estimator_medicoes_test.dart  # 7 tests against real measurements
-└── size_panel_test.dart            # 10 tests for the size panel
+├── size_panel_test.dart               # 11 tests for the size panel
+├── conversion_settings_test.dart      # 14 tests for frame/canvas geometry
+├── cropped_view_test.dart             # 4 tests for the "Frame" tab crop preview
+├── frame_painter_test.dart            # 4 tests for frame drawing/masking
+└── frame_section_test.dart            # 8 tests for the frame picker UI
 
 tool/
 ├── gerar_icones.py                 # generates the app icon and adaptive icon
@@ -196,10 +212,12 @@ FFmpeg — which is why it can be fully tested without an emulator.
 
 ## Quality
 
-There are **47 automated tests**: 30 covering the estimation model (output
+There are **78 automated tests**: 30 covering the estimation model (output
 dimensions, frame count, monotonicity, calibration, automatic adjustment to
-a target and classification), 10 covering the size panel, and 7 comparing
-the prediction against **files FFmpeg actually generated**.
+a target and classification), 11 covering the size panel, 30 covering the
+frame feature (canvas geometry, crop preview, frame drawing/masking and the
+frame picker UI), and 7 comparing the prediction against **files FFmpeg
+actually generated**.
 
 The last group deserves a special mention: `tool/medir_precisao.py`
 produces five synthetic videos ranging from a static title card to
@@ -233,6 +251,7 @@ on any device.
 | Conversion | `ffmpeg_kit_flutter_new_min` ([FFmpeg](https://github.com/FFmpeg/FFmpeg) LGPL) | variant without GPL components, allows closed-source distribution |
 | File picking | `file_picker` | uses the system picker, no media permission required |
 | Preview | `video_player` | shows the clip and crop frame before converting |
+| Frame art | `flutter_svg` | renders the bundled and imported image frames without losing sharpness at any output resolution |
 | Output | `gal` + `share_plus` | save to gallery and share |
 
 ## License
