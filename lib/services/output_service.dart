@@ -7,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 class OutputService {
   const OutputService();
 
-  static const _albumName = 'Vídeo em GIF';
+  static const _albumName = 'Video to GIF';
 
   /// Salva na galeria do aparelho, pedindo permissão se ainda não tiver.
   ///
@@ -19,7 +19,7 @@ class OutputService {
       if (!granted) {
         throw OutputException(
           'Sem permissão para salvar na galeria. Você pode liberar em '
-          'Ajustes > Apps > Vídeo em GIF > Permissões.',
+          'Ajustes > Apps > Video to GIF > Permissões.',
         );
       }
     }
@@ -38,7 +38,7 @@ class OutputService {
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(gif.path, mimeType: 'image/gif')],
-        text: 'GIF feito com o app Vídeo em GIF',
+        text: 'GIF feito com o app Video to GIF',
       ),
     );
   }

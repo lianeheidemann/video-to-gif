@@ -38,7 +38,7 @@
         android:maxSdkVersion="28" />
 
     <application
-        android:label="Vídeo em GIF"
+        android:label="Video to GIF"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="false">

@@ -97,7 +97,7 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.info_outline),
             onPressed: () => showAboutDialog(
               context: context,
-              applicationName: 'Vídeo em GIF',
+              applicationName: 'Video to GIF',
               applicationVersion: '1.0.0',
               applicationLegalese:
                   'Conversão feita no próprio aparelho com FFmpeg (LGPL). '
@@ -124,7 +124,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'Vídeo em GIF',
+                  'Video to GIF',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,

@@ -154,7 +154,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.versao.outputs.nome }}
-          name: Vídeo em GIF ${{ steps.versao.outputs.nome }}
+          name: Video to GIF ${{ steps.versao.outputs.nome }}
           files: entrega/*
           fail_on_unmatched_files: true
           body: |
