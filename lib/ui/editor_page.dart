@@ -2541,8 +2541,6 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Velocidade',
       value: '${_formatSpeed(_settings.speed)}x',
       originalValue: '${_formatSpeed(1.0)}x',
-      hint:
-          'Acelerar encurta o GIF e economiza espaço; velocidades menores aumentam a duração.',
       child: Column(
         children: [
           Slider(
@@ -2592,8 +2590,6 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Resolução',
       value: '$width×$height',
       originalValue: '${_video.width}×${_video.height}',
-      hint:
-          'Reduzir a largura diminui significativamente o tamanho do arquivo.',
       tip:
           '720 px preserva melhor textos e cantos de molduras; '
           '480 px gera arquivos menores.',
