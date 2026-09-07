@@ -15,9 +15,15 @@ enum ImageFrameSource {
   /// Um dos SVGs empacotados com o app, em `assets/frame`.
   bundledSvg,
 
-  /// Uma imagem escolhida pelo usuário na galeria, copiada para a pasta de
-  /// dados do app.
+  /// Um PNG escolhido pelo usuário na galeria antes de o import passar a
+  /// exigir SVG, copiado para a pasta de dados do app. Mantido só para as
+  /// molduras já importadas continuarem funcionando; não é mais possível
+  /// criar uma nova entrada assim pelo seletor de arquivos.
   importedImage,
+
+  /// Um SVG escolhido pelo usuário no aparelho, copiado para a pasta de
+  /// dados do app — mesmo formato das artes empacotadas.
+  importedSvg,
 }
 
 /// Uma moldura de imagem: um mockup (ex.: silhueta de celular) desenhado ao
@@ -38,10 +44,11 @@ class ImageFrameAsset {
     this.imageFilePath,
   }) : assert(
          (source == ImageFrameSource.bundledSvg && svgAssetPath != null) ||
-             (source == ImageFrameSource.importedImage &&
+             ((source == ImageFrameSource.importedImage ||
+                     source == ImageFrameSource.importedSvg) &&
                  imageFilePath != null),
          'svgAssetPath é obrigatório para bundledSvg; '
-         'imageFilePath é obrigatório para importedImage.',
+         'imageFilePath é obrigatório para importedImage/importedSvg.',
        );
 
   /// Estável entre execuções para as artes empacotadas; gerado a partir do
@@ -69,8 +76,9 @@ class ImageFrameAsset {
   /// Caminho do asset (`assets/frame/...`), quando [source] é [ImageFrameSource.bundledSvg].
   final String? svgAssetPath;
 
-  /// Caminho absoluto do PNG copiado localmente, quando [source] é
-  /// [ImageFrameSource.importedImage].
+  /// Caminho absoluto do arquivo copiado localmente — um PNG quando
+  /// [source] é [ImageFrameSource.importedImage] (legado), ou um SVG
+  /// quando é [ImageFrameSource.importedSvg].
   final String? imageFilePath;
 }
 

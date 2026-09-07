@@ -495,17 +495,23 @@ class FfmpegService {
     final (canvasWidth, canvasHeight) = settings.imageFrameCanvasDimensions(
       video,
     );
-    final bytes = asset.source == ImageFrameSource.bundledSvg
-        ? await rasterizeSvgAsset(
-            asset.svgAssetPath!,
-            canvasWidth,
-            canvasHeight,
-          )
-        : await rasterizeImportedImage(
-            asset.imageFilePath!,
-            canvasWidth,
-            canvasHeight,
-          );
+    final bytes = switch (asset.source) {
+      ImageFrameSource.bundledSvg => await rasterizeSvgAsset(
+        asset.svgAssetPath!,
+        canvasWidth,
+        canvasHeight,
+      ),
+      ImageFrameSource.importedSvg => await rasterizeSvgFile(
+        asset.imageFilePath!,
+        canvasWidth,
+        canvasHeight,
+      ),
+      ImageFrameSource.importedImage => await rasterizeImportedImage(
+        asset.imageFilePath!,
+        canvasWidth,
+        canvasHeight,
+      ),
+    };
 
     final path = '${dir.path}/moldura_img_$stamp.png';
     await File(path).writeAsBytes(bytes);

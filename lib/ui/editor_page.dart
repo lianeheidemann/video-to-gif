@@ -639,7 +639,8 @@ class _EditorPageState extends State<EditorPage> {
       _settings.crop?.aspectRatio ?? _video.aspectRatio;
 
   /// Prévia ao vivo de uma moldura de imagem: a arte (SVG das prontas do
-  /// app, ou PNG importado) sempre desenhada na sua proporção nativa (nunca
+  /// app ou importado pelo usuário, ou PNG importado no formato legado)
+  /// sempre desenhada na sua proporção nativa (nunca
   /// distorcida), com o vídeo já cortado posicionado e ajustado (conforme
   /// [ContentFitMode]) exatamente dentro da janela de conteúdo
   /// ([ImageFrameAsset.contentRect]) por baixo dela, e ampliado conforme
@@ -673,12 +674,7 @@ class _EditorPageState extends State<EditorPage> {
               ),
               Positioned.fill(
                 child: IgnorePointer(
-                  child: asset.source == ImageFrameSource.bundledSvg
-                      ? SvgPicture.asset(asset.svgAssetPath!, fit: BoxFit.fill)
-                      : Image.file(
-                          File(asset.imageFilePath!),
-                          fit: BoxFit.fill,
-                        ),
+                  child: _imageFrameArtwork(asset, fit: BoxFit.fill),
                 ),
               ),
             ],
@@ -1084,13 +1080,31 @@ class _EditorPageState extends State<EditorPage> {
       selected: selected,
       padding: const EdgeInsets.all(6),
       onTap: () => _selectImageFrame(asset),
-      onLongPress: asset.source == ImageFrameSource.importedImage
-          ? () => _confirmRemoveImportedFrame(asset)
-          : null,
-      child: asset.source == ImageFrameSource.bundledSvg
-          ? SvgPicture.asset(asset.svgAssetPath!, fit: BoxFit.contain)
-          : Image.file(File(asset.imageFilePath!), fit: BoxFit.contain),
+      onLongPress: asset.source == ImageFrameSource.bundledSvg
+          ? null
+          : () => _confirmRemoveImportedFrame(asset),
+      child: _imageFrameArtwork(asset, fit: BoxFit.contain),
     );
+  }
+
+  /// Desenha a arte de uma moldura de imagem, seja ela um SVG empacotado no
+  /// app, um SVG importado pelo usuário, ou (formato legado) um PNG
+  /// importado antes de o import passar a exigir SVG.
+  Widget _imageFrameArtwork(ImageFrameAsset asset, {required BoxFit fit}) {
+    return switch (asset.source) {
+      ImageFrameSource.bundledSvg => SvgPicture.asset(
+        asset.svgAssetPath!,
+        fit: fit,
+      ),
+      ImageFrameSource.importedSvg => SvgPicture.file(
+        File(asset.imageFilePath!),
+        fit: fit,
+      ),
+      ImageFrameSource.importedImage => Image.file(
+        File(asset.imageFilePath!),
+        fit: fit,
+      ),
+    };
   }
 
   Widget _importFrameThumb() {
@@ -1142,9 +1156,9 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Abre o seletor de arquivos para importar uma imagem de moldura própria
-  /// (PNG com uma janela transparente real), e a seleciona em caso de
-  /// sucesso.
+  /// Abre o seletor de arquivos para importar um SVG de moldura próprio
+  /// (mesmo formato das prontas, com uma janela transparente real), e o
+  /// seleciona em caso de sucesso.
   Future<void> _importFrameImage() async {
     try {
       final asset = await _importedFrameStore.importFrame();
