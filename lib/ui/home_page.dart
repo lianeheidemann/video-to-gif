@@ -1,10 +1,15 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/conversion_settings.dart';
+import '../models/photo_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../theme_controller.dart';
 import 'editor_page.dart';
+import 'photo_frame_page.dart';
 
 /// Tela inicial: apresenta o app e deixa o usuário escolher um vídeo para
 /// começar a edição.
@@ -66,6 +71,52 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           _loading = false;
           _error = 'Não foi possível abrir este vídeo.';
+        });
+      }
+    }
+  }
+
+  /// Abre o seletor de arquivos para uma foto, decodifica as dimensões
+  /// nativas localmente (sem FFprobe — não há nada além do tamanho para
+  /// sondar numa imagem estática) e navega para [PhotoFramePage].
+  Future<void> _pickPhoto() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final picked = await FilePicker.pickFile(
+        type: FileType.image,
+        dialogTitle: 'Escolha uma foto',
+      );
+
+      final path = picked?.path;
+      if (path == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+
+      final bytes = await File(path).readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final photo = PhotoInfo(
+        path: path,
+        width: frame.image.width,
+        height: frame.image.height,
+      );
+      frame.image.dispose();
+      if (!mounted) return;
+
+      setState(() => _loading = false);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => PhotoFramePage(photo: photo)),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Não foi possível abrir esta foto.';
         });
       }
     }
@@ -165,6 +216,12 @@ class _HomePageState extends State<HomePage> {
                         )
                       : const Icon(Icons.video_library_outlined),
                   label: Text(_loading ? 'Abrindo…' : 'Escolher vídeo'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _loading ? null : _pickPhoto,
+                  icon: const Icon(Icons.photo_filter_outlined),
+                  label: const Text('Colocar moldura em uma foto'),
                 ),
                 const SizedBox(height: 28),
                 const _SupportedFormatsCard(),
