@@ -165,7 +165,32 @@ Future<Uint8List> rasterizeSvgAsset(
   }
 }
 
-/// Rasteriza a imagem importada em [filePath] para um PNG de exatamente
+/// Rasteriza o SVG do arquivo [filePath] para um PNG de exatamente
+/// [width]x[height] pixels — mesma ideia de [rasterizeSvgAsset], mas para um
+/// SVG escolhido pelo usuário no aparelho em vez de um asset empacotado no
+/// app ([SvgFileLoader] em vez de [SvgAssetLoader]).
+Future<Uint8List> rasterizeSvgFile(
+  String filePath,
+  int width,
+  int height,
+) async {
+  final loader = SvgFileLoader(File(filePath));
+  final pictureInfo = await vg.loadPicture(loader, null);
+  try {
+    return await rasterizeCanvas(width, height, (canvas, size) {
+      canvas.scale(
+        size.width / pictureInfo.size.width,
+        size.height / pictureInfo.size.height,
+      );
+      canvas.drawPicture(pictureInfo.picture);
+    });
+  } finally {
+    pictureInfo.picture.dispose();
+  }
+}
+
+/// Rasteriza a imagem PNG importada (formato legado, de antes do import
+/// passar a exigir SVG) em [filePath] para um PNG de exatamente
 /// [width]x[height] pixels, com reamostragem de alta qualidade — mesma
 /// necessidade de nitidez em qualquer resolução de saída que
 /// [rasterizeSvgAsset], mas a partir de um arquivo bitmap já existente em

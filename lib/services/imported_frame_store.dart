@@ -4,10 +4,12 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/image_frame.dart';
+import '../ui/widgets/frame_painter.dart' show rasterizeCanvas;
 
 /// Erro ao importar uma imagem de moldura própria — mensagem já pronta em
 /// português para mostrar ao usuário.
@@ -20,9 +22,9 @@ class ImportedFrameException implements Exception {
   String toString() => 'ImportedFrameException: $message';
 }
 
-/// Importa, detecta a janela transparente e persiste molduras de imagem
-/// escolhidas pelo usuário na galeria — a contraparte de [ImageFrameLibrary]
-/// (que só lista as molduras prontas do app).
+/// Importa, detecta a janela transparente e persiste molduras de imagem em
+/// SVG escolhidas pelo usuário no aparelho — a contraparte de
+/// [ImageFrameLibrary] (que só lista as molduras prontas do app).
 class ImportedFrameStore {
   static const _prefsKey = 'importedFrames';
 
@@ -31,46 +33,77 @@ class ImportedFrameStore {
   /// mesmo numa foto de altíssima resolução.
   static const _detectionMaxSide = 300;
 
-  /// Abre o seletor de arquivos restrito a PNG (precisa ter um canal alfa
-  /// de verdade para a janela de conteúdo ser detectável), detecta o
-  /// retângulo de conteúdo, copia o arquivo para a pasta de dados do app e
-  /// persiste os metadados. Lança [ImportedFrameException] com uma mensagem
-  /// pronta para mostrar ao usuário quando a imagem não serve como moldura.
+  /// Abre o seletor de arquivos restrito a SVG (mesmo formato das molduras
+  /// que já vêm no app), detecta o retângulo de conteúdo renderizando o
+  /// vetor para um bitmap temporário e rodando a mesma detecção usada para
+  /// PNG, copia o arquivo original para a pasta de dados do app e persiste
+  /// os metadados. Lança [ImportedFrameException] com uma mensagem pronta
+  /// para mostrar ao usuário quando o arquivo não serve como moldura.
   Future<ImageFrameAsset> importFrame() async {
     final picked = await FilePicker.pickFile(
       type: FileType.custom,
-      allowedExtensions: ['png'],
-      dialogTitle: 'Escolha uma imagem de moldura (PNG com fundo transparente)',
+      allowedExtensions: ['svg'],
+      dialogTitle: 'Escolha um SVG de moldura (mesmo formato das prontas)',
     );
     final path = picked?.path;
     if (path == null) {
-      throw ImportedFrameException('Nenhuma imagem selecionada.');
+      throw ImportedFrameException('Nenhum arquivo selecionado.');
     }
 
     final bytes = await File(path).readAsBytes();
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
     late final NormalizedRect contentRect;
     late final double aspectRatio;
     late final int nativeWidth;
+
+    final PictureInfo pictureInfo;
     try {
-      final raw = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (raw == null) {
-        throw ImportedFrameException('Não foi possível ler esta imagem.');
+      pictureInfo = await vg.loadPicture(SvgFileLoader(File(path)), null);
+    } catch (_) {
+      throw ImportedFrameException(
+        'Não foi possível ler este arquivo como SVG.',
+      );
+    }
+    try {
+      final nativeSize = pictureInfo.size;
+      if (nativeSize.width <= 0 || nativeSize.height <= 0) {
+        throw ImportedFrameException('Este SVG não tem um tamanho válido.');
       }
-      contentRect = _detectContentRect(raw, image.width, image.height);
-      aspectRatio = image.width / image.height;
-      nativeWidth = image.width;
+      aspectRatio = nativeSize.width / nativeSize.height;
+      nativeWidth = nativeSize.width.round();
+
+      final pngBytes = await rasterizeCanvas(
+        nativeWidth < 1 ? 1 : nativeWidth,
+        nativeSize.height.round() < 1 ? 1 : nativeSize.height.round(),
+        (canvas, size) {
+          canvas.scale(
+            size.width / nativeSize.width,
+            size.height / nativeSize.height,
+          );
+          canvas.drawPicture(pictureInfo.picture);
+        },
+      );
+
+      final codec = await ui.instantiateImageCodec(pngBytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      try {
+        final raw = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        if (raw == null) {
+          throw ImportedFrameException('Não foi possível ler este SVG.');
+        }
+        contentRect = _detectContentRect(raw, image.width, image.height);
+      } finally {
+        image.dispose();
+      }
     } finally {
-      image.dispose();
+      pictureInfo.picture.dispose();
     }
 
     final supportDir = await getApplicationSupportDirectory();
     final framesDir = Directory('${supportDir.path}/imported_frames');
     await framesDir.create(recursive: true);
     final stamp = DateTime.now().millisecondsSinceEpoch;
-    final destPath = '${framesDir.path}/$stamp.png';
+    final destPath = '${framesDir.path}/$stamp.svg';
     await File(destPath).writeAsBytes(bytes);
 
     final rawLabel = picked!.name;
@@ -80,7 +113,7 @@ class ImportedFrameStore {
     final asset = ImageFrameAsset(
       id: 'imported_$stamp',
       label: label.isEmpty ? 'Moldura importada' : label,
-      source: ImageFrameSource.importedImage,
+      source: ImageFrameSource.importedSvg,
       imageFilePath: destPath,
       nativeAspectRatio: aspectRatio,
       nativeReferenceWidth: nativeWidth,
@@ -133,6 +166,7 @@ class ImportedFrameStore {
   String _encode(ImageFrameAsset asset) => jsonEncode({
     'id': asset.id,
     'label': asset.label,
+    'source': asset.source.name,
     'filePath': asset.imageFilePath,
     'aspect': asset.nativeAspectRatio,
     'nativeWidth': asset.nativeReferenceWidth,
@@ -145,10 +179,16 @@ class ImportedFrameStore {
   ImageFrameAsset? _decode(String entry) {
     try {
       final map = jsonDecode(entry) as Map<String, dynamic>;
+      // Entradas salvas antes de existir o campo `source` são sempre PNGs
+      // importados no formato antigo (o único que existia então).
+      final source = ImageFrameSource.values.firstWhere(
+        (s) => s.name == map['source'],
+        orElse: () => ImageFrameSource.importedImage,
+      );
       return ImageFrameAsset(
         id: map['id'] as String,
         label: map['label'] as String,
-        source: ImageFrameSource.importedImage,
+        source: source,
         imageFilePath: map['filePath'] as String,
         nativeAspectRatio: (map['aspect'] as num).toDouble(),
         // Molduras importadas antes deste campo existir nunca tiveram a

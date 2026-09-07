@@ -552,22 +552,21 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Coloca a linha do tempo como a última camada por cima de [preview].
-  /// Assim os controles nunca ficam atrás de uma moldura de imagem nem são
-  /// reduzidos para caber na janela dela.
+  /// Coloca a linha do tempo como um bloco abaixo de [preview], em vez de
+  /// sobreposta por cima do vídeo — assim os gestos dela nunca invadem a
+  /// área de recorte, e por ser irmã (não filha do `Stack`/`AspectRatio` do
+  /// preview) ela também nunca fica atrás de uma moldura de imagem nem é
+  /// reduzida para caber na janela dela.
   Widget _timelined(Widget preview) {
     final player = _player;
     if (player == null || !player.value.isInitialized) return preview;
 
-    return Stack(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         preview,
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _previewTimelineOverlay(player),
-        ),
+        const SizedBox(height: 10),
+        _previewTimelineOverlay(player),
       ],
     );
   }
@@ -619,11 +618,12 @@ class _EditorPageState extends State<EditorPage> {
     return _timelined(framedVideo);
   }
 
-  /// Fundo opaco da linha do tempo, exibido por cima do vídeo e de qualquer
-  /// moldura para preservar a leitura e os gestos em todas as opções.
+  /// Cartão escuro da linha do tempo, exibido abaixo do vídeo (e de
+  /// qualquer moldura) para preservar a leitura e os gestos em todas as
+  /// opções.
   Widget _previewTimelineOverlay(VideoPlayerController player) {
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+      borderRadius: const BorderRadius.all(Radius.circular(22)),
       child: ColoredBox(
         color: const Color(0xF0000000),
         child: _previewTimeline(player),
@@ -639,7 +639,8 @@ class _EditorPageState extends State<EditorPage> {
       _settings.crop?.aspectRatio ?? _video.aspectRatio;
 
   /// Prévia ao vivo de uma moldura de imagem: a arte (SVG das prontas do
-  /// app, ou PNG importado) sempre desenhada na sua proporção nativa (nunca
+  /// app ou importado pelo usuário, ou PNG importado no formato legado)
+  /// sempre desenhada na sua proporção nativa (nunca
   /// distorcida), com o vídeo já cortado posicionado e ajustado (conforme
   /// [ContentFitMode]) exatamente dentro da janela de conteúdo
   /// ([ImageFrameAsset.contentRect]) por baixo dela, e ampliado conforme
@@ -673,12 +674,7 @@ class _EditorPageState extends State<EditorPage> {
               ),
               Positioned.fill(
                 child: IgnorePointer(
-                  child: asset.source == ImageFrameSource.bundledSvg
-                      ? SvgPicture.asset(asset.svgAssetPath!, fit: BoxFit.fill)
-                      : Image.file(
-                          File(asset.imageFilePath!),
-                          fit: BoxFit.fill,
-                        ),
+                  child: _imageFrameArtwork(asset, fit: BoxFit.fill),
                 ),
               ),
             ],
@@ -1084,13 +1080,31 @@ class _EditorPageState extends State<EditorPage> {
       selected: selected,
       padding: const EdgeInsets.all(6),
       onTap: () => _selectImageFrame(asset),
-      onLongPress: asset.source == ImageFrameSource.importedImage
-          ? () => _confirmRemoveImportedFrame(asset)
-          : null,
-      child: asset.source == ImageFrameSource.bundledSvg
-          ? SvgPicture.asset(asset.svgAssetPath!, fit: BoxFit.contain)
-          : Image.file(File(asset.imageFilePath!), fit: BoxFit.contain),
+      onLongPress: asset.source == ImageFrameSource.bundledSvg
+          ? null
+          : () => _confirmRemoveImportedFrame(asset),
+      child: _imageFrameArtwork(asset, fit: BoxFit.contain),
     );
+  }
+
+  /// Desenha a arte de uma moldura de imagem, seja ela um SVG empacotado no
+  /// app, um SVG importado pelo usuário, ou (formato legado) um PNG
+  /// importado antes de o import passar a exigir SVG.
+  Widget _imageFrameArtwork(ImageFrameAsset asset, {required BoxFit fit}) {
+    return switch (asset.source) {
+      ImageFrameSource.bundledSvg => SvgPicture.asset(
+        asset.svgAssetPath!,
+        fit: fit,
+      ),
+      ImageFrameSource.importedSvg => SvgPicture.file(
+        File(asset.imageFilePath!),
+        fit: fit,
+      ),
+      ImageFrameSource.importedImage => Image.file(
+        File(asset.imageFilePath!),
+        fit: fit,
+      ),
+    };
   }
 
   Widget _importFrameThumb() {
@@ -1142,9 +1156,9 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Abre o seletor de arquivos para importar uma imagem de moldura própria
-  /// (PNG com uma janela transparente real), e a seleciona em caso de
-  /// sucesso.
+  /// Abre o seletor de arquivos para importar um SVG de moldura próprio
+  /// (mesmo formato das prontas, com uma janela transparente real), e o
+  /// seleciona em caso de sucesso.
   Future<void> _importFrameImage() async {
     try {
       final asset = await _importedFrameStore.importFrame();

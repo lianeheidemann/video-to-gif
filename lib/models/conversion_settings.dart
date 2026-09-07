@@ -143,7 +143,21 @@ class ConversionSettings {
 
   /// Presets exibidos no editor redesenhado.
   static const fpsOptions = <int>[5, 8, 10, 12, 15, 20, 24];
-  static const widthOptions = <int>[160, 240, 320, 400, 480, 640, 720, 800];
+  static const widthOptions = <int>[
+    160,
+    240,
+    320,
+    400,
+    480,
+    640,
+    720,
+    800,
+    960,
+    1080,
+    1280,
+    1600,
+    1920,
+  ];
   static const colorOptions = <int>[32, 64, 96, 128, 192, 256];
   static const primaryColorOptions = <int>[64, 128, 256];
   static const minSpeed = 0.25;
@@ -155,13 +169,6 @@ class ConversionSettings {
   /// a rasterização da arte e o encode do GIF lentos/pesados sem ganho
   /// perceptível (GIFs raramente são vistos em telas grandes).
   static const maxImageFrameNativeWidth = 1600;
-
-  /// Piso de largura do canvas para uma moldura procedural ativa — ver
-  /// [contentDimensions]. Sem ele, um vídeo de origem menor que a largura
-  /// escolhida em "Resolução" limitava a borda e o arredondamento dos
-  /// cantos a poucos pixels, saindo serrilhados (espessura/raio são
-  /// proporcionais ao canvas, ver [FrameSettings]).
-  static const minFramedCanvasWidth = 480;
 
   /// Duração do trecho selecionado no vídeo original, antes de aplicar a
   /// velocidade.
@@ -190,8 +197,8 @@ class ConversionSettings {
   /// nítido), o canvas é o que define a espessura/arredondamento da borda
   /// em pixels — um vídeo bem menor que a largura escolhida em "Resolução"
   /// prendia a moldura a poucos pixels e o arredondamento saía serrilhado.
-  /// Nesse caso o canvas sobe até [minFramedCanvasWidth], nunca além da
-  /// largura que a pessoa escolheu (`targetWidth`).
+  /// Nesse caso o canvas acompanha a largura escolhida (`targetWidth`)
+  /// diretamente, para a moldura sempre refletir a Resolução selecionada.
   (int, int) contentDimensions(VideoInfo video) {
     final srcWidth = crop?.width ?? video.width;
     final srcHeight = crop?.height ?? video.height;
@@ -201,10 +208,7 @@ class ConversionSettings {
     final proceduralFrameActive =
         frame.style != FrameStyle.none && frame.imageFrame == null;
     if (proceduralFrameActive && srcWidth < targetWidth) {
-      final floor = minFramedCanvasWidth < targetWidth
-          ? minFramedCanvasWidth
-          : targetWidth;
-      if (w < floor) w = floor;
+      w = targetWidth;
     }
     if (w < 2) w = 2;
     var h = (w * srcHeight / srcWidth).round();
