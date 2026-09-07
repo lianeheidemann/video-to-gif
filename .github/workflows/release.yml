@@ -150,6 +150,7 @@ jobs:
           body: |
             ## Novidades
 
+            - Agora é possível salvar as conversões como **WebP animado**, além de GIF.
             - Agora o aplicativo também permite **adicionar molduras em fotos**, além das molduras já disponíveis no fluxo de vídeo/GIF.
             - Nova tela dedicada para selecionar uma foto, escolher a moldura, ajustar a composição e exportar o resultado como imagem.
 
