@@ -89,12 +89,19 @@ How this works under the hood is documented in
   resizing via the four corner handles directly on the preview and bars to
   reposition the crop
 - **Speed** — 0.25x (slow motion) to 2x
-- **Resolution** — from 160 px to 800 px wide, only offering options that
-  don't upscale the original video
+- **Resolution** — from 160 px to 1920 px wide, only offering options that
+  don't upscale the original video (a resolution above the source width is
+  disabled, unless a procedural frame needs the extra canvas for a sharp
+  border)
 - **Frame rate** — 5, 8, 10, 12, 15, 20 or 24
 - **Color quality** — palette of 64, 128 or 256 colors, five dithering
   levels and three palette strategies
 - **Looping** — infinite loop or play once
+- **Frame styles** — none, thin, medium or thick, drawn procedurally around
+  the GIF with proportional border thickness and corner rounding
+- **Image frames** — phone mockups (SVG art with a real transparent
+  window) to frame the GIF inside, either one of the bundled designs or
+  your own SVG, imported and auto-detected the same way
 - **Two-pass conversion** (`palettegen` + `paletteuse`), which is what
   separates a good-looking GIF from a "washed out" one
 - **Progress with cancellation**
@@ -147,7 +154,7 @@ flutter build apk --release
 
 The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. To
 build split APKs per ABI instead of a single universal one (smaller
-downloads, closer to what the [Release](https://github.com/lianeheidemann/aplicativo-video-to-gif/releases) page ships), add `--split-per-abi`:
+downloads, closer to what the [Release](https://github.com/lianeheidemann/video-to-gif/releases) page ships), add `--split-per-abi`:
 
 ```bash
 flutter build apk --release --split-per-abi
@@ -160,14 +167,18 @@ lib/
 ├── main.dart                       # entry point
 ├── licenses.dart                   # FFmpeg license notice (LGPL)
 ├── theme.dart                      # Material 3 theme and verdict colors
+├── theme_controller.dart           # persisted light/dark mode toggle
 ├── models/
 │   ├── video_info.dart             # metadata read via FFprobe
 │   ├── conversion_settings.dart    # everything the user controls
-│   └── size_estimate.dart          # estimate result and classification
+│   ├── size_estimate.dart          # estimate result and classification
+│   ├── frame_settings.dart         # procedural frame styles (thin/medium/thick)
+│   └── image_frame.dart            # image-frame assets (bundled + imported)
 ├── services/
 │   ├── size_estimator.dart         # the size-prediction model (pure Dart)
 │   ├── ffmpeg_service.dart         # reading, measuring and converting
-│   └── output_service.dart         # gallery and sharing
+│   ├── output_service.dart         # gallery and sharing
+│   └── imported_frame_store.dart   # import/persist a user's own SVG frame
 └── ui/
     ├── home_page.dart              # video selection
     ├── editor_page.dart            # controls + preview with cropping
@@ -175,12 +186,18 @@ lib/
     ├── result_page.dart            # finished GIF, save and share
     └── widgets/
         ├── labeled_section.dart    # expandable card and option chips
-        └── size_panel.dart         # size and compatibility panel
+        ├── size_panel.dart         # size and compatibility panel
+        ├── cropped_view.dart       # renders content already cropped, for the Frame tab
+        └── frame_painter.dart      # draws/rasterizes procedural and image frames
 
 test/
 ├── size_estimator_test.dart        # 30 tests for the estimation model
-├── size_estimator_medicoes_test.dart  # 7 tests against real measurements
-└── size_panel_test.dart            # 10 tests for the size panel
+├── size_estimator_medicoes_test.dart  # tests against real measurements
+├── size_panel_test.dart            # tests for the size panel
+├── conversion_settings_test.dart   # crop/resolution/frame canvas math
+├── frame_painter_test.dart         # frame geometry (thickness, corner radius)
+├── frame_section_test.dart         # Frame tab UI
+└── cropped_view_test.dart          # cropped-content widget
 
 tool/
 ├── gerar_icones.py                 # generates the app icon and adaptive icon
@@ -196,10 +213,14 @@ FFmpeg — which is why it can be fully tested without an emulator.
 
 ## Quality
 
-There are **47 automated tests**: 30 covering the estimation model (output
+There are **78 automated tests**: 30 covering the estimation model (output
 dimensions, frame count, monotonicity, calibration, automatic adjustment to
-a target and classification), 10 covering the size panel, and 7 comparing
-the prediction against **files FFmpeg actually generated**.
+a target and classification), 11 covering the size panel, and 7 comparing
+the prediction against **files FFmpeg actually generated**. The rest cover
+the crop/resolution/frame canvas math (`conversion_settings_test.dart`),
+procedural frame geometry (`frame_painter_test.dart`), the Frame tab's UI
+(`frame_section_test.dart`) and the cropped-content widget
+(`cropped_view_test.dart`).
 
 The last group deserves a special mention: `tool/medir_precisao.py`
 produces five synthetic videos ranging from a static title card to
@@ -233,6 +254,7 @@ on any device.
 | Conversion | `ffmpeg_kit_flutter_new_min` ([FFmpeg](https://github.com/FFmpeg/FFmpeg) LGPL) | variant without GPL components, allows closed-source distribution |
 | File picking | `file_picker` | uses the system picker, no media permission required |
 | Preview | `video_player` | shows the clip and crop frame before converting |
+| Frames | `flutter_svg` | renders bundled and imported SVG phone-mockup frames at export resolution |
 | Output | `gal` + `share_plus` | save to gallery and share |
 
 ## License
