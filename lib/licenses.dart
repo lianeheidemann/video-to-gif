@@ -17,7 +17,9 @@ void registerThirdPartyLicenses() {
       'Este aplicativo usa o FFmpeg (https://ffmpeg.org), licenciado sob a '
       'GNU Lesser General Public License (LGPL) versão 2.1 ou posterior.\n\n'
       'O FFmpeg é usado nesta build SEM nenhum componente sob licença GPL '
-      '(x264, x265, xvid e vid.stab não estão incluídos).\n\n'
+      '(x264, x265, xvid e vid.stab não estão incluídos). A build inclui '
+      'libwebp, dav1d, libvpx e libtheora — todas bibliotecas com licença '
+      'permissiva/LGPL, sem nenhum componente GPL.\n\n'
       'O código-fonte do FFmpeg está disponível em '
       'https://github.com/FFmpeg/FFmpeg e o texto completo da LGPL em '
       'https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html\n\n'
@@ -27,10 +29,19 @@ void registerThirdPartyLicenses() {
 
     yield const LicenseEntryWithLineBreaks(
       ['ffmpeg-kit-flutter-new'],
-      'Empacotamento do FFmpeg para Flutter, licenciado sob a GNU Lesser '
-      'General Public License (LGPL) versão 3.0.\n\n'
+      'Empacotamento do FFmpeg para Flutter (variante "_video"), '
+      'licenciado sob a GNU Lesser General Public License (LGPL) versão '
+      '3.0.\n\n'
       'Código-fonte: https://github.com/sk3llo/ffmpeg_kit_flutter\n'
       'Texto da licença: https://www.gnu.org/licenses/lgpl-3.0.html',
+    );
+
+    yield const LicenseEntryWithLineBreaks(
+      ['libwebp'],
+      'Biblioteca de codificação WebP usada pelo FFmpeg para gerar o WebP '
+      'animado, desenvolvida pelo Google e licenciada sob uma licença '
+      'permissiva estilo BSD (não é GPL nem LGPL).\n\n'
+      'Código-fonte: https://chromium.googlesource.com/webm/libwebp',
     );
   });
 }

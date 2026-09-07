@@ -14,15 +14,23 @@ FFmpeg can be built in two ways:
 | **LGPL** (default) | LGPL 2.1+ | ✅ Yes |
 | **GPL** (with x264, x265, xvid, vid.stab) | GPL 2+ | ❌ No — would require you to open-source the whole app |
 
-This project uses the **`ffmpeg_kit_flutter_new_min`** package, which is
-the **LGPL** variant and **contains no GPL components**. That's
+This project uses the **`ffmpeg_kit_flutter_new_video`** package, which is
+an **LGPL** variant and **contains no GPL components**. That's
 intentional.
+
+Compared to the `ffmpeg_kit_flutter_new_min` package used before WebP
+export existed, `_video` additionally bundles `libwebp` (needed for the
+WebP export option), plus `dav1d`, `libvpx` and `libtheora` — all of them
+LGPL or permissively licensed, none of them GPL. `libwebp` itself is
+Google's own BSD-style-licensed library (not GPL/LGPL), so bundling it
+inside the LGPL `_video` package doesn't introduce a GPL component either.
 
 > ⚠️ **Never switch to the packages ending in `_gpl`** (nor to the "full"
 > `ffmpeg_kit_flutter_new`, which is GPL) without open-sourcing the app
 > under GPL. To convert to GIF you don't need any of that: the GIF encoder
 > and the `palettegen`/`paletteuse` filters are part of FFmpeg's core,
-> which is LGPL.
+> which is LGPL. The same goes for WebP: the `libwebp`-based encoder in
+> `_video` is LGPL/BSD, not GPL.
 
 If one day you want to export **MP4 with H.264**, that's where you'd run
 into this — and the way out is to use Android's hardware encoder
@@ -72,5 +80,6 @@ notice Flutter already generates under *View licenses*:
 | `flutter` and official packages (`video_player`, `path_provider`, `share_plus`) | BSD-3-Clause |
 | `file_picker` | MIT |
 | `gal` | MIT |
-| `ffmpeg_kit_flutter_new_min` | LGPL-3.0 |
+| `ffmpeg_kit_flutter_new_video` | LGPL-3.0 |
 | FFmpeg (binary) | LGPL-2.1-or-later |
+| `libwebp` (bundled inside the FFmpeg binary) | BSD-style (Google) |

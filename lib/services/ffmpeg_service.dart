@@ -2,13 +2,14 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show Size;
 
-import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit_config.dart';
-import 'package:ffmpeg_kit_flutter_new_min/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
-import 'package:ffmpeg_kit_flutter_new_min/statistics.dart';
-import 'package:ffmpeg_kit_flutter_new_min/stream_information.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit_config.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_video/statistics.dart';
+import 'package:ffmpeg_kit_flutter_new_video/stream_information.dart';
 import 'package:flutter/painting.dart' show Color;
+import 'package:meta/meta.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/conversion_settings.dart';
@@ -28,6 +29,7 @@ class ConversionResult {
     required this.height,
     required this.frames,
     required this.elapsed,
+    required this.format,
   });
 
   final File file;
@@ -36,6 +38,7 @@ class ConversionResult {
   final int height;
   final int frames;
   final Duration elapsed;
+  final OutputFormat format;
 
   String get formattedSize => SizeEstimate.formatBytes(bytes);
 }
@@ -597,6 +600,187 @@ class FfmpegService {
     ];
   }
 
+  /// Cauda de encode comum a todo caminho de WebP: um único passe, sem
+  /// paleta nenhuma. Diferente do GIF — que precisa de `palettegen`/
+  /// `paletteuse` em dois passes e, no caso transparente, do hack de
+  /// `reserve_transparent`/`alpha_threshold`/`-gifflags -transdiff` por só
+  /// suportar 1 bit de alfa —, o `libwebp` aceita cor cheia e alfa real em
+  /// 8 bits direto do grafo de composição (o mesmo usado pelo GIF). Por
+  /// isso [hasAlpha] só decide o `-pix_fmt` final, nada mais.
+  List<String> _webpEncodeArgs(
+    ConversionSettings settings, {
+    required bool hasAlpha,
+    bool shortest = false,
+    int? frameLimit,
+  }) {
+    return [
+      '-map',
+      '[out]',
+      '-c:v',
+      'libwebp',
+      '-quality',
+      '${settings.webpQuality}',
+      '-compression_level',
+      '4',
+      '-pix_fmt',
+      hasAlpha ? 'yuva420p' : 'yuv420p',
+      '-loop',
+      settings.loop ? '0' : '1',
+      '-an',
+      if (shortest) '-shortest',
+      if (frameLimit != null) ...['-frames:v', '$frameLimit'],
+      '-f',
+      'webp',
+    ];
+  }
+
+  /// Argumentos completos do FFmpeg para WebP animado sem moldura de imagem:
+  /// cobre tanto "sem moldura nenhuma" quanto moldura procedural (opaca ou
+  /// com fundo transparente). [maskPath] é a máscara de cantos arredondados
+  /// preparada por [_prepareMaskFile] — só é usada quando há moldura
+  /// procedural com fundo transparente; nos outros dois casos é ignorada.
+  ///
+  /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
+  /// [convert] continua sendo o único ponto de entrada em uso normal.
+  @visibleForTesting
+  List<String> webpArgs({
+    required VideoInfo video,
+    required ConversionSettings settings,
+    required String outputPath,
+    String? maskPath,
+    int? frameLimit,
+  }) {
+    if (settings.frame.style == FrameStyle.none) {
+      final filter = buildVideoFilter(settings, video);
+      return [
+        '-y',
+        '-ss',
+        _seconds(settings.startSeconds),
+        '-t',
+        _seconds(settings.sourceDurationSeconds),
+        '-i',
+        video.path,
+        '-lavfi',
+        '[0:v]$filter[out]',
+        ..._webpEncodeArgs(settings, hasAlpha: false, frameLimit: frameLimit),
+        outputPath,
+      ];
+    }
+
+    if (maskPath == null || !settings.frame.transparentBackground) {
+      // Moldura procedural opaca: [_framedGraph] já entrega um canvas RGB
+      // "achatado" (sem transparência nenhuma), então basta ir direto ao
+      // encoder — nem o `alphamerge` externo do GIF é necessário aqui.
+      final graph = _framedGraph(settings, video, input: '0:v', output: 'out');
+      return [
+        '-y',
+        '-ss',
+        _seconds(settings.startSeconds),
+        '-t',
+        _seconds(settings.sourceDurationSeconds),
+        '-i',
+        video.path,
+        '-lavfi',
+        graph,
+        ..._webpEncodeArgs(settings, hasAlpha: false, frameLimit: frameLimit),
+        outputPath,
+      ];
+    }
+
+    // Moldura procedural com fundo transparente: mesmo grafo/máscara de
+    // [_transparentGifArgs], mas sem o `split`/`palettegen`/`paletteuse` —
+    // o `[alpha]` já é RGBA de verdade, então vira `[out]` direto.
+    final graph = _framedGraph(settings, video, input: '0:v', output: 'framed');
+    return [
+      '-y',
+      '-ss',
+      _seconds(settings.startSeconds),
+      '-t',
+      _seconds(settings.sourceDurationSeconds),
+      '-i',
+      video.path,
+      '-loop',
+      '1',
+      '-framerate',
+      '${settings.fps}',
+      '-i',
+      maskPath,
+      '-lavfi',
+      '$graph;'
+          '[framed]format=rgba,setpts=PTS-STARTPTS[framed_rgba];'
+          '[1:v]format=gray,fps=${settings.fps},'
+          'setpts=PTS-STARTPTS[mask_gray];'
+          '[framed_rgba][mask_gray]alphamerge=shortest=1[out]',
+      ..._webpEncodeArgs(settings, hasAlpha: true, frameLimit: frameLimit),
+      outputPath,
+    ];
+  }
+
+  /// Argumentos completos do FFmpeg para WebP animado com moldura de imagem.
+  /// Reaproveita [_imageFramedGraph] — que já entrega alfa real via
+  /// `alphamerge` quando "Fundo transparente" está ligado — e, como em
+  /// [webpArgs], dispensa paleta: o grafo vai direto para o `libwebp`.
+  ///
+  /// Mantém o `-shortest` global que o [_imageFramedGifArgs] também usa: a
+  /// arte e a máscara da área de conteúdo são entradas infinitas (`-loop 1`),
+  /// e por segurança (builds de FFmpeg que não propagam EOF por todos os
+  /// filtros complexos) a saída é encerrada junto com o fluxo de vídeo.
+  ///
+  /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
+  /// [convert] continua sendo o único ponto de entrada em uso normal.
+  @visibleForTesting
+  List<String> webpImageFramedArgs({
+    required VideoInfo video,
+    required ConversionSettings settings,
+    required String artPath,
+    required String outputPath,
+    int? frameLimit,
+  }) {
+    final transparent = settings.frame.transparentBackground;
+    final (_, _, areaWidth, areaHeight) = settings.imageFrameContentAreaPx(
+      video,
+    );
+    final graph = _imageFramedGraph(
+      settings,
+      video,
+      input: '0:v',
+      artInput: '1:v',
+      areaMaskInput: transparent ? '2:v' : null,
+      output: 'out',
+    );
+
+    return [
+      '-y',
+      '-ss',
+      _seconds(settings.startSeconds),
+      '-t',
+      _seconds(settings.sourceDurationSeconds),
+      '-i',
+      video.path,
+      '-loop',
+      '1',
+      '-framerate',
+      '${settings.fps}',
+      '-i',
+      artPath,
+      if (transparent) ...[
+        '-f',
+        'lavfi',
+        '-i',
+        'color=white:size=${areaWidth}x$areaHeight:rate=${settings.fps}',
+      ],
+      '-lavfi',
+      graph,
+      ..._webpEncodeArgs(
+        settings,
+        hasAlpha: transparent,
+        shortest: true,
+        frameLimit: frameLimit,
+      ),
+      outputPath,
+    ];
+  }
+
   /// Arredonda para o inteiro par mais próximo — mesma exigência de
   /// crop/scale do FFmpeg já seguida por [ConversionSettings._evenFromDouble].
   int _evenRound(num value) {
@@ -853,7 +1037,9 @@ class FfmpegService {
     final dir = await getTemporaryDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final palettePath = '${dir.path}/paleta_$stamp.png';
-    final outputPath = '${dir.path}/gif_$stamp.gif';
+    final isWebp = settings.format == OutputFormat.webp;
+    final outputPath =
+        '${dir.path}/${settings.format.extension}_$stamp.${settings.format.extension}';
 
     final totalMs = settings.outputDurationSeconds * 1000;
     String? maskPath;
@@ -868,21 +1054,28 @@ class FfmpegService {
           stamp: '$stamp',
         );
         await _run(
-          _imageFramedGifArgs(
-            video: video,
-            settings: settings,
-            artPath: frameArtPath!,
-            outputPath: outputPath,
-          ),
+          isWebp
+              ? webpImageFramedArgs(
+                  video: video,
+                  settings: settings,
+                  artPath: frameArtPath!,
+                  outputPath: outputPath,
+                )
+              : _imageFramedGifArgs(
+                  video: video,
+                  settings: settings,
+                  artPath: frameArtPath!,
+                  outputPath: outputPath,
+                ),
           onTimeMs: (ms) => onProgress?.call(_ratio(ms, totalMs)),
-          step: 'montagem do GIF com moldura de imagem',
+          step: 'montagem do ${settings.format.shortLabel} com moldura de imagem',
         );
         onProgress?.call(1.0);
 
         final output = File(outputPath);
         if (!output.existsSync() || output.lengthSync() == 0) {
           throw FfmpegException(
-            'O GIF saiu vazio. Tente outro trecho do vídeo.',
+            'O arquivo saiu vazio. Tente outro trecho do vídeo.',
           );
         }
 
@@ -894,6 +1087,7 @@ class FfmpegService {
           height: height,
           frames: settings.frameCount,
           elapsed: stopwatch.elapsed,
+          format: settings.format,
         );
       }
 
@@ -904,7 +1098,18 @@ class FfmpegService {
         stamp: '$stamp',
       );
 
-      if (maskPath != null && settings.frame.transparentBackground) {
+      if (isWebp) {
+        await _run(
+          webpArgs(
+            video: video,
+            settings: settings,
+            outputPath: outputPath,
+            maskPath: maskPath,
+          ),
+          onTimeMs: (ms) => onProgress?.call(_ratio(ms, totalMs)),
+          step: 'montagem do WebP',
+        );
+      } else if (maskPath != null && settings.frame.transparentBackground) {
         await _run(
           _transparentGifArgs(
             video: video,
@@ -946,7 +1151,7 @@ class FfmpegService {
 
       final output = File(outputPath);
       if (!output.existsSync() || output.lengthSync() == 0) {
-        throw FfmpegException('O GIF saiu vazio. Tente outro trecho do vídeo.');
+        throw FfmpegException('O arquivo saiu vazio. Tente outro trecho do vídeo.');
       }
 
       final (width, height) = settings.outputDimensions(video);
@@ -957,6 +1162,7 @@ class FfmpegService {
         height: height,
         frames: settings.frameCount,
         elapsed: stopwatch.elapsed,
+        format: settings.format,
       );
     } finally {
       _activeSessionId = null;
@@ -1019,6 +1225,15 @@ class FfmpegService {
   }) async {
     final duration = settings.sourceDurationSeconds;
     if (duration <= 0) return ComplexityProfile.fallback;
+
+    // O modelo de estimativa de tamanho é específico da paleta/LZW do GIF
+    // (ver size_estimator.dart) — não existe um equivalente para WebP ainda,
+    // e a UI já não chama calibrate() para WebP (ver editor_page.dart). Essa
+    // guarda evita rodar a amostragem em GIF por engano caso algum caminho
+    // esquecido chame calibrate() com um formato WebP.
+    if (settings.format == OutputFormat.webp) {
+      return SizeEstimator.profileFromSource(video);
+    }
 
     final minWindow = 5 / settings.fps * settings.speed;
     var window = duration / 4;
