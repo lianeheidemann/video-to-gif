@@ -16,9 +16,9 @@ const _video = VideoInfo(
   codec: 'h264',
 );
 
-// Vídeo bem menor que [ConversionSettings.minFramedCanvasWidth] — o caso em
-// que a moldura procedural, sem o piso, ficava presa a poucos pixels e a
-// borda saía serrilhada.
+// Vídeo bem menor que a largura escolhida em "Resolução" — o caso em que a
+// moldura procedural precisa ampliar o conteúdo para acompanhar a
+// Resolução, em vez de ficar presa ao tamanho do recorte.
 const _smallVideo = VideoInfo(
   path: '/tmp/pequeno.mp4',
   fileName: 'pequeno.mp4',
@@ -36,7 +36,9 @@ void main() {
     expect(ConversionSettings.widthOptions, contains(720));
   });
 
-  group('moldura procedural: piso de resolução em vídeos pequenos', () {
+  group(
+    'moldura procedural: canvas acompanha a Resolução em vídeos pequenos',
+    () {
     const framedSettings = FrameSettings(
       style: FrameStyle.medium,
       thicknessAtReference: 10,
@@ -44,21 +46,21 @@ void main() {
     );
 
     test(
-      'vídeo menor que o piso sobe até minFramedCanvasWidth com moldura ativa',
+      'vídeo menor que a Resolução escolhida sobe até targetWidth com moldura ativa',
       () {
         final settings = ConversionSettings(
           startSeconds: 0,
           endSeconds: 5,
-          targetWidth: 720,
+          targetWidth: 1920,
           frame: framedSettings,
         );
 
         final (w, _) = settings.contentDimensions(_smallVideo);
-        expect(w, ConversionSettings.minFramedCanvasWidth);
+        expect(w, 1920);
       },
     );
 
-    test('o piso nunca ultrapassa a largura escolhida em "Resolução"', () {
+    test('o canvas nunca ultrapassa a largura escolhida em "Resolução"', () {
       final settings = ConversionSettings(
         startSeconds: 0,
         endSeconds: 5,
@@ -81,7 +83,7 @@ void main() {
       expect(w, 350);
     });
 
-    test('moldura de imagem não recebe o piso — o contorno já é vetorial', () {
+    test('moldura de imagem não recebe o upscale — o contorno já é vetorial', () {
       final settings = ConversionSettings(
         startSeconds: 0,
         endSeconds: 5,
@@ -92,7 +94,8 @@ void main() {
       final (w, _) = settings.contentDimensions(_smallVideo);
       expect(w, 350);
     });
-  });
+  },
+  );
 
   group('moldura: espessura e canvas', () {
     test(
