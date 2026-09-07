@@ -98,7 +98,7 @@ void main() {
       transparentBackground: true,
     );
 
-    test('opaca não precisa de alfa nem de máscara', () {
+    test('opaca não usa máscara externa nem alfa na saída', () {
       final settings = ConversionSettings(
         startSeconds: 0,
         endSeconds: 5,
@@ -112,7 +112,12 @@ void main() {
       );
 
       _expectFlagValue(args, '-pix_fmt', 'yuv420p');
-      expect(_lavfiOf(args), isNot(contains('alphamerge')));
+      // O grafo ainda usa alfa internamente para recortar e antisserrilhar
+      // os cantos do conteúdo e da moldura. O contrato do modo opaco é não
+      // receber uma máscara externa e entregar pixels sem alfa ao encoder.
+      expect(args.where((argument) => argument == '-i'), hasLength(1));
+      expect(_lavfiOf(args), isNot(contains('mask_gray')));
+      expect(_lavfiOf(args), isNot(contains('[alpha]')));
     });
 
     test('transparente usa alfa real via alphamerge, sem hacks do GIF', () {
