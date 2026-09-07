@@ -55,10 +55,6 @@ jobs:
 
       - run: flutter pub get
 
-      # Este passo já esteve desativado, quando os testes de interface estavam
-      # quebrados e travavam a publicação do APK. Eles passam desde então, e a
-      # trava é justamente o que se quer aqui: um APK publicado é o artefato
-      # que as pessoas instalam, e não deve sair sem a suíte ter rodado.
       - name: Testes
         run: flutter test
 
@@ -68,13 +64,11 @@ jobs:
           if [ -n "${{ inputs.versao }}" ]; then
             NOME="${{ inputs.versao }}"
           elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            NOME="${GITHUB_REF_NAME#v}"          # v1.2.3 -> 1.2.3
+            NOME="${GITHUB_REF_NAME#v}"
           else
             NOME=$(grep '^version:' pubspec.yaml | sed 's/version: *//' | cut -d+ -f1)
           fi
           echo "nome=$NOME" >> "$GITHUB_OUTPUT"
-          # O versionCode precisa só ser sempre maior que o anterior; o número
-          # da execução do workflow cresce sozinho e serve bem para isso.
           echo "codigo=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "Versão $NOME (versionCode ${GITHUB_RUN_NUMBER})"
 
@@ -87,8 +81,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "Sem segredos de assinatura: os APKs sairão assinados com a"
-            echo "chave de depuração (bons para testar, não para a Play Store)."
+            echo "Sem segredos de assinatura: os APKs sairão assinados com a chave de depuração."
             echo "assinado=nao" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -102,8 +95,6 @@ jobs:
           PROPS
           echo "assinado=sim" >> "$GITHUB_OUTPUT"
 
-      # Cada build é copiado logo em seguida, antes do próximo rodar, para não
-      # depender de como o Flutter limpa a pasta de saída entre invocações.
       - name: Compilar APKs por arquitetura
         run: |
           V="${{ steps.versao.outputs.nome }}"
@@ -139,7 +130,6 @@ jobs:
         id: arquivos
         run: |
           ls -lh entrega/
-          # Guarda os tamanhos para citar nas notas do release.
           {
             echo "tamanhos<<FIM"
             du -h entrega/* | awk '{printf "- `%s` — %s\n", $2, $1}' | sed 's|entrega/||'
@@ -158,6 +148,11 @@ jobs:
           files: entrega/*
           fail_on_unmatched_files: true
           body: |
+            ## Novidades
+
+            - Agora o aplicativo também permite **adicionar molduras em fotos**, além das molduras já disponíveis no fluxo de vídeo/GIF.
+            - Nova tela dedicada para selecionar uma foto, escolher a moldura, ajustar a composição e exportar o resultado como imagem.
+
             ## Como instalar
 
             Baixe **`video-em-gif-${{ steps.versao.outputs.nome }}-arm64-v8a.apk`**
