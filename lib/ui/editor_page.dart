@@ -18,6 +18,7 @@ import 'widgets/cropped_view.dart';
 import 'widgets/frame_painter.dart';
 import 'widgets/labeled_section.dart';
 import 'widgets/size_panel.dart';
+import 'widgets/webp_convert_panel.dart';
 
 const _customAspectPreset = AspectPreset('Personalizados', -1);
 
@@ -221,24 +222,33 @@ class _EditorPageState extends State<EditorPage> {
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
 
+    final isWebp = _settings.format == OutputFormat.webp;
+    final baseSummary =
+        '$width×$height px · ${_settings.fps} FPS · '
+        '${_settings.outputDurationSeconds.toStringAsFixed(1)} s';
+
     final optionSections = [
+      _formatSection(),
       _durationSection(),
       _aspectSection(),
       _speedSection(),
       _resolutionSection(),
       _fpsSection(),
-      _colorSection(),
-      SizePanel(
-        estimate: _estimate,
-        originalBytes: _video.fileSizeBytes,
-        summary:
-            '$width×$height px · ${_settings.fps} FPS · '
-            '${_settings.outputDurationSeconds.toStringAsFixed(1)} s · '
-            '${_settings.colors} cores',
-        measuring: _measuring,
-        onMeasure: _measure,
-        onConvert: _openingConversion ? () {} : _convert,
-      ),
+      if (isWebp) _webpQualitySection() else _colorSection(),
+      if (isWebp)
+        WebpConvertPanel(
+          summary: '$baseSummary · qualidade ${_settings.webpQuality}',
+          onConvert: _openingConversion ? () {} : _convert,
+        )
+      else
+        SizePanel(
+          estimate: _estimate,
+          originalBytes: _video.fileSizeBytes,
+          summary: '$baseSummary · ${_settings.colors} cores',
+          measuring: _measuring,
+          onMeasure: _measure,
+          onConvert: _openingConversion ? () {} : _convert,
+        ),
     ];
 
     final sections = _tab == _EditorTab.ajustar
@@ -399,14 +409,14 @@ class _EditorPageState extends State<EditorPage> {
     ];
   }
 
-  /// Botão "Converter em GIF", usado tanto ao final da aba "Ajustar"
-  /// (dentro do [SizePanel]) quanto da aba "Frame".
+  /// Botão "Converter em GIF/WebP", usado tanto ao final da aba "Ajustar"
+  /// (dentro do [SizePanel]/[WebpConvertPanel]) quanto da aba "Frame".
   Widget _convertButton() {
     return FilledButton.icon(
       onPressed: _openingConversion ? null : _convert,
       style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(60)),
       icon: const Icon(Icons.swap_horiz_rounded),
-      label: const Text('Converter em GIF'),
+      label: Text('Converter em ${_settings.format.shortLabel}'),
     );
   }
 
@@ -2531,8 +2541,6 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Velocidade',
       value: '${_formatSpeed(_settings.speed)}x',
       originalValue: '${_formatSpeed(1.0)}x',
-      hint:
-          'Acelerar encurta o GIF e economiza espaço; velocidades menores aumentam a duração.',
       child: Column(
         children: [
           Slider(
@@ -2582,8 +2590,6 @@ class _EditorPageState extends State<EditorPage> {
       title: 'Resolução',
       value: '$width×$height',
       originalValue: '${_video.width}×${_video.height}',
-      hint:
-          'Reduzir a largura diminui significativamente o tamanho do arquivo.',
       tip:
           '720 px preserva melhor textos e cantos de molduras; '
           '480 px gera arquivos menores.',
@@ -2613,6 +2619,71 @@ class _EditorPageState extends State<EditorPage> {
         labelBuilder: (fps) => '$fps FPS',
         isEnabled: (fps) => fps <= _video.frameRate.round(),
         onSelected: (fps) => _update(_settings.copyWith(fps: fps)),
+      ),
+    );
+  }
+
+  /// Seção de formato de saída — GIF ou WebP animado. Vem primeiro entre as
+  /// seções de "Ajustar" porque muda qual seção de qualidade aparece logo
+  /// abaixo ([_colorSection] ou [_webpQualitySection]) e se a estimativa de
+  /// tamanho calibrada é mostrada ([SizePanel] ou [WebpConvertPanel]).
+  Widget _formatSection() {
+    return LabeledSection(
+      icon: Icons.image_outlined,
+      title: 'Formato de saída',
+      value: _settings.format.label,
+      hint:
+          'GIF é compatível com quase tudo; WebP costuma gerar arquivos bem '
+          'menores com qualidade parecida, mas alguns apps mais antigos não '
+          'abrem.',
+      child: OptionChips<OutputFormat>(
+        options: OutputFormat.values,
+        selected: _settings.format,
+        labelBuilder: (f) => f.label,
+        onSelected: (f) => _update(_settings.copyWith(format: f)),
+      ),
+    );
+  }
+
+  /// Seção de qualidade do WebP: equivalente a [_colorSection], mas o
+  /// `libwebp` não usa paleta nem dither — só o parâmetro `-quality`, então
+  /// aqui sobra apenas o controle de qualidade e o loop (que continua
+  /// valendo igual para os dois formatos).
+  Widget _webpQualitySection() {
+    final options = <int>{
+      ...ConversionSettings.webpQualityOptions,
+      _settings.webpQuality,
+    }.toList()..sort();
+
+    return LabeledSection(
+      icon: Icons.high_quality_outlined,
+      title: 'Qualidade do WebP',
+      value: '${_settings.webpQuality}',
+      tip:
+          '75 costuma equilibrar bem qualidade e tamanho; 95 preserva mais detalhe.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          OptionChips<int>(
+            options: options,
+            selected: _settings.webpQuality,
+            labelBuilder: (value) => '$value',
+            onSelected: (value) =>
+                _update(_settings.copyWith(webpQuality: value)),
+          ),
+          const SizedBox(height: 12),
+          _sectionCard(
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Repetir para sempre'),
+                subtitle: const Text('Desligue para o WebP tocar uma vez só'),
+                value: _settings.loop,
+                onChanged: (v) => _update(_settings.copyWith(loop: v)),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

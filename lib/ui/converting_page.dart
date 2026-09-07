@@ -137,13 +137,21 @@ class _ConvertingPageState extends State<ConvertingPage> {
         ),
         const SizedBox(height: 28),
         Text(
-          _cancelling ? 'Cancelando…' : 'Convertendo em GIF',
+          _cancelling
+              ? 'Cancelando…'
+              : 'Convertendo em ${widget.settings.format.shortLabel}',
           style: theme.textTheme.titleLarge,
         ),
         const SizedBox(height: 8),
         Text(
-          '${widget.estimate.width}×${widget.estimate.height} px\n'
-          'Peso previsto: ${widget.estimate.formatted}',
+          // A estimativa calibrada (widget.estimate) só é confiável para
+          // GIF — ver o comentário em FfmpegService.calibrate(). Mostrar
+          // "Peso previsto" com esse número para uma exportação em WebP
+          // seria enganoso, então a linha some nesse caso.
+          widget.settings.format == OutputFormat.gif
+              ? '${widget.estimate.width}×${widget.estimate.height} px\n'
+                    'Peso previsto: ${widget.estimate.formatted}'
+              : '${widget.estimate.width}×${widget.estimate.height} px',
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,

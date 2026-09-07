@@ -10,7 +10,7 @@
 ![Android](https://img.shields.io/badge/Android-7.0%2B-d68fe0?style=flat-square&logo=android&logoColor=white&labelColor=372b4d)
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-LGPL-b79cf2?style=flat-square&logo=ffmpeg&logoColor=white&labelColor=372b4d)
 
-**Video-to-GIF converter built in Flutter, with file-size estimation before conversion**
+**Video-to-GIF/WebP converter built in Flutter, with file-size estimation before conversion**
 
 </div>
 
@@ -19,9 +19,15 @@
 ## About
 
 Android app that converts common video formats (MP4, MOV, AVI, MKV, WEBM,
-3GP) to GIF, with control over trimming, aspect ratio, speed, resolution and
-frame rate — and, above all, **showing how big the file will be before you
-spend time converting it**.
+3GP) to **GIF or animated WebP**, with control over trimming, aspect ratio,
+speed, resolution and frame rate — and, for GIF, **showing how big the file
+will be before you spend time converting it**.
+
+WebP is the newer of the two output formats: it skips the color-palette step
+entirely (real full-color plus 8-bit transparency) and tends to produce
+noticeably smaller files at similar quality, at the cost of the size
+estimate (GIF-only for now) and of compatibility with older apps that don't
+render animated WebP.
 
 > All conversion runs on-device with FFmpeg. The app has no internet
 > permission.
@@ -92,20 +98,29 @@ How this works under the hood is documented in
 - **Resolution** — from 160 px to 800 px wide, only offering options that
   don't upscale the original video
 - **Frame rate** — 5, 8, 10, 12, 15, 20 or 24
-- **Color quality** — palette of 64, 128 or 256 colors, five dithering
-  levels and three palette strategies
+- **Output format** — GIF or animated WebP. GIF gets a 256-color palette
+  (dithering + palette strategy below) and the size estimate/destination
+  traffic light; WebP skips the palette and encodes real full-color +
+  transparency directly through `libwebp`, with its own quality slider
+  (50–95)
+- **Color quality** (GIF) — palette of 64, 128 or 256 colors, five
+  dithering levels and three palette strategies
 - **Looping** — infinite loop or play once
-- **Frame** — decorate the GIF with a procedural border (thin, medium or
-  thick, with custom color and corner rounding) or a phone-mockup image
+- **Frame** — decorate the output with a procedural border (thin, medium
+  or thick, with custom color and corner rounding) or a phone-mockup image
   frame (bundled SVGs, or your own image imported with an
   automatically-detected transparent window), with content-fit modes
   (auto, fill, fit, expand with zoom) for when the video doesn't match the
-  frame's aspect ratio
-- **Two-pass conversion** (`palettegen` + `paletteuse`), which is what
-  separates a good-looking GIF from a "washed out" one
+  frame's aspect ratio — works the same for GIF and WebP, including a
+  transparent background (real alpha on WebP, a single reserved color on
+  GIF)
+- **Two-pass conversion for GIF** (`palettegen` + `paletteuse`), which is
+  what separates a good-looking GIF from a "washed out" one; WebP instead
+  goes straight through `libwebp` in a single pass, no palette involved
 - **Progress with cancellation**
 - **Save to gallery and share**, with the final screen showing how far off
-  the prediction was from the generated file
+  the prediction was from the generated file (GIF) or the final size and
+  settings used (WebP)
 
 ## How to run it
 
@@ -185,7 +200,8 @@ lib/
     ├── result_page.dart            # finished GIF, save and share
     └── widgets/
         ├── labeled_section.dart    # expandable card and option chips
-        ├── size_panel.dart         # size and compatibility panel
+        ├── size_panel.dart         # size and compatibility panel (GIF)
+        ├── webp_convert_panel.dart # convert panel shown for WebP (no size estimate yet)
         ├── cropped_view.dart       # crop preview for the "Frame" tab
         └── frame_painter.dart      # draws procedural/image frame geometry
 
@@ -193,10 +209,12 @@ test/
 ├── size_estimator_test.dart           # 30 tests for the estimation model
 ├── size_estimator_medicoes_test.dart  # 7 tests against real measurements
 ├── size_panel_test.dart               # 11 tests for the size panel
-├── conversion_settings_test.dart      # 14 tests for frame/canvas geometry
+├── conversion_settings_test.dart      # 19 tests: frame/canvas geometry + output-format defaults
 ├── cropped_view_test.dart             # 4 tests for the "Frame" tab crop preview
 ├── frame_painter_test.dart            # 4 tests for frame drawing/masking
-└── frame_section_test.dart            # 8 tests for the frame picker UI
+├── frame_section_test.dart            # 8 tests for the frame picker UI
+├── ffmpeg_service_webp_args_test.dart # 6 tests for the WebP FFmpeg argument builders
+└── webp_convert_panel_test.dart       # 2 tests for the WebP convert panel
 
 tool/
 ├── gerar_icones.py                 # generates the app icon and adaptive icon
@@ -212,12 +230,16 @@ FFmpeg — which is why it can be fully tested without an emulator.
 
 ## Quality
 
-There are **78 automated tests**: 30 covering the estimation model (output
+There are **91 automated tests**: 30 covering the estimation model (output
 dimensions, frame count, monotonicity, calibration, automatic adjustment to
 a target and classification), 11 covering the size panel, 30 covering the
 frame feature (canvas geometry, crop preview, frame drawing/masking and the
-frame picker UI), and 7 comparing the prediction against **files FFmpeg
-actually generated**.
+frame picker UI), 7 comparing the prediction against **files FFmpeg
+actually generated**, and 13 covering the WebP export path (output-format
+defaults, the FFmpeg argument builders for the no-palette/single-pass
+path — including that they never reintroduce GIF-only tricks like
+`reserve_transparent` or `-gifflags` — and the convert panel shown when
+WebP is selected).
 
 The last group deserves a special mention: `tool/medir_precisao.py`
 produces five synthetic videos ranging from a static title card to
@@ -248,7 +270,7 @@ on any device.
 | Layer | Choice | Why |
 |---|---|---|
 | Interface | Flutter 3.44 (Material 3) | one codebase, with a native Android look |
-| Conversion | `ffmpeg_kit_flutter_new_min` ([FFmpeg](https://github.com/FFmpeg/FFmpeg) LGPL) | variant without GPL components, allows closed-source distribution |
+| Conversion | `ffmpeg_kit_flutter_new_video` ([FFmpeg](https://github.com/FFmpeg/FFmpeg) LGPL) | variant without GPL components (bundles libwebp for WebP export), allows closed-source distribution |
 | File picking | `file_picker` | uses the system picker, no media permission required |
 | Preview | `video_player` | shows the clip and crop frame before converting |
 | Frame art | `flutter_svg` | renders the bundled and imported image frames without losing sharpness at any output resolution |

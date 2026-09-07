@@ -36,6 +36,44 @@ void main() {
     expect(ConversionSettings.widthOptions, contains(720));
   });
 
+  group('formato de saída', () {
+    test('o padrão continua sendo GIF, com a qualidade padrão do WebP', () {
+      final settings = ConversionSettings(startSeconds: 0, endSeconds: 5);
+      expect(settings.format, OutputFormat.gif);
+      expect(settings.webpQuality, ConversionSettings.defaultWebpQuality);
+    });
+
+    test('recommendedFor também parte de GIF — WebP é escolha explícita', () {
+      final settings = ConversionSettings.recommendedFor(_video);
+      expect(settings.format, OutputFormat.gif);
+    });
+
+    test('copyWith(format: ...) só muda o formato', () {
+      final base = ConversionSettings(startSeconds: 0, endSeconds: 5);
+      final webp = base.copyWith(format: OutputFormat.webp);
+
+      expect(webp.format, OutputFormat.webp);
+      expect(webp.webpQuality, base.webpQuality);
+      expect(webp.fps, base.fps);
+      expect(webp.colors, base.colors);
+    });
+
+    test('copyWith(webpQuality: ...) só muda a qualidade do WebP', () {
+      final base = ConversionSettings(startSeconds: 0, endSeconds: 5);
+      final higherQuality = base.copyWith(webpQuality: 95);
+
+      expect(higherQuality.webpQuality, 95);
+      expect(higherQuality.format, base.format);
+    });
+
+    test('cada formato carrega a extensão e o mimeType corretos', () {
+      expect(OutputFormat.gif.extension, 'gif');
+      expect(OutputFormat.gif.mimeType, 'image/gif');
+      expect(OutputFormat.webp.extension, 'webp');
+      expect(OutputFormat.webp.mimeType, 'image/webp');
+    });
+  });
+
   group('moldura procedural: canvas segue a Resolução em vídeos pequenos', () {
     const framedSettings = FrameSettings(
       style: FrameStyle.medium,

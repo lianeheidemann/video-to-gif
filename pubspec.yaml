@@ -18,10 +18,13 @@ dependencies:
     sdk: flutter
 
   # FFmpeg empacotado para Flutter.
-  # IMPORTANTE: usamos a variante "_min", que é LGPL-3.0 e NÃO contém
+  # IMPORTANTE: usamos a variante "_video", que é LGPL-3.0 e NÃO contém
   # componentes GPL (x264, x265, xvid...). Isso permite publicar o app com
-  # código fechado. Ver docs/LICENCAS.md antes de trocar de variante.
-  ffmpeg_kit_flutter_new_min: ^3.6.2
+  # código fechado. Em relação à variante "_min" usada antes, "_video"
+  # acrescenta libwebp (necessário para a exportação em WebP animado) e
+  # outras libs LGPL de vídeo (dav1d, libvpx, libtheora), sem adicionar
+  # nenhum componente GPL. Ver docs/LICENCAS.md antes de trocar de variante.
+  ffmpeg_kit_flutter_new_video: ^2.5.2
 
   file_picker: ^12.0.0
   video_player: ^2.14.0

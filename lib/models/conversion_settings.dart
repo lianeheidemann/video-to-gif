@@ -47,6 +47,31 @@ enum PaletteMode {
   final String label;
 }
 
+/// Formato de arquivo do resultado final.
+///
+/// O GIF usa a paleta de 256 cores clássica (ver [DitherMode]/[PaletteMode]);
+/// o WebP animado, via `libwebp`, suporta cor cheia e transparência real em
+/// 8 bits, então não usa paleta nem pontilhado — só a qualidade em
+/// [ConversionSettings.webpQuality].
+enum OutputFormat {
+  gif('gif', 'image/gif', 'GIF', 'GIF'),
+  webp('webp', 'image/webp', 'WebP animado', 'WebP');
+
+  const OutputFormat(this.extension, this.mimeType, this.label, this.shortLabel);
+
+  /// Extensão do arquivo de saída, sem o ponto.
+  final String extension;
+
+  /// Tipo MIME usado ao compartilhar o arquivo.
+  final String mimeType;
+
+  /// Texto completo, usado no seletor de formato.
+  final String label;
+
+  /// Texto curto, usado em mensagens ("GIF salvo...", "WebP pronto").
+  final String shortLabel;
+}
+
 /// Recorte em pixels do vídeo já rotacionado (coordenadas de exibição).
 class CropRect {
   const CropRect({
@@ -127,6 +152,8 @@ class ConversionSettings {
     this.palette = PaletteMode.global,
     this.loop = true,
     this.frame = const FrameSettings(),
+    this.format = OutputFormat.gif,
+    this.webpQuality = defaultWebpQuality,
   });
 
   final double startSeconds;
@@ -140,6 +167,8 @@ class ConversionSettings {
   final PaletteMode palette;
   final bool loop;
   final FrameSettings frame;
+  final OutputFormat format;
+  final int webpQuality;
 
   /// Presets exibidos no editor redesenhado.
   static const fpsOptions = <int>[5, 8, 10, 12, 15, 20, 24];
@@ -162,6 +191,12 @@ class ConversionSettings {
   static const primaryColorOptions = <int>[64, 128, 256];
   static const minSpeed = 0.25;
   static const maxSpeed = 4.0;
+
+  /// Opções de qualidade oferecidas para o WebP (equivalente ao [colorOptions]
+  /// do GIF, mas controlando `-quality` do encoder `libwebp` em vez do número
+  /// de cores da paleta).
+  static const webpQualityOptions = <int>[50, 65, 75, 85, 95];
+  static const defaultWebpQuality = 75;
 
   /// Teto de largura para o canvas de uma moldura de imagem no modo
   /// [ImageFrameResolutionMode.nativeMax] — evita que uma foto importada em
@@ -345,6 +380,8 @@ class ConversionSettings {
     PaletteMode? palette,
     bool? loop,
     FrameSettings? frame,
+    OutputFormat? format,
+    int? webpQuality,
   }) {
     return ConversionSettings(
       startSeconds: startSeconds ?? this.startSeconds,
@@ -358,6 +395,8 @@ class ConversionSettings {
       palette: palette ?? this.palette,
       loop: loop ?? this.loop,
       frame: frame ?? this.frame,
+      format: format ?? this.format,
+      webpQuality: webpQuality ?? this.webpQuality,
     );
   }
 
@@ -366,6 +405,10 @@ class ConversionSettings {
   /// no vídeo original — 720px preserva melhor textos e cantos de molduras
   /// (ver dica em [widthOptions]), mesmo padrão que uma pessoa teria que
   /// escolher manualmente em "Ajustar" hoje.
+  ///
+  /// [format] não entra nessa recomendação: continua GIF por padrão (valor
+  /// default do construtor) — WebP é uma escolha explícita do usuário na
+  /// tela de edição, não um recomendado automático.
   factory ConversionSettings.recommendedFor(VideoInfo video) {
     const maxSeconds = 10.0;
     final end = video.durationSeconds < maxSeconds

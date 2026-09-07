@@ -41,7 +41,7 @@ class _ResultPageState extends State<ResultPage> {
         _saving = false;
         _saved = true;
       });
-      _message('GIF salvo na galeria.');
+      _message('${widget.result.format.shortLabel} salvo na galeria.');
     } on OutputException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -66,11 +66,15 @@ class _ResultPageState extends State<ResultPage> {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
-        title: const Text('GIF pronto'),
+        title: Text('${result.format.shortLabel} pronto'),
         actions: [
           IconButton(
             tooltip: 'Compartilhar',
-            onPressed: () => _output.share(result.file),
+            onPressed: () => _output.share(
+              result.file,
+              mimeType: result.format.mimeType,
+              text: '${result.format.shortLabel} feito com o app Video to GIF',
+            ),
             icon: const Icon(Icons.share_outlined),
           ),
           const SizedBox(width: 8),
@@ -161,9 +165,18 @@ class _ResultPageState extends State<ResultPage> {
                     original: SizeEstimate.formatBytes(
                       widget.video.fileSizeBytes,
                     ),
-                    predicted: widget.estimate.formatted,
+                    // A estimativa calibrada (palettegen/paletteuse) só existe
+                    // para GIF — ver size_estimator.dart. Mostrar um número
+                    // baseado nesse modelo para uma exportação em WebP seria
+                    // enganoso (o WebP tende a sair bem menor), então essa
+                    // coluna some nesse caso.
+                    predicted: result.format == OutputFormat.gif
+                        ? widget.estimate.formatted
+                        : null,
                     finalSize: result.formattedSize,
-                    difference: '${_predictionDiff()} da previsão',
+                    difference: result.format == OutputFormat.gif
+                        ? '${_predictionDiff()} da previsão'
+                        : null,
                     accent: accent,
                   ),
                   const SizedBox(height: 22),
@@ -172,9 +185,9 @@ class _ResultPageState extends State<ResultPage> {
                     color: scheme.outlineVariant.withValues(alpha: 0.55),
                   ),
                   const SizedBox(height: 20),
-                  const _SectionTitle(
+                  _SectionTitle(
                     icon: Icons.video_file_outlined,
-                    label: 'GIF gerado',
+                    label: '${result.format.shortLabel} gerado',
                   ),
                   const SizedBox(height: 14),
                   _MetricRow(
@@ -211,30 +224,36 @@ class _ResultPageState extends State<ResultPage> {
                     label: 'Qualidade',
                   ),
                   const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _QualityPill(
-                          icon: Icons.palette_outlined,
-                          label: '${widget.settings.colors} cores',
+                  if (result.format == OutputFormat.gif)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _QualityPill(
+                            icon: Icons.palette_outlined,
+                            label: '${widget.settings.colors} cores',
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _QualityPill(
-                          icon: Icons.tune_rounded,
-                          label: widget.settings.dither.label,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _QualityPill(
+                            icon: Icons.tune_rounded,
+                            label: widget.settings.dither.label,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _QualityPill(
-                          icon: Icons.water_drop_outlined,
-                          label: widget.settings.palette.label,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _QualityPill(
+                            icon: Icons.water_drop_outlined,
+                            label: widget.settings.palette.label,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    )
+                  else
+                    _QualityPill(
+                      icon: Icons.high_quality_outlined,
+                      label: 'Qualidade ${widget.settings.webpQuality}',
+                    ),
                 ],
               ),
             ),
@@ -246,7 +265,11 @@ class _ResultPageState extends State<ResultPage> {
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () => _output.share(result.file),
+              onPressed: () => _output.share(
+                result.file,
+                mimeType: result.format.mimeType,
+                text: '${result.format.shortLabel} feito com o app Video to GIF',
+              ),
               icon: const Icon(Icons.share_outlined),
               label: const Text('Compartilhar'),
               style: OutlinedButton.styleFrom(
@@ -333,9 +356,13 @@ class _SizeComparison extends StatelessWidget {
   });
 
   final String original;
-  final String predicted;
+
+  /// `null` quando não há estimativa confiável para o formato de saída
+  /// (ver o comentário no chamador) — nesse caso a coluna e a linha de
+  /// diferença abaixo somem, sobrando só "Original" e "Final".
+  final String? predicted;
   final String finalSize;
-  final String difference;
+  final String? difference;
   final Color accent;
 
   @override
@@ -364,14 +391,16 @@ class _SizeComparison extends StatelessWidget {
                   thickness: 1,
                   color: scheme.outlineVariant.withValues(alpha: 0.38),
                 ),
-                Expanded(
-                  child: _SizeCell(label: 'Previsto', value: predicted),
-                ),
-                VerticalDivider(
-                  width: 1,
-                  thickness: 1,
-                  color: scheme.outlineVariant.withValues(alpha: 0.38),
-                ),
+                if (predicted != null) ...[
+                  Expanded(
+                    child: _SizeCell(label: 'Previsto', value: predicted!),
+                  ),
+                  VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: scheme.outlineVariant.withValues(alpha: 0.38),
+                  ),
+                ],
                 Expanded(
                   child: _SizeCell(
                     label: 'Final',
@@ -382,19 +411,21 @@ class _SizeComparison extends StatelessWidget {
               ],
             ),
           ),
-          Divider(
-            height: 1,
-            color: scheme.outlineVariant.withValues(alpha: 0.38),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              difference,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant.withValues(alpha: 0.78),
+          if (difference != null) ...[
+            Divider(
+              height: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.38),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Text(
+                difference!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.78),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
