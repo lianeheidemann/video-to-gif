@@ -36,29 +36,24 @@ void main() {
     expect(ConversionSettings.widthOptions, contains(720));
   });
 
-  group(
-    'moldura procedural: canvas acompanha a Resolução em vídeos pequenos',
-    () {
+  group('moldura procedural: canvas segue a Resolução em vídeos pequenos', () {
     const framedSettings = FrameSettings(
       style: FrameStyle.medium,
       thicknessAtReference: 10,
       cornerRatio: 0.12,
     );
 
-    test(
-      'vídeo menor que a Resolução escolhida sobe até targetWidth com moldura ativa',
-      () {
-        final settings = ConversionSettings(
-          startSeconds: 0,
-          endSeconds: 5,
-          targetWidth: 1920,
-          frame: framedSettings,
-        );
+    test('vídeo menor que a Resolução sobe até targetWidth com moldura', () {
+      final settings = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 1920,
+        frame: framedSettings,
+      );
 
-        final (w, _) = settings.contentDimensions(_smallVideo);
-        expect(w, 1920);
-      },
-    );
+      final (w, _) = settings.contentDimensions(_smallVideo);
+      expect(w, 1920);
+    });
 
     test('o canvas nunca ultrapassa a largura escolhida em "Resolução"', () {
       final settings = ConversionSettings(
@@ -83,7 +78,7 @@ void main() {
       expect(w, 350);
     });
 
-    test('moldura de imagem não recebe o upscale — o contorno já é vetorial', () {
+    test('moldura de imagem não recebe upscale — contorno já é vetorial', () {
       final settings = ConversionSettings(
         startSeconds: 0,
         endSeconds: 5,
@@ -94,8 +89,7 @@ void main() {
       final (w, _) = settings.contentDimensions(_smallVideo);
       expect(w, 350);
     });
-  },
-  );
+  });
 
   group('moldura: espessura e canvas', () {
     test(
