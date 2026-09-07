@@ -57,7 +57,12 @@ enum OutputFormat {
   gif('gif', 'image/gif', 'GIF', 'GIF'),
   webp('webp', 'image/webp', 'WebP animado', 'WebP');
 
-  const OutputFormat(this.extension, this.mimeType, this.label, this.shortLabel);
+  const OutputFormat(
+    this.extension,
+    this.mimeType,
+    this.label,
+    this.shortLabel,
+  );
 
   /// Extensão do arquivo de saída, sem o ponto.
   final String extension;

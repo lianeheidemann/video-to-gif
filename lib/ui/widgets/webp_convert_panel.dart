@@ -8,7 +8,11 @@ import 'package:flutter/material.dart';
 /// avisa que a estimativa não está disponível e vai direto ao botão de
 /// converter.
 class WebpConvertPanel extends StatelessWidget {
-  const WebpConvertPanel({super.key, required this.summary, required this.onConvert});
+  const WebpConvertPanel({
+    super.key,
+    required this.summary,
+    required this.onConvert,
+  });
 
   final String summary;
   final VoidCallback onConvert;
@@ -25,7 +29,9 @@ class WebpConvertPanel extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+            side: BorderSide(
+              color: scheme.outlineVariant.withValues(alpha: 0.45),
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -44,7 +50,10 @@ class WebpConvertPanel extends StatelessWidget {
                           color: scheme.primary.withValues(alpha: 0.2),
                         ),
                       ),
-                      child: Icon(Icons.info_outline_rounded, color: scheme.primary),
+                      child: Icon(
+                        Icons.info_outline_rounded,
+                        color: scheme.primary,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(

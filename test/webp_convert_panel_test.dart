@@ -4,10 +4,7 @@ import 'package:video_to_gif/ui/widgets/webp_convert_panel.dart';
 
 const _summary = '480×270 px · 12 FPS · 6.0 s · qualidade 75';
 
-Future<void> _pumpPanel(
-  WidgetTester tester, {
-  VoidCallback? onConvert,
-}) async {
+Future<void> _pumpPanel(WidgetTester tester, {VoidCallback? onConvert}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(

@@ -8,8 +8,8 @@ import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_video/statistics.dart';
 import 'package:ffmpeg_kit_flutter_new_video/stream_information.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart' show Color;
-import 'package:meta/meta.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/conversion_settings.dart';
@@ -1068,7 +1068,8 @@ class FfmpegService {
                   outputPath: outputPath,
                 ),
           onTimeMs: (ms) => onProgress?.call(_ratio(ms, totalMs)),
-          step: 'montagem do ${settings.format.shortLabel} com moldura de imagem',
+          step:
+              'montagem do ${settings.format.shortLabel} com moldura de imagem',
         );
         onProgress?.call(1.0);
 
@@ -1151,7 +1152,9 @@ class FfmpegService {
 
       final output = File(outputPath);
       if (!output.existsSync() || output.lengthSync() == 0) {
-        throw FfmpegException('O arquivo saiu vazio. Tente outro trecho do vídeo.');
+        throw FfmpegException(
+          'O arquivo saiu vazio. Tente outro trecho do vídeo.',
+        );
       }
 
       final (width, height) = settings.outputDimensions(video);

@@ -154,7 +154,11 @@ Future<Uint8List> _composeImageFramed(
     canvas.drawImageRect(
       image,
       fullImageRect,
-      _containDstRect(image.width.toDouble(), image.height.toDouble(), areaRect),
+      _containDstRect(
+        image.width.toDouble(),
+        image.height.toDouble(),
+        areaRect,
+      ),
       paint,
     );
   }
@@ -201,7 +205,11 @@ Future<Uint8List> _composeImageFramed(
 /// Desenha a arte de uma moldura de imagem ocupando o canvas inteiro —
 /// mesmos três formatos de [ImageFrameSource] que
 /// `EditorPage._imageFrameArtwork` sabe exibir na prévia.
-Future<void> _drawArtwork(Canvas canvas, Size size, ImageFrameAsset asset) async {
+Future<void> _drawArtwork(
+  Canvas canvas,
+  Size size,
+  ImageFrameAsset asset,
+) async {
   switch (asset.source) {
     case ImageFrameSource.bundledSvg:
       final loader = SvgAssetLoader(asset.svgAssetPath!);
@@ -216,7 +224,12 @@ Future<void> _drawArtwork(Canvas canvas, Size size, ImageFrameAsset asset) async
       try {
         canvas.drawImageRect(
           artImage,
-          Rect.fromLTWH(0, 0, artImage.width.toDouble(), artImage.height.toDouble()),
+          Rect.fromLTWH(
+            0,
+            0,
+            artImage.width.toDouble(),
+            artImage.height.toDouble(),
+          ),
           Offset.zero & size,
           Paint()..filterQuality = FilterQuality.high,
         );
