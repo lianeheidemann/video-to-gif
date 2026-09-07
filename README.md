@@ -2,7 +2,7 @@
 
 <img width="100" src="assets/icon/icon-v4.png"/>
 
-# Video to GIF
+# Video to GIF & WebP
 
 [![CI](https://img.shields.io/github/actions/workflow/status/lianeheidemann/video-to-gif/ci.yml?branch=main&style=flat-square&label=CI&logo=github&logoColor=white&labelColor=372b4d)](https://github.com/lianeheidemann/video-to-gif/actions/workflows/ci.yml)
 ![Flutter](https://img.shields.io/badge/Flutter-3.44%2B-b79cf2?style=flat-square&logo=flutter&logoColor=white&labelColor=372b4d)
@@ -10,7 +10,7 @@
 ![Android](https://img.shields.io/badge/Android-7.0%2B-d68fe0?style=flat-square&logo=android&logoColor=white&labelColor=372b4d)
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-LGPL-b79cf2?style=flat-square&logo=ffmpeg&logoColor=white&labelColor=372b4d)
 
-**Video-to-GIF/WebP converter built in Flutter, with file-size estimation before conversion**
+**Convert videos to animated GIF or WebP directly on Android — privately and offline.**
 
 </div>
 
@@ -18,16 +18,18 @@
 
 ## About
 
-Android app that converts common video formats (MP4, MOV, AVI, MKV, WEBM,
-3GP) to **GIF or animated WebP**, with control over trimming, aspect ratio,
-speed, resolution and frame rate — and, for GIF, **showing how big the file
-will be before you spend time converting it**.
+Android app built with Flutter that converts common video formats (MP4, MOV,
+AVI, MKV, WebM and 3GP) to **GIF or animated WebP**. Trim the video, choose
+the aspect ratio, adjust speed, resolution and frame rate, and add a custom
+frame before exporting. For GIF, the app also **estimates the final file size
+before conversion**.
 
-WebP is the newer of the two output formats: it skips the color-palette step
-entirely (real full-color plus 8-bit transparency) and tends to produce
-noticeably smaller files at similar quality, at the cost of the size
-estimate (GIF-only for now) and of compatibility with older apps that don't
-render animated WebP.
+Choose the format that best fits your destination:
+
+| Format | Best for | Notes |
+|---|---|---|
+| **GIF** | Broad compatibility and predictable sharing limits | Includes file-size estimation and destination compatibility checks |
+| **Animated WebP** | Better color, transparency and smaller files at similar quality | Includes a quality slider; some older apps may not play the animation |
 
 > All conversion runs on-device with FFmpeg. The app has no internet
 > permission.
@@ -141,25 +143,6 @@ flutter run
 
 ### Build the release APK
 
-To generate an optimized APK for installation or distribution, run:
-
-```bash
-flutter build apk --release
-```
-
-The generated file will be available at:
-
-```text
-build/app/outputs/flutter-apk/app-release.apk
-```
-
-CI pins the Flutter version to **3.47.0** (`FLUTTER_VERSION` in
-`.github/workflows/ci.yml`). If `dart format` complains there but passes on
-your machine, it's almost always a version mismatch — run it on the same
-one.
-
-### Build the APK
-
 To generate a release APK you can install on a device without `flutter run`:
 
 ```bash
@@ -173,6 +156,11 @@ downloads, closer to what the [Release](https://github.com/lianeheidemann/video-
 ```bash
 flutter build apk --release --split-per-abi
 ```
+
+CI pins the Flutter version to **3.47.0** (`FLUTTER_VERSION` in
+`.github/workflows/ci.yml`). If `dart format` complains there but passes on
+your machine, it's almost always a version mismatch — run it on the same
+one.
 
 ## Structure
 
