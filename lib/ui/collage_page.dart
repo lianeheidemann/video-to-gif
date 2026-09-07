@@ -157,7 +157,7 @@ class _CollagePageState extends State<CollagePage> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
             _preview(),
-            if (toolbar != null) toolbar,
+            ?toolbar,
             const SizedBox(height: 20),
             _layoutSection(),
             _marginSection(),

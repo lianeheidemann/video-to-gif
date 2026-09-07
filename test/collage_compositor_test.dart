@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart' show Canvas, Color, Paint, PictureRecorder, Rect;
+import 'package:flutter/material.dart' show Canvas, Color, Paint, Rect;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
@@ -14,7 +14,7 @@ import 'package:video_to_gif/services/collage_compositor.dart';
 /// para ter fotos "de verdade" em disco para o compositor decodificar, sem
 /// depender de nenhum asset do repositório.
 Future<void> _writeSolidPng(String path, int width, int height, Color color) async {
-  final recorder = PictureRecorder();
+  final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   canvas.drawRect(
     Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),

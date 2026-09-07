@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart'
-    show Canvas, Color, ColorFilter, Offset, Paint, PictureRecorder, Rect, Size;
+    show Canvas, Color, ColorFilter, Offset, Paint, Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
 
@@ -12,7 +12,7 @@ import 'package:video_to_gif/models/collage_cell.dart';
 /// `FramePainter.rasterize`.
 Future<List<int>> _renderPixel(ColorFilter filter) async {
   const side = 2;
-  final recorder = PictureRecorder();
+  final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   canvas.drawRect(
     const Rect.fromLTWH(0, 0, 2, 2),
