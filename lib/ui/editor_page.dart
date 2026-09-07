@@ -552,22 +552,21 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Coloca a linha do tempo como a última camada por cima de [preview].
-  /// Assim os controles nunca ficam atrás de uma moldura de imagem nem são
-  /// reduzidos para caber na janela dela.
+  /// Coloca a linha do tempo como um bloco abaixo de [preview], em vez de
+  /// sobreposta por cima do vídeo — assim os gestos dela nunca invadem a
+  /// área de recorte, e por ser irmã (não filha do `Stack`/`AspectRatio` do
+  /// preview) ela também nunca fica atrás de uma moldura de imagem nem é
+  /// reduzida para caber na janela dela.
   Widget _timelined(Widget preview) {
     final player = _player;
     if (player == null || !player.value.isInitialized) return preview;
 
-    return Stack(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         preview,
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _previewTimelineOverlay(player),
-        ),
+        const SizedBox(height: 10),
+        _previewTimelineOverlay(player),
       ],
     );
   }
@@ -619,11 +618,12 @@ class _EditorPageState extends State<EditorPage> {
     return _timelined(framedVideo);
   }
 
-  /// Fundo opaco da linha do tempo, exibido por cima do vídeo e de qualquer
-  /// moldura para preservar a leitura e os gestos em todas as opções.
+  /// Cartão escuro da linha do tempo, exibido abaixo do vídeo (e de
+  /// qualquer moldura) para preservar a leitura e os gestos em todas as
+  /// opções.
   Widget _previewTimelineOverlay(VideoPlayerController player) {
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+      borderRadius: const BorderRadius.all(Radius.circular(22)),
       child: ColoredBox(
         color: const Color(0xF0000000),
         child: _previewTimeline(player),
