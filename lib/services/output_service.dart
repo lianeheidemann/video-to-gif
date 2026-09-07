@@ -33,12 +33,18 @@ class OutputService {
     }
   }
 
-  /// Abre a folha de compartilhamento do sistema com o GIF anexado.
-  Future<void> share(File gif) async {
+  /// Abre a folha de compartilhamento do sistema com o arquivo anexado.
+  /// [mimeType]/[text] têm o padrão do GIF de vídeo; a tela de moldura em
+  /// foto passa os equivalentes para PNG.
+  Future<void> share(
+    File file, {
+    String mimeType = 'image/gif',
+    String text = 'GIF feito com o app Video to GIF',
+  }) async {
     await SharePlus.instance.share(
       ShareParams(
-        files: [XFile(gif.path, mimeType: 'image/gif')],
-        text: 'GIF feito com o app Video to GIF',
+        files: [XFile(file.path, mimeType: mimeType)],
+        text: text,
       ),
     );
   }
