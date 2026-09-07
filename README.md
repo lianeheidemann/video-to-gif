@@ -41,7 +41,7 @@ spend time converting it**.
 
 ## Interface
 
-<img src="assets/image/-----.png"/>
+<img src="assets/image/interface-2.png"/>
 
 ## The problem it solves
 
