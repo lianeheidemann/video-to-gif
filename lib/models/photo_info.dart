@@ -4,7 +4,11 @@
 /// para "sondar" com FFprobe, então este modelo não precisa de codec,
 /// bitrate ou duração.
 class PhotoInfo {
-  const PhotoInfo({required this.path, required this.width, required this.height});
+  const PhotoInfo({
+    required this.path,
+    required this.width,
+    required this.height,
+  });
 
   final String path;
   final int width;

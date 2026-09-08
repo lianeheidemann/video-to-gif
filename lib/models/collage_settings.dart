@@ -125,11 +125,7 @@ class CollageSettings {
       copyWith(stickers: [...stickers, sticker]);
 
   CollageSettings replacingSticker(String id, CollageSticker sticker) =>
-      copyWith(
-        stickers: [
-          for (final s in stickers) s.id == id ? sticker : s,
-        ],
-      );
+      copyWith(stickers: [for (final s in stickers) s.id == id ? sticker : s]);
 
   CollageSettings removingSticker(String id) =>
       copyWith(stickers: stickers.where((s) => s.id != id).toList());

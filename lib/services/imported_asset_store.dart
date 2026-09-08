@@ -187,7 +187,9 @@ class ImportedAssetStore {
     } on ImportedAssetException {
       rethrow;
     } catch (_) {
-      throw ImportedAssetException('Não foi possível ler este arquivo como SVG.');
+      throw ImportedAssetException(
+        'Não foi possível ler este arquivo como SVG.',
+      );
     }
   }
 
@@ -199,7 +201,9 @@ class ImportedAssetStore {
       final image = frame.image;
       try {
         if (image.width <= 0 || image.height <= 0) {
-          throw ImportedAssetException('Esta imagem não tem um tamanho válido.');
+          throw ImportedAssetException(
+            'Esta imagem não tem um tamanho válido.',
+          );
         }
         return image.width / image.height;
       } finally {

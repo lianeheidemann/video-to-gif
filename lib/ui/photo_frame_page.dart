@@ -82,7 +82,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final bytes = await composeFramedPhoto(photo: widget.photo, frame: _frame);
+      final bytes = await composeFramedPhoto(
+        photo: widget.photo,
+        frame: _frame,
+      );
       final file = await _writeTempPng(bytes);
       await _output.saveToGallery(file);
       if (!mounted) return;
@@ -101,7 +104,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   Future<void> _share() async {
     setState(() => _sharing = true);
     try {
-      final bytes = await composeFramedPhoto(photo: widget.photo, frame: _frame);
+      final bytes = await composeFramedPhoto(
+        photo: widget.photo,
+        frame: _frame,
+      );
       final file = await _writeTempPng(bytes);
       await _output.share(
         file,
@@ -241,7 +247,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       return ColoredBox(
         color: Colors.black,
         child: ClipRect(
-          child: photo(fit == ContentFitMode.fill ? BoxFit.cover : BoxFit.contain),
+          child: photo(
+            fit == ContentFitMode.fill ? BoxFit.cover : BoxFit.contain,
+          ),
         ),
       );
     }
@@ -299,12 +307,16 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                 _frameColorRow(),
                 Divider(
                   height: 17,
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.45,
+                  ),
                 ),
                 _frameThicknessRow(),
                 Divider(
                   height: 17,
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.45,
+                  ),
                 ),
                 _cornerRadiusRow(),
               ],
@@ -338,7 +350,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       selected: selected,
       padding: const EdgeInsets.all(11),
       onTap: () => _selectFrameStyle(style),
-      child: _frameStyleGlyph(style, color: Theme.of(context).colorScheme.primary),
+      child: _frameStyleGlyph(
+        style,
+        color: Theme.of(context).colorScheme.primary,
+      ),
     );
   }
 
@@ -488,7 +503,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                 color: theme.colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.5,
+                  ),
                 ),
               ),
               child: Icon(
@@ -628,7 +645,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   void _pickBackgroundColor() => _pickColor(
     title: 'Cor do fundo',
     selectedColor: _frame.backgroundColor,
-    onSelected: (color) => _updateFrame(_frame.copyWith(backgroundColor: color)),
+    onSelected: (color) =>
+        _updateFrame(_frame.copyWith(backgroundColor: color)),
   );
 
   void _pickColor({
@@ -694,12 +712,18 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           color: color,
           shape: BoxShape.circle,
           border: Border.all(
-            color: selected ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outlineVariant,
             width: selected ? 3 : 1.5,
           ),
         ),
         child: selected
-            ? Icon(Icons.check_rounded, size: 18, color: _contrastingIconColor(color))
+            ? Icon(
+                Icons.check_rounded,
+                size: 18,
+                color: _contrastingIconColor(color),
+              )
             : null,
       ),
     );
@@ -723,7 +747,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         Row(
           children: [
             Expanded(
-              child: Text('Espessura da borda', style: theme.textTheme.bodyMedium),
+              child: Text(
+                'Espessura da borda',
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
             Text(
               '${thickness.round()}px',
@@ -740,7 +767,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           divisions: 24,
           value: thickness,
           label: '${thickness.round()}px',
-          onChanged: (v) => _updateFrame(frame.copyWith(thicknessAtReference: v)),
+          onChanged: (v) =>
+              _updateFrame(frame.copyWith(thicknessAtReference: v)),
         ),
       ],
     );
@@ -793,13 +821,15 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     return _collapsibleSubsection(
       label: 'Ajuste do conteúdo',
       expanded: _contentFitExpanded,
-      onToggle: () => setState(() => _contentFitExpanded = !_contentFitExpanded),
+      onToggle: () =>
+          setState(() => _contentFitExpanded = !_contentFitExpanded),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final mode in _selectableContentFitModes) ...[
             _contentFitTile(mode, selected: mode == selected),
-            if (mode != _selectableContentFitModes.last) const SizedBox(height: 8),
+            if (mode != _selectableContentFitModes.last)
+              const SizedBox(height: 8),
           ],
         ],
       ),
@@ -820,7 +850,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         Row(
           children: [
             Expanded(
-              child: Text('Zoom do conteúdo', style: theme.textTheme.bodyMedium),
+              child: Text(
+                'Zoom do conteúdo',
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
             Text(
               '$percent%',
@@ -875,8 +908,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             selected: {selected},
             showSelectedIcon: true,
             expandedInsets: EdgeInsets.zero,
-            onSelectionChanged: (selection) =>
-                _updateFrame(_frame.copyWith(frameResolutionMode: selection.single)),
+            onSelectionChanged: (selection) => _updateFrame(
+              _frame.copyWith(frameResolutionMode: selection.single),
+            ),
           ),
         ],
       ),
@@ -916,7 +950,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                 children: [
                   Divider(
                     height: 1,
-                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
+                    color: theme.colorScheme.outlineVariant.withValues(
+                      alpha: 0.55,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   _contentZoomRow(),
@@ -939,17 +975,27 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             color: theme.colorScheme.primary.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(_contentFitIcon(mode), size: 20, color: theme.colorScheme.primary),
+          child: Icon(
+            _contentFitIcon(mode),
+            size: 20,
+            color: theme.colorScheme.primary,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
             mode.label,
-            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         if (selected)
-          Icon(Icons.check_circle_rounded, color: theme.colorScheme.primary, size: 20),
+          Icon(
+            Icons.check_circle_rounded,
+            color: theme.colorScheme.primary,
+            size: 20,
+          ),
       ],
     );
   }
@@ -976,7 +1022,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             contentPadding: EdgeInsets.zero,
             title: const Text('Fundo transparente'),
             value: frame.transparentBackground,
-            onChanged: (v) => _updateFrame(frame.copyWith(transparentBackground: v)),
+            onChanged: (v) =>
+                _updateFrame(frame.copyWith(transparentBackground: v)),
           ),
           if (!frame.transparentBackground) ...[
             const Divider(height: 1),
@@ -1018,7 +1065,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                 )
               : const Icon(Icons.share_outlined),
           label: Text(_sharing ? 'Preparando…' : 'Compartilhar'),
-          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(56),
+          ),
         ),
       ],
     );
@@ -1060,7 +1109,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                     border: Border.all(
                       color: selected
                           ? theme.colorScheme.primary
-                          : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                          : theme.colorScheme.outlineVariant.withValues(
+                              alpha: 0.5,
+                            ),
                       width: selected ? 2 : 1,
                     ),
                   ),
@@ -1076,9 +1127,16 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary,
                         shape: BoxShape.circle,
-                        border: Border.all(color: theme.colorScheme.surface, width: 2),
+                        border: Border.all(
+                          color: theme.colorScheme.surface,
+                          width: 2,
+                        ),
                       ),
-                      child: const Icon(Icons.check_rounded, size: 12, color: Colors.white),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        size: 12,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
               ],
@@ -1146,7 +1204,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                   ),
                 ),
                 Icon(
-                  expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                  expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
                   size: 20,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

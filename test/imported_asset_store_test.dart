@@ -29,36 +29,47 @@ void main() {
   late Directory tempDir;
 
   setUp(() async {
-    tempDir = await Directory.systemTemp.createTemp('imported_asset_store_test');
+    tempDir = await Directory.systemTemp.createTemp(
+      'imported_asset_store_test',
+    );
   });
 
   tearDown(() async {
     if (await tempDir.exists()) await tempDir.delete(recursive: true);
   });
 
-  test('loadAll ignora entradas cujo arquivo copiado não existe mais', () async {
-    final existingFile = File('${tempDir.path}/existe.png');
-    await existingFile.writeAsBytes([0]);
+  test(
+    'loadAll ignora entradas cujo arquivo copiado não existe mais',
+    () async {
+      final existingFile = File('${tempDir.path}/existe.png');
+      await existingFile.writeAsBytes([0]);
 
-    SharedPreferences.setMockInitialValues({
-      'importedStickers': [
-        _encode(id: 'a', label: 'A', filePath: existingFile.path, isVector: false, aspect: 1.0),
-        _encode(
-          id: 'b',
-          label: 'B',
-          filePath: '${tempDir.path}/nao_existe.png',
-          isVector: false,
-          aspect: 1.0,
-        ),
-      ],
-    });
+      SharedPreferences.setMockInitialValues({
+        'importedStickers': [
+          _encode(
+            id: 'a',
+            label: 'A',
+            filePath: existingFile.path,
+            isVector: false,
+            aspect: 1.0,
+          ),
+          _encode(
+            id: 'b',
+            label: 'B',
+            filePath: '${tempDir.path}/nao_existe.png',
+            isVector: false,
+            aspect: 1.0,
+          ),
+        ],
+      });
 
-    const store = ImportedAssetStore(ImportedAssetKind.sticker);
-    final assets = await store.loadAll();
+      const store = ImportedAssetStore(ImportedAssetKind.sticker);
+      final assets = await store.loadAll();
 
-    expect(assets.length, 1);
-    expect(assets.single.id, 'a');
-  });
+      expect(assets.length, 1);
+      expect(assets.single.id, 'a');
+    },
+  );
 
   test('remove apaga o arquivo copiado e o metadado persistido', () async {
     final file = File('${tempDir.path}/sticker.png');
@@ -66,7 +77,13 @@ void main() {
 
     SharedPreferences.setMockInitialValues({
       'importedStickers': [
-        _encode(id: 'a', label: 'A', filePath: file.path, isVector: false, aspect: 1.0),
+        _encode(
+          id: 'a',
+          label: 'A',
+          filePath: file.path,
+          isVector: false,
+          aspect: 1.0,
+        ),
       ],
     });
 
@@ -77,22 +94,33 @@ void main() {
     expect(await store.loadAll(), isEmpty);
   });
 
-  test('sticker e imagem de fundo usam chaves de preferências separadas', () async {
-    final stickerFile = File('${tempDir.path}/s.png');
-    await stickerFile.writeAsBytes([0]);
+  test(
+    'sticker e imagem de fundo usam chaves de preferências separadas',
+    () async {
+      final stickerFile = File('${tempDir.path}/s.png');
+      await stickerFile.writeAsBytes([0]);
 
-    SharedPreferences.setMockInitialValues({
-      'importedStickers': [
-        _encode(id: 's1', label: 'Sticker', filePath: stickerFile.path, isVector: false, aspect: 1.0),
-      ],
-    });
+      SharedPreferences.setMockInitialValues({
+        'importedStickers': [
+          _encode(
+            id: 's1',
+            label: 'Sticker',
+            filePath: stickerFile.path,
+            isVector: false,
+            aspect: 1.0,
+          ),
+        ],
+      });
 
-    const stickerStore = ImportedAssetStore(ImportedAssetKind.sticker);
-    const backgroundStore = ImportedAssetStore(ImportedAssetKind.backgroundImage);
+      const stickerStore = ImportedAssetStore(ImportedAssetKind.sticker);
+      const backgroundStore = ImportedAssetStore(
+        ImportedAssetKind.backgroundImage,
+      );
 
-    expect(await stickerStore.loadAll(), hasLength(1));
-    // A imagem de fundo lê a chave `importedBackgroundImages`, nunca
-    // preenchida aqui — não deve enxergar a entrada do sticker.
-    expect(await backgroundStore.loadAll(), isEmpty);
-  });
+      expect(await stickerStore.loadAll(), hasLength(1));
+      // A imagem de fundo lê a chave `importedBackgroundImages`, nunca
+      // preenchida aqui — não deve enxergar a entrada do sticker.
+      expect(await backgroundStore.loadAll(), isEmpty);
+    },
+  );
 }

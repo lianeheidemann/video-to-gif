@@ -160,7 +160,11 @@ class _HomePageState extends State<HomePage> {
         final codec = await ui.instantiateImageCodec(bytes);
         final frame = await codec.getNextFrame();
         photos.add(
-          PhotoInfo(path: path, width: frame.image.width, height: frame.image.height),
+          PhotoInfo(
+            path: path,
+            width: frame.image.width,
+            height: frame.image.height,
+          ),
         );
         frame.image.dispose();
       }

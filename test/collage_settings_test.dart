@@ -12,10 +12,11 @@ const _photoC = PhotoInfo(path: '/tmp/c.jpg', width: 400, height: 100);
 void main() {
   group('CollageSettings.forLayout', () {
     test('cria uma célula por foto, na ordem escolhida', () {
-      final settings = CollageSettings.forLayout(
-        CollageLayout.row(3),
-        const [_photoA, _photoB, _photoC],
-      );
+      final settings = CollageSettings.forLayout(CollageLayout.row(3), const [
+        _photoA,
+        _photoB,
+        _photoC,
+      ]);
       expect(settings.cells.length, 3);
       expect(settings.cells[0].photoPath, _photoA.path);
       expect(settings.cells[1].photoPath, _photoB.path);
@@ -37,14 +38,17 @@ void main() {
     late CollageSettings settings;
 
     setUp(() {
-      settings = CollageSettings.forLayout(
-        CollageLayout.row(2),
-        const [_photoA, _photoB],
-      );
+      settings = CollageSettings.forLayout(CollageLayout.row(2), const [
+        _photoA,
+        _photoB,
+      ]);
     });
 
     test('replacingCell troca só a célula indicada', () {
-      final replaced = settings.replacingCell(0, const CollageCellSettings(photoPath: '/tmp/novo.jpg'));
+      final replaced = settings.replacingCell(
+        0,
+        const CollageCellSettings(photoPath: '/tmp/novo.jpg'),
+      );
       expect(replaced.cells[0].photoPath, '/tmp/novo.jpg');
       expect(replaced.cells[1].photoPath, _photoB.path);
     });
@@ -103,9 +107,9 @@ void main() {
         centerY: 0.3,
         zIndex: 2,
       );
-      final settings = CollageSettings(layout: CollageLayout.row(1))
-          .addingSticker(sticker1)
-          .addingSticker(sticker2);
+      final settings = CollageSettings(
+        layout: CollageLayout.row(1),
+      ).addingSticker(sticker1).addingSticker(sticker2);
       final removed = settings.removingSticker('s1');
       expect(removed.stickers.length, 1);
       expect(removed.stickers.single.id, 's2');
