@@ -36,6 +36,7 @@ Future<Uint8List> composeCollage({
           settings.background.imagePath != null
       ? await _tryDecodeImageFile(settings.background.imagePath!)
       : null;
+  final cellBackgroundImages = await _decodeCellBackgrounds(settings);
 
   final geometry = CollageGeometry.of(size, settings);
   final recorder = ui.PictureRecorder();
@@ -58,11 +59,13 @@ Future<Uint8List> composeCollage({
       i < settings.cells.length && i < geometry.cellRects.length;
       i++
     ) {
+      final cell = settings.cells[i];
       paintCollageCell(
         canvas,
         geometry.cellRects[i],
-        settings.cells[i],
+        cell,
         cellImages[i],
+        cellBackgroundImage: cellBackgroundImages[cell.background.imagePath],
       );
     }
     canvas.restore();
@@ -86,8 +89,28 @@ Future<Uint8List> composeCollage({
     for (final image in cellImages) {
       image?.dispose();
     }
+    for (final image in cellBackgroundImages.values) {
+      image?.dispose();
+    }
     backgroundImage?.dispose();
   }
+}
+
+/// Imagens de fundo próprias das fotos (`CollageCellSettings.background` no
+/// modo imagem), indexadas pelo caminho do arquivo. Deduplicar por caminho
+/// importa porque a aba "Fundo" aplica a escolha a todas as fotos de uma vez:
+/// sem isso, a mesma imagem seria decodificada uma vez por célula.
+Future<Map<String, ui.Image?>> _decodeCellBackgrounds(
+  CollageSettings settings,
+) async {
+  final paths = <String>{
+    for (final cell in settings.cells)
+      if (cell.background.mode == CollageBackgroundMode.image &&
+          cell.background.imagePath != null)
+        cell.background.imagePath!,
+  };
+  final images = await Future.wait(paths.map(_tryDecodeImageFile));
+  return {for (final (index, path) in paths.indexed) path: images[index]};
 }
 
 /// Desenha stickers e textos juntos, ordenados por `zIndex` (menor primeiro,

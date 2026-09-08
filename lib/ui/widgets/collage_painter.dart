@@ -144,17 +144,27 @@ void paintCollageBackground(
 /// Desenha a foto de uma célula, recortada (modo [CollageCellFitMode.cover])
 /// ou inteira (modo [CollageCellFitMode.contain]) ao arredondamento próprio
 /// da célula, com deslocamento/zoom/rotação livre/espelhamento/ajustes de
-/// cor e a borda própria da célula (se houver) — a mesma ordem de
+/// cor, o fundo próprio da foto ([CollageCellSettings.background], por baixo
+/// dela) e a borda própria da célula (se houver) — a mesma ordem de
 /// transformações (girar, depois espelhar) usada pela prévia ao vivo
 /// (`Transform.rotate` por fora de `Transform` de espelhamento), para as
-/// duas nunca divergirem visualmente.
+/// duas nunca divergirem visualmente. [cellBackgroundImage] é a imagem já
+/// decodificada do fundo próprio da foto, e só é usada quando esse fundo
+/// está no modo [CollageBackgroundMode.image].
 void paintCollageCell(
   Canvas canvas,
   Rect cellRect,
   CollageCellSettings cell,
-  ui.Image? photoImage,
-) {
-  if (photoImage == null) return;
+  ui.Image? photoImage, {
+  ui.Image? cellBackgroundImage,
+}) {
+  // Sem foto legível e sem fundo próprio não há nada para desenhar — uma foto
+  // que o usuário apagou do aparelho não pode deixar a borda da célula
+  // sozinha no lugar dela. Com fundo próprio escolhido, ele ainda aparece.
+  if (photoImage == null &&
+      cell.background.mode == CollageBackgroundMode.transparent) {
+    return;
+  }
 
   final outerRadius =
       cellRect.size.shortestSide *
@@ -179,6 +189,19 @@ void paintCollageCell(
   canvas.clipRRect(
     RRect.fromRectAndRadius(contentRect, Radius.circular(innerRadius)),
   );
+
+  // Fundo próprio da foto: preenche a área de conteúdo da célula por baixo
+  // dela, antes de qualquer rotação (o fundo não gira junto com a foto).
+  paintCollageBackground(
+    canvas,
+    contentRect,
+    cell.background,
+    backgroundImage: cellBackgroundImage,
+  );
+  if (photoImage == null) {
+    canvas.restore();
+    return;
+  }
 
   canvas.translate(contentRect.center.dx, contentRect.center.dy);
   canvas.rotate(cell.rotation);

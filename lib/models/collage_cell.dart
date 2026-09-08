@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'collage_background.dart';
 import 'crop_rect.dart';
 
 /// Como a foto de uma célula preenche o espaço disponível: [cover] sempre
@@ -51,6 +52,7 @@ class CollageCellSettings {
     this.flipHorizontal = false,
     this.flipVertical = false,
     this.fitMode = CollageCellFitMode.cover,
+    this.background = const CollageBackground(),
     this.cornerRatio = 0.0,
     this.borderThicknessAtReference = 0.0,
     this.borderColor = const Color(0xFFFFFFFF),
@@ -92,6 +94,17 @@ class CollageCellSettings {
   final bool flipVertical;
 
   final CollageCellFitMode fitMode;
+
+  /// Fundo próprio desta foto: o que aparece atrás dela, dentro da célula (já
+  /// dentro da borda própria, se houver) — mesmo modelo do fundo da montagem
+  /// inteira ([CollageSettings.background]), só que por foto. Transparente
+  /// (padrão) deixa o fundo da montagem aparecer na sobra do modo
+  /// [CollageCellFitMode.contain], que era o único comportamento possível
+  /// antes; cor/imagem preenchem só a área da célula. Em
+  /// [CollageCellFitMode.cover] a foto cobre a célula inteira, então o fundo
+  /// fica escondido — mas continua guardado, para reaparecer ao voltar para
+  /// "encaixar".
+  final CollageBackground background;
 
   /// Arredondamento do canto desta célula, como razão do menor lado da
   /// célula — mesma unidade proporcional de [FrameSettings.cornerRatio].
@@ -338,6 +351,7 @@ class CollageCellSettings {
     bool? flipHorizontal,
     bool? flipVertical,
     CollageCellFitMode? fitMode,
+    CollageBackground? background,
     double? cornerRatio,
     double? borderThicknessAtReference,
     Color? borderColor,
@@ -357,6 +371,7 @@ class CollageCellSettings {
       flipHorizontal: flipHorizontal ?? this.flipHorizontal,
       flipVertical: flipVertical ?? this.flipVertical,
       fitMode: fitMode ?? this.fitMode,
+      background: background ?? this.background,
       cornerRatio: cornerRatio ?? this.cornerRatio,
       borderThicknessAtReference:
           borderThicknessAtReference ?? this.borderThicknessAtReference,
@@ -371,8 +386,9 @@ class CollageCellSettings {
   /// a foto, o recorte manual e os ajustes de cor/borda — usado no menu
   /// "Recentralizar" e ao substituir a foto de uma célula (o enquadramento
   /// antigo não faz sentido para outra foto, mas a cor/borda escolhidas para
-  /// aquele espaço sim). [fitMode] também não muda aqui — é um eixo
-  /// independente do enquadramento, controlado só pelo duplo toque.
+  /// aquele espaço sim). [fitMode] e [background] não mudam aqui — são eixos
+  /// independentes do enquadramento; o duplo toque na célula alterna o
+  /// [fitMode] e aplica este mesmo reset por cima (ver `CollageCellView`).
   CollageCellSettings resetFraming() => copyWith(
     offsetX: 0,
     offsetY: 0,

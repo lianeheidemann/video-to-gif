@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart'
     show Canvas, Color, ColorFilter, Offset, Paint, Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
 import 'package:video_to_gif/models/crop_rect.dart';
 
@@ -253,6 +254,46 @@ void main() {
       expect(reset.zoom, CollageCellSettings.minZoom);
       expect(reset.rotation, 0.0);
       expect(reset.flipHorizontal, isFalse);
+    });
+
+    test('mantém o fundo próprio da foto', () {
+      const cell = CollageCellSettings(
+        photoPath: '/tmp/foo.jpg',
+        rotation: 1.2,
+        background: CollageBackground(
+          mode: CollageBackgroundMode.color,
+          color: Color(0xFF0000FF),
+        ),
+      );
+      final reset = cell.resetFraming();
+      expect(reset.rotation, 0.0);
+      expect(reset.background.mode, CollageBackgroundMode.color);
+      expect(reset.background.color, const Color(0xFF0000FF));
+    });
+  });
+
+  group('fundo próprio da foto', () {
+    test('é transparente por padrão', () {
+      const cell = CollageCellSettings();
+      expect(cell.background.mode, CollageBackgroundMode.transparent);
+    });
+
+    test('copyWith troca só o fundo, sem mexer no resto', () {
+      const cell = CollageCellSettings(
+        photoPath: '/tmp/foo.jpg',
+        zoom: 2,
+        fitMode: CollageCellFitMode.contain,
+      );
+      final withBackground = cell.copyWith(
+        background: const CollageBackground(
+          mode: CollageBackgroundMode.image,
+          imagePath: '/tmp/fundo.png',
+        ),
+      );
+      expect(withBackground.background.imagePath, '/tmp/fundo.png');
+      expect(withBackground.zoom, 2);
+      expect(withBackground.fitMode, CollageCellFitMode.contain);
+      expect(withBackground.photoPath, '/tmp/foo.jpg');
     });
   });
 
