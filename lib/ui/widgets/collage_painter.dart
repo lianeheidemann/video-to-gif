@@ -48,10 +48,13 @@ class CollageGeometry {
 
   /// Raio de canto da área interna (dentro da borda) — a borda mantém a
   /// mesma "espessura visual" de um canto ao outro.
-  double get innerRadius => (outerRadius - borderThickness).clamp(0.0, outerRadius);
+  double get innerRadius =>
+      (outerRadius - borderThickness).clamp(0.0, outerRadius);
 
-  RRect get outerClip =>
-      RRect.fromRectAndRadius(Offset.zero & canvasSize, Radius.circular(outerRadius));
+  RRect get outerClip => RRect.fromRectAndRadius(
+    Offset.zero & canvasSize,
+    Radius.circular(outerRadius),
+  );
 
   RRect get innerClip => RRect.fromRectAndRadius(
     Rect.fromLTWH(
@@ -64,24 +67,56 @@ class CollageGeometry {
   );
 }
 
-/// Desenha a borda externa da montagem (cor sólida atrás de tudo, visível só
-/// no anel entre o canto externo e a área interna) — mesmo princípio de
-/// `paintFrame`.
+/// Desenha a borda externa da montagem: só o anel entre o canto externo e a
+/// área interna. Pintar o retângulo inteiro com a cor da borda (como era
+/// antes) fazia a cor vazar por baixo de tudo — com "Fundo transparente" as
+/// margens entre as fotos saíam pintadas da cor da borda em vez de
+/// transparentes, e não havia como ter borda e fundo transparente juntos.
 void paintCollageBorder(Canvas canvas, Size size, CollageSettings settings) {
-  if (settings.borderThicknessFor(size.width) <= 0) return;
   final geometry = CollageGeometry.of(size, settings);
-  canvas.drawRRect(geometry.outerClip, Paint()..color = settings.borderColor);
+  if (geometry.borderThickness <= 0) return;
+  // O anel avança meio pixel para dentro da área interna: o fundo e as fotos
+  // são desenhados por cima logo em seguida, então essa sobra some — e sem
+  // ela ficaria uma linha clara de antialiasing entre os dois desenhos.
+  final overlap = geometry.borderThickness < 1
+      ? geometry.borderThickness / 2
+      : 0.5;
+  canvas.drawDRRect(
+    geometry.outerClip,
+    geometry.innerClip.deflate(overlap),
+    Paint()..color = settings.borderColor,
+  );
 }
 
-/// Desenha o fundo da montagem (dentro da área interna, já recortada pelo
-/// arredondamento) — nada quando transparente.
+/// [CustomPainter] que desenha [paintCollageBorder] na prévia ao vivo, para a
+/// prévia na tela e o PNG exportado usarem literalmente o mesmo desenho de
+/// borda — mesmo papel de [FramePainter] para a moldura de vídeo.
+class CollageBorderPainter extends CustomPainter {
+  const CollageBorderPainter(this.settings);
+
+  final CollageSettings settings;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintCollageBorder(canvas, size, settings);
+
+  @override
+  bool shouldRepaint(covariant CollageBorderPainter oldDelegate) => true;
+}
+
+/// Desenha o fundo da montagem dentro de [rect] — a área interna, já dentro
+/// da borda. [rect] (e não o canvas inteiro) é o que decide o recorte "cover"
+/// da imagem de fundo, exatamente como o `BoxFit.cover` da prévia, que também
+/// só enxerga a área interna: calcular o "cover" contra o canvas inteiro
+/// enquadrava a imagem de um jeito na prévia e de outro na exportação sempre
+/// que havia borda. Nada é desenhado quando o fundo é transparente.
 void paintCollageBackground(
   Canvas canvas,
-  Size size,
+  Rect rect,
   CollageBackground background, {
   ui.Image? backgroundImage,
 }) {
-  final rect = Offset.zero & size;
+  if (rect.isEmpty) return;
   switch (background.mode) {
     case CollageBackgroundMode.transparent:
       return;
@@ -93,8 +128,8 @@ void paintCollageBackground(
       final src = coverSrcRectFor(
         backgroundImage.width.toDouble(),
         backgroundImage.height.toDouble(),
-        size.width,
-        size.height,
+        rect.width,
+        rect.height,
       );
       canvas.drawImageRect(
         backgroundImage,
@@ -111,20 +146,32 @@ void paintCollageBackground(
 /// mesma ordem de transformações (girar, depois espelhar) usada pela prévia
 /// ao vivo (`RotatedBox` por fora de `Transform` de espelhamento), para as
 /// duas nunca divergirem visualmente.
-void paintCollageCell(Canvas canvas, Rect cellRect, CollageCellSettings cell, ui.Image? photoImage) {
+void paintCollageCell(
+  Canvas canvas,
+  Rect cellRect,
+  CollageCellSettings cell,
+  ui.Image? photoImage,
+) {
   if (photoImage == null) return;
 
   final outerRadius =
-      cellRect.size.shortestSide * cell.cornerRatio.clamp(0.0, CollageCellSettings.maxCornerRatio);
+      cellRect.size.shortestSide *
+      cell.cornerRatio.clamp(0.0, CollageCellSettings.maxCornerRatio);
   final src = cell.coverSrcRect(cellRect.size);
   if (src == Rect.zero) return;
 
   final destWidth = cell.rotation.swapsAxes ? cellRect.height : cellRect.width;
   final destHeight = cell.rotation.swapsAxes ? cellRect.width : cellRect.height;
-  final dest = Rect.fromCenter(center: Offset.zero, width: destWidth, height: destHeight);
+  final dest = Rect.fromCenter(
+    center: Offset.zero,
+    width: destWidth,
+    height: destHeight,
+  );
 
   canvas.save();
-  canvas.clipRRect(RRect.fromRectAndRadius(cellRect, Radius.circular(outerRadius)));
+  canvas.clipRRect(
+    RRect.fromRectAndRadius(cellRect, Radius.circular(outerRadius)),
+  );
   canvas.translate(cellRect.center.dx, cellRect.center.dy);
   canvas.rotate(cell.rotation.radians);
   if (cell.flipHorizontal || cell.flipVertical) {

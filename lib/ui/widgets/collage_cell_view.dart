@@ -26,9 +26,10 @@ class CollageCellView extends StatefulWidget {
   final ValueChanged<CollageCellSettings> onChanged;
   final VoidCallback onMenu;
 
-  /// Chamado uma vez no início de cada gesto (antes da primeira mudança) —
-  /// usado pela tela dona para empilhar o estado anterior no histórico de
-  /// desfazer, sem empilhar de novo a cada frame do arrasto.
+  /// Chamado uma vez por gesto, imediatamente antes da primeira mudança de
+  /// verdade — usado pela tela dona para empilhar o estado anterior no
+  /// histórico de desfazer, sem empilhar de novo a cada quadro do arrasto e
+  /// sem empilhar nada quando o gesto termina sem mexer em nada.
   final VoidCallback? onGestureStart;
 
   @override
@@ -38,8 +39,15 @@ class CollageCellView extends StatefulWidget {
 class _CollageCellViewState extends State<CollageCellView> {
   double _startZoom = CollageCellSettings.minZoom;
 
+  /// O checkpoint de desfazer só é empilhado quando o gesto muda mesmo alguma
+  /// coisa. Empilhar já no [_onScaleStart] gastava um passo de desfazer em
+  /// gestos que não mudam nada — arrastar uma foto que já preenche a célula
+  /// sem folga em nenhum eixo, por exemplo, avisava o histórico a cada
+  /// arrasto sem nunca mexer na montagem.
+  bool _checkpointPushed = false;
+
   void _onScaleStart(ScaleStartDetails details) {
-    widget.onGestureStart?.call();
+    _checkpointPushed = false;
     _startZoom = widget.cell.zoom;
   }
 
@@ -52,12 +60,19 @@ class _CollageCellViewState extends State<CollageCellView> {
     final delta = cell
         .copyWith(zoom: newZoom)
         .offsetDeltaForDrag(details.focalPointDelta, widget.cellSize);
+    final newOffsetX = (cell.offsetX + delta.dx).clamp(-1.0, 1.0);
+    final newOffsetY = (cell.offsetY + delta.dy).clamp(-1.0, 1.0);
+    if (newZoom == cell.zoom &&
+        newOffsetX == cell.offsetX &&
+        newOffsetY == cell.offsetY) {
+      return;
+    }
+    if (!_checkpointPushed) {
+      _checkpointPushed = true;
+      widget.onGestureStart?.call();
+    }
     widget.onChanged(
-      cell.copyWith(
-        zoom: newZoom,
-        offsetX: (cell.offsetX + delta.dx).clamp(-1.0, 1.0),
-        offsetY: (cell.offsetY + delta.dy).clamp(-1.0, 1.0),
-      ),
+      cell.copyWith(zoom: newZoom, offsetX: newOffsetX, offsetY: newOffsetY),
     );
   }
 
@@ -70,7 +85,8 @@ class _CollageCellViewState extends State<CollageCellView> {
   Widget build(BuildContext context) {
     final cell = widget.cell;
     final theme = Theme.of(context);
-    final radius = widget.cellSize.shortestSide *
+    final radius =
+        widget.cellSize.shortestSide *
         cell.cornerRatio.clamp(0.0, CollageCellSettings.maxCornerRatio);
 
     return ClipRRect(
@@ -148,8 +164,12 @@ class _CellPhoto extends StatelessWidget {
     final src = cell.coverSrcRect(cellSize);
     if (src == Rect.zero) return const SizedBox.shrink();
 
-    final destWidth = cell.rotation.swapsAxes ? cellSize.height : cellSize.width;
-    final destHeight = cell.rotation.swapsAxes ? cellSize.width : cellSize.height;
+    final destWidth = cell.rotation.swapsAxes
+        ? cellSize.height
+        : cellSize.width;
+    final destHeight = cell.rotation.swapsAxes
+        ? cellSize.width
+        : cellSize.height;
 
     Widget cropped = _CroppedCover(
       photoPath: cell.photoPath!,
@@ -174,7 +194,10 @@ class _CellPhoto extends StatelessWidget {
 
     return ColorFiltered(
       colorFilter: cell.colorFilter,
-      child: RotatedBox(quarterTurns: cell.rotation.quarterTurns, child: cropped),
+      child: RotatedBox(
+        quarterTurns: cell.rotation.quarterTurns,
+        child: cropped,
+      ),
     );
   }
 }

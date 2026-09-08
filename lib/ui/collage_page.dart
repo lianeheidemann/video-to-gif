@@ -42,7 +42,9 @@ class CollagePage extends StatefulWidget {
 class _CollagePageState extends State<CollagePage> {
   static const _output = OutputService();
   static const _stickerStore = ImportedAssetStore(ImportedAssetKind.sticker);
-  static const _backgroundStore = ImportedAssetStore(ImportedAssetKind.backgroundImage);
+  static const _backgroundStore = ImportedAssetStore(
+    ImportedAssetKind.backgroundImage,
+  );
 
   late CollageSettings _settings = CollageSettings.forLayout(
     _defaultLayoutFor(widget.photos.length),
@@ -64,14 +66,34 @@ class _CollagePageState extends State<CollagePage> {
   void initState() {
     super.initState();
     _loadImportedAssets();
+    final ignored = widget.photos.length - _settings.cells.length;
+    if (ignored > 0) {
+      // Mais fotos do que cabe até no maior layout: avisa em vez de deixar o
+      // usuário achar que elas entraram na montagem.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _message(
+          ignored == 1
+              ? 'A última foto escolhida não coube na montagem.'
+              : 'As últimas $ignored fotos escolhidas não couberam na montagem.',
+        );
+      });
+    }
   }
 
+  /// Layout inicial com células suficientes para todas as [count] fotos
+  /// escolhidas. Acima de 9 fotos cai na grade livre (até 4x4 = 16 células, o
+  /// máximo dela) em vez de sempre na grade 3x3 — que descartava em silêncio
+  /// tudo o que passasse da nona foto.
   static CollageLayout _defaultLayoutFor(int count) {
     if (count <= 2) return CollageLayout.row(count < 2 ? 2 : count);
     if (count == 3) return CollageLayout.row(3);
     if (count == 4) return const CollageLayout(kind: CollageLayoutKind.grid2x2);
     if (count <= 6) return const CollageLayout(kind: CollageLayoutKind.grid2x3);
-    return const CollageLayout(kind: CollageLayoutKind.grid3x3);
+    if (count <= 9) return const CollageLayout(kind: CollageLayoutKind.grid3x3);
+    const maxSpan = CollageLayout.maxFreeGridSpan;
+    final rows = ((count + maxSpan - 1) ~/ maxSpan).clamp(1, maxSpan);
+    return CollageLayout.grid(maxSpan, rows);
   }
 
   Future<void> _loadImportedAssets() async {
@@ -111,6 +133,7 @@ class _CollagePageState extends State<CollagePage> {
     setState(() {
       _redoStack.add(_settings);
       _settings = previous;
+      _dropSelectionIfGone();
     });
   }
 
@@ -120,7 +143,20 @@ class _CollagePageState extends State<CollagePage> {
     setState(() {
       _undoStack.add(_settings);
       _settings = next;
+      _dropSelectionIfGone();
     });
+  }
+
+  /// Solta a seleção quando a sobreposição selecionada não existe mais no
+  /// estado atual — desfazer a criação de um sticker/texto deixava a barra de
+  /// ações na tela apontando para algo que já tinha sumido, com todos os
+  /// botões sem efeito nenhum.
+  void _dropSelectionIfGone() {
+    final id = _selectedOverlayId;
+    if (id == null) return;
+    if (_findSticker(id) == null && _findText(id) == null) {
+      _selectedOverlayId = null;
+    }
   }
 
   void _message(String text) {
@@ -188,12 +224,12 @@ class _CollagePageState extends State<CollagePage> {
           return Stack(
             fit: StackFit.expand,
             children: [
+              // A borda da prévia é desenhada pelo mesmo `paintCollageBorder`
+              // da exportação (antes era um Container pintado à mão aqui, que
+              // podia divergir do PNG final).
               if (geometry.borderThickness > 0)
-                Container(
-                  decoration: BoxDecoration(
-                    color: _settings.borderColor,
-                    borderRadius: BorderRadius.circular(geometry.outerRadius),
-                  ),
+                Positioned.fill(
+                  child: CustomPaint(painter: CollageBorderPainter(_settings)),
                 ),
               Positioned.fill(
                 child: Padding(
@@ -258,7 +294,8 @@ class _CollagePageState extends State<CollagePage> {
     final entries = <(int zIndex, Widget widget)>[
       for (final sticker in _settings.stickers)
         (sticker.zIndex, _stickerOverlayWidget(sticker, size)),
-      for (final text in _settings.texts) (text.zIndex, _textOverlayWidget(text, size)),
+      for (final text in _settings.texts)
+        (text.zIndex, _textOverlayWidget(text, size)),
     ]..sort((a, b) => a.$1.compareTo(b.$1));
     return [for (final entry in entries) entry.$2];
   }
@@ -279,7 +316,12 @@ class _CollagePageState extends State<CollagePage> {
       onTransformChanged: (cx, cy, scale, rotation) => _update(
         _settings.replacingSticker(
           sticker.id,
-          sticker.copyWith(centerX: cx, centerY: cy, scale: scale, rotation: rotation),
+          sticker.copyWith(
+            centerX: cx,
+            centerY: cy,
+            scale: scale,
+            rotation: rotation,
+          ),
         ),
         pushUndo: false,
       ),
@@ -303,7 +345,12 @@ class _CollagePageState extends State<CollagePage> {
       onTransformChanged: (cx, cy, scale, rotation) => _update(
         _settings.replacingText(
           text.id,
-          text.copyWith(centerX: cx, centerY: cy, scale: scale, rotation: rotation),
+          text.copyWith(
+            centerX: cx,
+            centerY: cy,
+            scale: scale,
+            rotation: rotation,
+          ),
         ),
         pushUndo: false,
       ),
@@ -314,11 +361,18 @@ class _CollagePageState extends State<CollagePage> {
   Widget _stickerArt(CollageSticker sticker, Size canvasSize) {
     final refSize = canvasSize.shortestSide * CollageSticker.referenceSizeRatio;
     final content = switch (sticker.source) {
-      CollageStickerSource.bundledSvg => SvgPicture.asset(sticker.assetPath!, fit: BoxFit.contain),
-      CollageStickerSource.importedSvg =>
-        SvgPicture.file(File(sticker.imageFilePath!), fit: BoxFit.contain),
-      CollageStickerSource.importedImage =>
-        Image.file(File(sticker.imageFilePath!), fit: BoxFit.contain),
+      CollageStickerSource.bundledSvg => SvgPicture.asset(
+        sticker.assetPath!,
+        fit: BoxFit.contain,
+      ),
+      CollageStickerSource.importedSvg => SvgPicture.file(
+        File(sticker.imageFilePath!),
+        fit: BoxFit.contain,
+      ),
+      CollageStickerSource.importedImage => Image.file(
+        File(sticker.imageFilePath!),
+        fit: BoxFit.contain,
+      ),
     };
     return SizedBox(width: refSize, height: refSize, child: content);
   }
@@ -339,7 +393,9 @@ class _CollagePageState extends State<CollagePage> {
   Widget? _selectionToolbar() {
     final id = _selectedOverlayId;
     if (id == null) return null;
-    final isText = id.startsWith('t_');
+    final text = _findText(id);
+    if (text == null && _findSticker(id) == null) return null;
+    final isText = text != null;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Wrap(
@@ -395,7 +451,8 @@ class _CollagePageState extends State<CollagePage> {
               scrollDirection: Axis.horizontal,
               itemCount: CollageLayoutKind.values.length,
               separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, index) => _layoutThumb(CollageLayoutKind.values[index]),
+              itemBuilder: (context, index) =>
+                  _layoutThumb(CollageLayoutKind.values[index]),
             ),
           ),
           if (_settings.layout.kind == CollageLayoutKind.freeGrid) ...[
@@ -484,12 +541,21 @@ class _CollagePageState extends State<CollagePage> {
       children: [
         Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
         IconButton(
-          onPressed: value > CollageLayout.minFreeGridSpan ? () => onChanged(value - 1) : null,
+          onPressed: value > CollageLayout.minFreeGridSpan
+              ? () => onChanged(value - 1)
+              : null,
           icon: const Icon(Icons.remove_circle_outline),
         ),
-        Text('$value', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Text(
+          '$value',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         IconButton(
-          onPressed: value < CollageLayout.maxFreeGridSpan ? () => onChanged(value + 1) : null,
+          onPressed: value < CollageLayout.maxFreeGridSpan
+              ? () => onChanged(value + 1)
+              : null,
           icon: const Icon(Icons.add_circle_outline),
         ),
       ],
@@ -501,9 +567,15 @@ class _CollagePageState extends State<CollagePage> {
     final layout = switch (kind) {
       CollageLayoutKind.row => CollageLayout.row(currentCount),
       CollageLayoutKind.column => CollageLayout.column(currentCount),
-      CollageLayoutKind.grid2x2 => const CollageLayout(kind: CollageLayoutKind.grid2x2),
-      CollageLayoutKind.grid2x3 => const CollageLayout(kind: CollageLayoutKind.grid2x3),
-      CollageLayoutKind.grid3x3 => const CollageLayout(kind: CollageLayoutKind.grid3x3),
+      CollageLayoutKind.grid2x2 => const CollageLayout(
+        kind: CollageLayoutKind.grid2x2,
+      ),
+      CollageLayoutKind.grid2x3 => const CollageLayout(
+        kind: CollageLayoutKind.grid2x3,
+      ),
+      CollageLayoutKind.grid3x3 => const CollageLayout(
+        kind: CollageLayoutKind.grid3x3,
+      ),
       CollageLayoutKind.freeGrid => CollageLayout.grid(2, 2),
     };
     _applyLayout(layout);
@@ -527,7 +599,8 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
 
   Widget _marginSection() {
-    final percent = (_settings.marginRatio / CollageSettings.maxMarginRatio * 100).round();
+    final percent =
+        (_settings.marginRatio / CollageSettings.maxMarginRatio * 100).round();
     return LabeledSection(
       icon: Icons.space_dashboard_outlined,
       title: 'Margem',
@@ -541,7 +614,8 @@ class _CollagePageState extends State<CollagePage> {
         ),
         label: '$percent%',
         onChangeStart: (_) => _pushUndoCheckpoint(),
-        onChanged: (v) => _update(_settings.copyWith(marginRatio: v), pushUndo: false),
+        onChanged: (v) =>
+            _update(_settings.copyWith(marginRatio: v), pushUndo: false),
       ),
     );
   }
@@ -562,7 +636,8 @@ class _CollagePageState extends State<CollagePage> {
                 ChoiceChip(
                   label: Text(preset.$1),
                   selected: (_settings.aspectRatio - preset.$2).abs() < 0.001,
-                  onSelected: (_) => _update(_settings.copyWith(aspectRatio: preset.$2)),
+                  onSelected: (_) =>
+                      _update(_settings.copyWith(aspectRatio: preset.$2)),
                 ),
             ],
           ),
@@ -572,7 +647,8 @@ class _CollagePageState extends State<CollagePage> {
             max: 2.5,
             value: _settings.aspectRatio.clamp(0.4, 2.5),
             onChangeStart: (_) => _pushUndoCheckpoint(),
-            onChanged: (v) => _update(_settings.copyWith(aspectRatio: v), pushUndo: false),
+            onChanged: (v) =>
+                _update(_settings.copyWith(aspectRatio: v), pushUndo: false),
           ),
         ],
       ),
@@ -600,7 +676,10 @@ class _CollagePageState extends State<CollagePage> {
             min: 0,
             max: CollageSettings.maxBorderThickness,
             display: '${_settings.borderThicknessAtReference.round()}px',
-            onChanged: (v) => _update(_settings.copyWith(borderThicknessAtReference: v), pushUndo: false),
+            onChanged: (v) => _update(
+              _settings.copyWith(borderThicknessAtReference: v),
+              pushUndo: false,
+            ),
           ),
           const SizedBox(height: 12),
           _sliderRow(
@@ -610,11 +689,14 @@ class _CollagePageState extends State<CollagePage> {
             max: CollageSettings.maxCornerRatio,
             display:
                 '${(_settings.cornerRatio / CollageSettings.maxCornerRatio * 100).round()}%',
-            onChanged: (v) => _update(_settings.copyWith(cornerRatio: v), pushUndo: false),
+            onChanged: (v) =>
+                _update(_settings.copyWith(cornerRatio: v), pushUndo: false),
           ),
           if (_settings.borderThicknessAtReference > 0) ...[
             const SizedBox(height: 4),
-            Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45)),
+            Divider(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+            ),
             _colorRow('Cor da borda', _settings.borderColor, _pickBorderColor),
           ],
         ],
@@ -674,7 +756,10 @@ class _CollagePageState extends State<CollagePage> {
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,
-                border: Border.all(color: theme.colorScheme.outlineVariant, width: 1.5),
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant,
+                  width: 1.5,
+                ),
               ),
             ),
           ],
@@ -684,12 +769,21 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   void _pickBorderColor() {
-    _pushUndoCheckpoint();
+    // O checkpoint entra na primeira cor escolhida, não na abertura do painel:
+    // abrir e fechar sem escolher nada não pode deixar um passo de desfazer
+    // que aparenta não fazer nada.
+    var checkpointPushed = false;
     showCollageColorPickerSheet(
       context: context,
       title: 'Cor da borda',
       initialColor: _settings.borderColor,
-      onColorSelected: (color) => _update(_settings.copyWith(borderColor: color), pushUndo: false),
+      onColorSelected: (color) {
+        if (!checkpointPushed) {
+          checkpointPushed = true;
+          _pushUndoCheckpoint();
+        }
+        _update(_settings.copyWith(borderColor: color), pushUndo: false);
+      },
       previewImageBuilder: _renderPreviewImage,
     );
   }
@@ -732,12 +826,18 @@ class _CollagePageState extends State<CollagePage> {
             selected: {background.mode},
             showSelectedIcon: false,
             onSelectionChanged: (selection) => _update(
-              _settings.copyWith(background: background.copyWith(mode: selection.single)),
+              _settings.copyWith(
+                background: background.copyWith(mode: selection.single),
+              ),
             ),
           ),
           if (background.mode == CollageBackgroundMode.color) ...[
             const SizedBox(height: 8),
-            _colorRow('Cor do fundo', background.color, _openBackgroundColorPicker),
+            _colorRow(
+              'Cor do fundo',
+              background.color,
+              _openBackgroundColorPicker,
+            ),
           ],
           if (background.mode == CollageBackgroundMode.image) ...[
             const SizedBox(height: 12),
@@ -757,7 +857,10 @@ class _CollagePageState extends State<CollagePage> {
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           if (index == _importedBackgrounds.length) {
-            return _importTile(onTap: _importBackgroundImage, label: 'Importar');
+            return _importTile(
+              onTap: _importBackgroundImage,
+              label: 'Importar',
+            );
           }
           final asset = _importedBackgrounds[index];
           final selected = _settings.background.imagePath == asset.filePath;
@@ -779,20 +882,27 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   void _openBackgroundColorPicker() {
-    _pushUndoCheckpoint();
+    // Mesmo cuidado de [_pickBorderColor] com o histórico de desfazer.
+    var checkpointPushed = false;
     showCollageColorPickerSheet(
       context: context,
       title: 'Cor do fundo',
       initialColor: _settings.background.color,
-      onColorSelected: (color) => _update(
-        _settings.copyWith(
-          background: _settings.background.copyWith(
-            mode: CollageBackgroundMode.color,
-            color: color,
+      onColorSelected: (color) {
+        if (!checkpointPushed) {
+          checkpointPushed = true;
+          _pushUndoCheckpoint();
+        }
+        _update(
+          _settings.copyWith(
+            background: _settings.background.copyWith(
+              mode: CollageBackgroundMode.color,
+              color: color,
+            ),
           ),
-        ),
-        pushUndo: false,
-      ),
+          pushUndo: false,
+        );
+      },
       previewImageBuilder: _renderPreviewImage,
     );
   }
@@ -838,7 +948,9 @@ class _CollagePageState extends State<CollagePage> {
     await _backgroundStore.remove(asset.id);
     if (!mounted) return;
     setState(() {
-      _importedBackgrounds = _importedBackgrounds.where((a) => a.id != asset.id).toList();
+      _importedBackgrounds = _importedBackgrounds
+          .where((a) => a.id != asset.id)
+          .toList();
     });
     if (_settings.background.imagePath == asset.filePath) {
       _update(
@@ -853,10 +965,17 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Future<ui.Image> _renderPreviewImage() async {
-    final bytes = await composeCollage(settings: _settings, outputWidth: _previewSampleWidth());
+    final bytes = await composeCollage(
+      settings: _settings,
+      outputWidth: _previewSampleWidth(),
+    );
     final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    return frame.image;
+    try {
+      final frame = await codec.getNextFrame();
+      return frame.image;
+    } finally {
+      codec.dispose();
+    }
   }
 
   int _previewSampleWidth() => 480;
@@ -920,11 +1039,20 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Future<void> _confirmRemoveSticker(ImportedAsset asset) async {
+    final inUse = _settings.stickers
+        .where((s) => s.imageFilePath == asset.filePath)
+        .toList();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Remover sticker?'),
-        content: Text('"${asset.label}" vai ser removido da lista.'),
+        content: Text(
+          inUse.isEmpty
+              ? '"${asset.label}" vai ser removido da lista.'
+              : '"${asset.label}" vai ser removido da lista e também da '
+                    'montagem, onde está usado ${inUse.length} '
+                    '${inUse.length == 1 ? 'vez' : 'vezes'}.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -941,7 +1069,21 @@ class _CollagePageState extends State<CollagePage> {
 
     await _stickerStore.remove(asset.id);
     if (!mounted) return;
-    setState(() => _importedStickers = _importedStickers.where((a) => a.id != asset.id).toList());
+    setState(
+      () => _importedStickers = _importedStickers
+          .where((a) => a.id != asset.id)
+          .toList(),
+    );
+    if (inUse.isEmpty) return;
+    // O arquivo acabou de ser apagado do aparelho: deixar as cópias já
+    // colocadas na montagem apontando para ele quebrava a prévia e fazia a
+    // exportação inteira falhar com "Não foi possível gerar a imagem".
+    var updated = _settings;
+    for (final sticker in inUse) {
+      updated = updated.removingSticker(sticker.id);
+    }
+    _update(updated);
+    setState(_dropSelectionIfGone);
   }
 
   Widget _textSection() {
@@ -978,26 +1120,11 @@ class _CollagePageState extends State<CollagePage> {
     _update(_settings.replacingText(id, item.copyWith(text: text.trim())));
   }
 
-  Future<String?> _promptTextInput({required String initial}) {
-    final controller = TextEditingController(text: initial);
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Texto'),
-        content: TextField(controller: controller, autofocus: true, maxLines: 3),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
+  Future<String?> _promptTextInput({required String initial}) =>
+      showDialog<String>(
+        context: context,
+        builder: (dialogContext) => _TextInputDialog(initial: initial),
+      );
 
   Widget _importTile({required VoidCallback onTap, required String label}) {
     final theme = Theme.of(context);
@@ -1013,9 +1140,16 @@ class _CollagePageState extends State<CollagePage> {
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.5,
+                  ),
+                ),
               ),
-              child: Icon(Icons.add_photo_alternate_outlined, color: theme.colorScheme.primary),
+              child: Icon(
+                Icons.add_photo_alternate_outlined,
+                color: theme.colorScheme.primary,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -1123,11 +1257,21 @@ class _CollagePageState extends State<CollagePage> {
     if (isText) {
       final item = _findText(id);
       if (item == null) return;
-      _update(_settings.replacingText(id, item.copyWith(zIndex: _settings.nextZIndex)));
+      _update(
+        _settings.replacingText(
+          id,
+          item.copyWith(zIndex: _settings.nextZIndex),
+        ),
+      );
     } else {
       final sticker = _findSticker(id);
       if (sticker == null) return;
-      _update(_settings.replacingSticker(id, sticker.copyWith(zIndex: _settings.nextZIndex)));
+      _update(
+        _settings.replacingSticker(
+          id,
+          sticker.copyWith(zIndex: _settings.nextZIndex),
+        ),
+      );
     }
   }
 
@@ -1145,7 +1289,9 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   void _removeSelected(String id, bool isText) {
-    _update(isText ? _settings.removingText(id) : _settings.removingSticker(id));
+    _update(
+      isText ? _settings.removingText(id) : _settings.removingSticker(id),
+    );
     setState(() => _selectedOverlayId = null);
   }
 
@@ -1227,16 +1373,25 @@ class _CollagePageState extends State<CollagePage> {
 
   Future<void> _pickPhotoForCell(int index) async {
     try {
-      final picked = await FilePicker.pickFile(type: FileType.image, dialogTitle: 'Escolha uma foto');
+      final picked = await FilePicker.pickFile(
+        type: FileType.image,
+        dialogTitle: 'Escolha uma foto',
+      );
       final path = picked?.path;
       if (path == null) return;
 
       final bytes = await File(path).readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final width = frame.image.width;
-      final height = frame.image.height;
-      frame.image.dispose();
+      final int width;
+      final int height;
+      try {
+        final frame = await codec.getNextFrame();
+        width = frame.image.width;
+        height = frame.image.height;
+        frame.image.dispose();
+      } finally {
+        codec.dispose();
+      }
 
       final cell = _settings.cells[index];
       final replaced = cell
@@ -1260,7 +1415,10 @@ class _CollagePageState extends State<CollagePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Trocar com qual foto?', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Trocar com qual foto?',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 14),
               Wrap(
                 spacing: 10,
@@ -1309,11 +1467,18 @@ class _CollagePageState extends State<CollagePage> {
               sheetSetState(() {});
             }
 
-            Widget adjustSlider(String label, double value, CollageCellSettings Function(double) apply) {
+            Widget adjustSlider(
+              String label,
+              double value,
+              CollageCellSettings Function(double) apply,
+            ) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: Theme.of(sheetContext).textTheme.bodyMedium),
+                  Text(
+                    label,
+                    style: Theme.of(sheetContext).textTheme.bodyMedium,
+                  ),
                   Slider(
                     min: -1,
                     max: 1,
@@ -1333,10 +1498,21 @@ class _CollagePageState extends State<CollagePage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Ajustar cor', style: Theme.of(sheetContext).textTheme.titleMedium),
+                    Text(
+                      'Ajustar cor',
+                      style: Theme.of(sheetContext).textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 8),
-                    adjustSlider('Brilho', cell.brightness, (v) => cell.copyWith(brightness: v)),
-                    adjustSlider('Contraste', cell.contrast, (v) => cell.copyWith(contrast: v)),
+                    adjustSlider(
+                      'Brilho',
+                      cell.brightness,
+                      (v) => cell.copyWith(brightness: v),
+                    ),
+                    adjustSlider(
+                      'Contraste',
+                      cell.contrast,
+                      (v) => cell.copyWith(contrast: v),
+                    ),
                     adjustSlider(
                       'Saturação',
                       cell.saturation,
@@ -1354,7 +1530,12 @@ class _CollagePageState extends State<CollagePage> {
 
   void _rotateCell(int index) {
     final cell = _settings.cells[index];
-    _update(_settings.replacingCell(index, cell.copyWith(rotation: cell.rotation.next)));
+    _update(
+      _settings.replacingCell(
+        index,
+        cell.copyWith(rotation: cell.rotation.next),
+      ),
+    );
   }
 
   void _flipCell(int index, {required bool horizontal}) {
@@ -1385,7 +1566,8 @@ class _CollagePageState extends State<CollagePage> {
 
   Future<File> _writeTempPng(Uint8List bytes) async {
     final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/montagem_${DateTime.now().millisecondsSinceEpoch}.png';
+    final path =
+        '${dir.path}/montagem_${DateTime.now().millisecondsSinceEpoch}.png';
     final file = File(path);
     await file.writeAsBytes(bytes, flush: true);
     return file;
@@ -1394,7 +1576,10 @@ class _CollagePageState extends State<CollagePage> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final bytes = await composeCollage(settings: _settings, outputWidth: _exportWidth());
+      final bytes = await composeCollage(
+        settings: _settings,
+        outputWidth: _exportWidth(),
+      );
       final file = await _writeTempPng(bytes);
       await _output.saveToGallery(file);
       if (!mounted) return;
@@ -1413,7 +1598,10 @@ class _CollagePageState extends State<CollagePage> {
   Future<void> _share() async {
     setState(() => _sharing = true);
     try {
-      final bytes = await composeCollage(settings: _settings, outputWidth: _exportWidth());
+      final bytes = await composeCollage(
+        settings: _settings,
+        outputWidth: _exportWidth(),
+      );
       final file = await _writeTempPng(bytes);
       await _output.share(
         file,
@@ -1455,7 +1643,53 @@ class _CollagePageState extends State<CollagePage> {
                 )
               : const Icon(Icons.share_outlined),
           label: Text(_sharing ? 'Preparando…' : 'Compartilhar'),
-          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(56),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Diálogo de texto que é dono do próprio [TextEditingController]. O
+/// controller precisa viver e morrer junto com o State do diálogo: solto num
+/// método `async`, ou vazava (nunca era liberado) ou era liberado assim que
+/// `showDialog` retornava — ainda durante a animação de saída, com o campo
+/// montado e usando um controller já descartado.
+class _TextInputDialog extends StatefulWidget {
+  const _TextInputDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_TextInputDialog> createState() => _TextInputDialogState();
+}
+
+class _TextInputDialogState extends State<_TextInputDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Texto'),
+      content: TextField(controller: _controller, autofocus: true, maxLines: 3),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('OK'),
         ),
       ],
     );

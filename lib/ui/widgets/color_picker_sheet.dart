@@ -73,7 +73,25 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   Future<void> _startEyedropper() async {
     setState(() => _samplingPreview = true);
     try {
-      final image = await widget.previewImageBuilder();
+      final ui.Image image;
+      try {
+        image = await widget.previewImageBuilder();
+      } catch (_) {
+        // Sem isso o erro virava uma exceção assíncrona sem dono e o botão
+        // simplesmente não fazia nada, sem explicação nenhuma.
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Não foi possível preparar a prévia para o conta-gotas.',
+                ),
+              ),
+            );
+        }
+        return;
+      }
       if (!mounted) {
         image.dispose();
         return;
@@ -103,7 +121,9 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
             children: [
               Text(
                 widget.title,
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 16),
               Wrap(
@@ -116,7 +136,10 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                       selected: color == _color,
                       onTap: () => _select(color),
                     ),
-                  _EyedropperButton(busy: _samplingPreview, onTap: _startEyedropper),
+                  _EyedropperButton(
+                    busy: _samplingPreview,
+                    onTap: _startEyedropper,
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -138,7 +161,11 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
 }
 
 class _SwatchButton extends StatelessWidget {
-  const _SwatchButton({required this.color, required this.selected, required this.onTap});
+  const _SwatchButton({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
 
   final Color color;
   final bool selected;
@@ -156,7 +183,9 @@ class _SwatchButton extends StatelessWidget {
           color: color,
           shape: BoxShape.circle,
           border: Border.all(
-            color: selected ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outlineVariant,
             width: selected ? 3 : 1.5,
           ),
         ),
@@ -164,7 +193,9 @@ class _SwatchButton extends StatelessWidget {
             ? Icon(
                 Icons.check_rounded,
                 size: 18,
-                color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
+                color: color.computeLuminance() > 0.5
+                    ? Colors.black
+                    : Colors.white,
               )
             : null,
       ),
@@ -189,14 +220,20 @@ class _EyedropperButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: theme.colorScheme.primary.withValues(alpha: 0.10),
           shape: BoxShape.circle,
-          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.4),
+          ),
         ),
         child: busy
             ? const Padding(
                 padding: EdgeInsets.all(10),
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : Icon(Icons.colorize_rounded, size: 18, color: theme.colorScheme.primary),
+            : Icon(
+                Icons.colorize_rounded,
+                size: 18,
+                color: theme.colorScheme.primary,
+              ),
       ),
     );
   }
@@ -226,14 +263,18 @@ class _EyedropperDialogState extends State<_EyedropperDialog> {
   }
 
   Future<void> _load() async {
-    final raw = await widget.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final raw = await widget.image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
     if (!mounted) return;
     setState(() => _raw = raw);
   }
 
   Color? _colorAt(Offset localPosition, Size widgetSize) {
     final raw = _raw;
-    if (raw == null || widgetSize.width <= 0 || widgetSize.height <= 0) return null;
+    if (raw == null || widgetSize.width <= 0 || widgetSize.height <= 0) {
+      return null;
+    }
     final px = (localPosition.dx / widgetSize.width * widget.image.width)
         .floor()
         .clamp(0, widget.image.width - 1);
@@ -241,12 +282,21 @@ class _EyedropperDialogState extends State<_EyedropperDialog> {
         .floor()
         .clamp(0, widget.image.height - 1);
     final offset = (py * widget.image.width + px) * 4;
-    final r = raw.getUint8(offset);
-    final g = raw.getUint8(offset + 1);
-    final b = raw.getUint8(offset + 2);
-    // Transparência já é seu próprio modo de fundo — o conta-gotas sempre
-    // devolve uma cor opaca, mesmo tocando numa área transparente da prévia.
-    return Color.fromARGB(255, r, g, b);
+    final a = raw.getUint8(offset + 3);
+    // Sem cor nenhuma ali: transparência já é seu próprio modo de fundo, então
+    // tocar numa área vazia da prévia não escolhe nada (antes devolvia preto,
+    // porque num buffer pré-multiplicado o RGB de um pixel transparente é 0).
+    if (a == 0) return null;
+    // `rawRgba` vem pré-multiplicado pelo alfa: desfaz a multiplicação para
+    // que uma área semitransparente devolva a cor que aparenta ter, e não uma
+    // versão escurecida dela. O conta-gotas sempre devolve uma cor opaca.
+    int channel(int index) {
+      final value = raw.getUint8(offset + index);
+      if (a == 255) return value;
+      return (value * 255 / a).round().clamp(0, 255);
+    }
+
+    return Color.fromARGB(255, channel(0), channel(1), channel(2));
   }
 
   @override
@@ -282,7 +332,9 @@ class _EyedropperDialogState extends State<_EyedropperDialog> {
           decoration: BoxDecoration(
             color: _preview,
             shape: BoxShape.circle,
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ),
         ),
         TextButton(

@@ -13,7 +13,12 @@ import 'package:video_to_gif/services/collage_compositor.dart';
 /// Grava um PNG sólido de [width]x[height] na cor [color] em [path] — usado
 /// para ter fotos "de verdade" em disco para o compositor decodificar, sem
 /// depender de nenhum asset do repositório.
-Future<void> _writeSolidPng(String path, int width, int height, Color color) async {
+Future<void> _writeSolidPng(
+  String path,
+  int width,
+  int height,
+  Color color,
+) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   canvas.drawRect(
@@ -31,13 +36,56 @@ Future<void> _writeSolidPng(String path, int width, int height, Color color) asy
   }
 }
 
+/// Grava um PNG de [width]x[height] vermelho com uma faixa vertical verde em
+/// `x` dentro de `[bandStart, bandEnd)` — usado para saber exatamente qual
+/// pedaço da imagem de fundo entrou no recorte "cover".
+Future<void> _writeBandedPng(
+  String path,
+  int width,
+  int height,
+  int bandStart,
+  int bandEnd,
+) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawRect(
+    Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    Paint()..color = const Color(0xFFFF0000),
+  );
+  canvas.drawRect(
+    Rect.fromLTWH(
+      bandStart.toDouble(),
+      0,
+      (bandEnd - bandStart).toDouble(),
+      height.toDouble(),
+    ),
+    Paint()..color = const Color(0xFF00FF00),
+  );
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(width, height);
+  try {
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    await File(path).writeAsBytes(bytes!.buffer.asUint8List());
+  } finally {
+    image.dispose();
+    picture.dispose();
+  }
+}
+
 /// Lê o pixel (R,G,B,A) em (x,y) de um PNG já em memória, decodificando com
 /// `dart:ui` — mesma técnica de `frame_painter_test.dart`.
-Future<List<int>> _decodePixel(Uint8List pngBytes, int width, int x, int y) async {
+Future<List<int>> _decodePixel(
+  Uint8List pngBytes,
+  int width,
+  int x,
+  int y,
+) async {
   final codec = await ui.instantiateImageCodec(pngBytes);
   final frame = await codec.getNextFrame();
   try {
-    final data = await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final data = await frame.image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
     final offset = (y * width + x) * 4;
     return [
       data!.getUint8(offset),
@@ -62,64 +110,214 @@ void main() {
     if (await tempDir.exists()) await tempDir.delete(recursive: true);
   });
 
-  test('PNG de saída tem exatamente a largura pedida e a altura pela proporção', () async {
-    final photoPath = '${tempDir.path}/foto.png';
-    await _writeSolidPng(photoPath, 100, 100, const Color(0xFFFF0000));
+  test(
+    'PNG de saída tem exatamente a largura pedida e a altura pela proporção',
+    () async {
+      final photoPath = '${tempDir.path}/foto.png';
+      await _writeSolidPng(photoPath, 100, 100, const Color(0xFFFF0000));
 
-    final settings = CollageSettings(
-      layout: CollageLayout.row(1),
-      aspectRatio: 2.0,
-      cells: [CollageCellSettings(photoPath: photoPath, photoWidth: 100, photoHeight: 100)],
-    );
+      final settings = CollageSettings(
+        layout: CollageLayout.row(1),
+        aspectRatio: 2.0,
+        cells: [
+          CollageCellSettings(
+            photoPath: photoPath,
+            photoWidth: 100,
+            photoHeight: 100,
+          ),
+        ],
+      );
 
-    final bytes = await composeCollage(settings: settings, outputWidth: 300);
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    try {
-      expect(frame.image.width, 300);
-      expect(frame.image.height, 150);
-    } finally {
-      frame.image.dispose();
-      codec.dispose();
-    }
-  });
+      final bytes = await composeCollage(settings: settings, outputWidth: 300);
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      try {
+        expect(frame.image.width, 300);
+        expect(frame.image.height, 150);
+      } finally {
+        frame.image.dispose();
+        codec.dispose();
+      }
+    },
+  );
 
-  test('duas fotos lado a lado com fundo sólido: pixels batem com cada foto e o fundo', () async {
-    final redPath = '${tempDir.path}/vermelho.png';
-    final bluePath = '${tempDir.path}/azul.png';
-    await _writeSolidPng(redPath, 50, 50, const Color(0xFFFF0000));
-    await _writeSolidPng(bluePath, 50, 50, const Color(0xFF0000FF));
+  test(
+    'duas fotos lado a lado com fundo sólido: pixels batem com cada foto e o fundo',
+    () async {
+      final redPath = '${tempDir.path}/vermelho.png';
+      final bluePath = '${tempDir.path}/azul.png';
+      await _writeSolidPng(redPath, 50, 50, const Color(0xFFFF0000));
+      await _writeSolidPng(bluePath, 50, 50, const Color(0xFF0000FF));
 
-    final settings = CollageSettings(
-      layout: CollageLayout.row(2),
-      aspectRatio: 2.0,
-      marginRatio: 0.1,
-      background: const CollageBackground(
-        mode: CollageBackgroundMode.color,
-        color: Color(0xFF00FF00),
-      ),
-      cells: [
-        CollageCellSettings(photoPath: redPath, photoWidth: 50, photoHeight: 50),
-        CollageCellSettings(photoPath: bluePath, photoWidth: 50, photoHeight: 50),
-      ],
-    );
+      final settings = CollageSettings(
+        layout: CollageLayout.row(2),
+        aspectRatio: 2.0,
+        marginRatio: 0.1,
+        background: const CollageBackground(
+          mode: CollageBackgroundMode.color,
+          color: Color(0xFF00FF00),
+        ),
+        cells: [
+          CollageCellSettings(
+            photoPath: redPath,
+            photoWidth: 50,
+            photoHeight: 50,
+          ),
+          CollageCellSettings(
+            photoPath: bluePath,
+            photoWidth: 50,
+            photoHeight: 50,
+          ),
+        ],
+      );
 
-    const outputWidth = 200;
-    final bytes = await composeCollage(settings: settings, outputWidth: outputWidth);
+      const outputWidth = 200;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
 
-    // canvas 200x100 (aspectRatio 2.0), margem = shortestSide(100)*0.1 = 10.
-    // célula 0: x em [10,95], y em [10,90] — amostra bem no meio dela.
-    final leftPixel = await _decodePixel(bytes, outputWidth, 50, 50);
-    expect(leftPixel[0], greaterThan(200)); // R alto
-    expect(leftPixel[2], lessThan(50)); // B baixo
+      // canvas 200x100 (aspectRatio 2.0), margem = shortestSide(100)*0.1 = 10.
+      // célula 0: x em [10,95], y em [10,90] — amostra bem no meio dela.
+      final leftPixel = await _decodePixel(bytes, outputWidth, 50, 50);
+      expect(leftPixel[0], greaterThan(200)); // R alto
+      expect(leftPixel[2], lessThan(50)); // B baixo
 
-    // célula 1: x em [105,190], y em [10,90].
-    final rightPixel = await _decodePixel(bytes, outputWidth, 150, 50);
-    expect(rightPixel[2], greaterThan(200)); // B alto (foto azul)
-    expect(rightPixel[0], lessThan(50)); // R baixo
+      // célula 1: x em [105,190], y em [10,90].
+      final rightPixel = await _decodePixel(bytes, outputWidth, 150, 50);
+      expect(rightPixel[2], greaterThan(200)); // B alto (foto azul)
+      expect(rightPixel[0], lessThan(50)); // R baixo
 
-    // Canto (2,2): fora das duas células, dentro da margem — mostra o fundo.
-    final cornerPixel = await _decodePixel(bytes, outputWidth, 2, 2);
-    expect(cornerPixel[1], greaterThan(200)); // G alto (fundo verde)
-  });
+      // Canto (2,2): fora das duas células, dentro da margem — mostra o fundo.
+      final cornerPixel = await _decodePixel(bytes, outputWidth, 2, 2);
+      expect(cornerPixel[1], greaterThan(200)); // G alto (fundo verde)
+    },
+  );
+
+  test(
+    'borda com fundo transparente não vaza para dentro da montagem',
+    () async {
+      final photoPath = '${tempDir.path}/foto.png';
+      await _writeSolidPng(photoPath, 50, 50, const Color(0xFFFF0000));
+
+      final settings = CollageSettings(
+        layout: CollageLayout.row(2),
+        aspectRatio: 2.0,
+        marginRatio: 0.1,
+        borderThicknessAtReference: 24,
+        borderColor: const Color(0xFF00FF00),
+        cells: [
+          CollageCellSettings(
+            photoPath: photoPath,
+            photoWidth: 50,
+            photoHeight: 50,
+          ),
+          CollageCellSettings(
+            photoPath: photoPath,
+            photoWidth: 50,
+            photoHeight: 50,
+          ),
+        ],
+      );
+
+      const outputWidth = 480;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      // Canvas 480x240, borda de 24px: o anel é verde...
+      final ringPixel = await _decodePixel(bytes, outputWidth, 4, 120);
+      expect(ringPixel[1], greaterThan(200));
+      expect(ringPixel[3], 255);
+
+      // ...mas a margem entre as duas fotos continua transparente, como pede
+      // o modo "Fundo transparente" (antes a borda pintava o canvas inteiro).
+      final gapPixel = await _decodePixel(bytes, outputWidth, 240, 120);
+      expect(gapPixel[3], 0);
+    },
+  );
+
+  test(
+    'fundo de imagem é enquadrado pela área interna, como na prévia',
+    () async {
+      // Faixa verde estreita perto da esquerda de uma imagem bem larga: ela só
+      // entra no recorte "cover" se ele for calculado contra a área interna
+      // (dentro da borda), que é o que a prévia mostra. Calculado contra o
+      // canvas inteiro, o recorte é mais apertado e a faixa fica de fora.
+      final backgroundPath = '${tempDir.path}/fundo.png';
+      await _writeBandedPng(backgroundPath, 400, 100, 90, 105);
+
+      final settings = CollageSettings(
+        layout: CollageLayout.row(1),
+        aspectRatio: 2.0,
+        marginRatio: 0,
+        borderThicknessAtReference: 24,
+        borderColor: const Color(0xFF000000),
+        background: CollageBackground(
+          mode: CollageBackgroundMode.image,
+          imagePath: backgroundPath,
+        ),
+        cells: const [CollageCellSettings()],
+      );
+
+      const outputWidth = 480;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      final bandPixel = await _decodePixel(bytes, outputWidth, 44, 120);
+      expect(bandPixel[1], greaterThan(200)); // G alto: a faixa está visível
+      expect(bandPixel[0], lessThan(60));
+
+      // Fora da faixa o fundo é vermelho, nos dois enquadramentos — confirma
+      // que a imagem foi mesmo desenhada.
+      final outsidePixel = await _decodePixel(bytes, outputWidth, 240, 120);
+      expect(outsidePixel[0], greaterThan(200));
+    },
+  );
+
+  test(
+    'arquivo que sumiu do aparelho não derruba a exportação inteira',
+    () async {
+      final presentPath = '${tempDir.path}/presente.png';
+      await _writeSolidPng(presentPath, 50, 50, const Color(0xFFFF0000));
+
+      final settings = CollageSettings(
+        layout: CollageLayout.row(2),
+        aspectRatio: 2.0,
+        marginRatio: 0.1,
+        background: const CollageBackground(
+          mode: CollageBackgroundMode.color,
+          color: Color(0xFF00FF00),
+        ),
+        cells: [
+          CollageCellSettings(
+            photoPath: presentPath,
+            photoWidth: 50,
+            photoHeight: 50,
+          ),
+          CollageCellSettings(
+            photoPath: '${tempDir.path}/apagada.png',
+            photoWidth: 50,
+            photoHeight: 50,
+          ),
+        ],
+      );
+
+      const outputWidth = 200;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      // A foto que ainda existe sai normalmente...
+      final leftPixel = await _decodePixel(bytes, outputWidth, 50, 50);
+      expect(leftPixel[0], greaterThan(200));
+      // ...e o lugar da que sumiu fica com o fundo, sem exceção nenhuma.
+      final rightPixel = await _decodePixel(bytes, outputWidth, 150, 50);
+      expect(rightPixel[1], greaterThan(200));
+    },
+  );
 }

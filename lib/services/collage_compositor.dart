@@ -28,12 +28,13 @@ Future<Uint8List> composeCollage({
     settings.cells.map<Future<ui.Image?>>(
       (cell) => cell.photoPath == null
           ? Future<ui.Image?>.value(null)
-          : _decodeImageFile(cell.photoPath!),
+          : _tryDecodeImageFile(cell.photoPath!),
     ),
   );
-  final backgroundImage = settings.background.mode == CollageBackgroundMode.image &&
+  final backgroundImage =
+      settings.background.mode == CollageBackgroundMode.image &&
           settings.background.imagePath != null
-      ? await _decodeImageFile(settings.background.imagePath!)
+      ? await _tryDecodeImageFile(settings.background.imagePath!)
       : null;
 
   final geometry = CollageGeometry.of(size, settings);
@@ -48,12 +49,21 @@ Future<Uint8List> composeCollage({
     canvas.clipRRect(geometry.innerClip);
     paintCollageBackground(
       canvas,
-      size,
+      geometry.innerClip.outerRect,
       settings.background,
       backgroundImage: backgroundImage,
     );
-    for (var i = 0; i < settings.cells.length && i < geometry.cellRects.length; i++) {
-      paintCollageCell(canvas, geometry.cellRects[i], settings.cells[i], cellImages[i]);
+    for (
+      var i = 0;
+      i < settings.cells.length && i < geometry.cellRects.length;
+      i++
+    ) {
+      paintCollageCell(
+        canvas,
+        geometry.cellRects[i],
+        settings.cells[i],
+        cellImages[i],
+      );
     }
     canvas.restore();
 
@@ -82,7 +92,11 @@ Future<Uint8List> composeCollage({
 
 /// Desenha stickers e textos juntos, ordenados por `zIndex` (menor primeiro,
 /// para os de maior valor ficarem por cima).
-Future<void> _paintOverlays(Canvas canvas, Size size, CollageSettings settings) async {
+Future<void> _paintOverlays(
+  Canvas canvas,
+  Size size,
+  CollageSettings settings,
+) async {
   final overlays = <_Overlay>[
     for (final sticker in settings.stickers) _StickerOverlay(sticker),
     for (final text in settings.texts) _TextOverlay(text),
@@ -108,8 +122,14 @@ class _StickerOverlay extends _Overlay {
 
   @override
   Future<void> paint(Canvas canvas, Size canvasSize) async {
-    final refSize = canvasSize.shortestSide * CollageSticker.referenceSizeRatio * sticker.scale;
-    final center = Offset(sticker.centerX * canvasSize.width, sticker.centerY * canvasSize.height);
+    final refSize =
+        canvasSize.shortestSide *
+        CollageSticker.referenceSizeRatio *
+        sticker.scale;
+    final center = Offset(
+      sticker.centerX * canvasSize.width,
+      sticker.centerY * canvasSize.height,
+    );
 
     canvas.save();
     canvas.translate(center.dx, center.dy);
@@ -119,15 +139,30 @@ class _StickerOverlay extends _Overlay {
       case CollageStickerSource.bundledSvg:
         await _paintVector(canvas, refSize, SvgAssetLoader(sticker.assetPath!));
       case CollageStickerSource.importedSvg:
-        await _paintVector(canvas, refSize, SvgFileLoader(File(sticker.imageFilePath!)));
+        await _paintVector(
+          canvas,
+          refSize,
+          SvgFileLoader(File(sticker.imageFilePath!)),
+        );
       case CollageStickerSource.importedImage:
         await _paintRasterSticker(canvas, refSize, sticker.imageFilePath!);
     }
     canvas.restore();
   }
 
-  Future<void> _paintVector(Canvas canvas, double refSize, BytesLoader loader) async {
-    final pictureInfo = await vg.loadPicture(loader, null);
+  Future<void> _paintVector(
+    Canvas canvas,
+    double refSize,
+    BytesLoader loader,
+  ) async {
+    final PictureInfo pictureInfo;
+    try {
+      pictureInfo = await vg.loadPicture(loader, null);
+    } catch (_) {
+      // Arte apagada/ilegível: deixa esse sticker de fora em vez de derrubar a
+      // exportação inteira (ver `_tryDecodeImageFile`).
+      return;
+    }
     try {
       final nativeSize = pictureInfo.size;
       if (nativeSize.width <= 0 || nativeSize.height <= 0) return;
@@ -144,8 +179,13 @@ class _StickerOverlay extends _Overlay {
     }
   }
 
-  Future<void> _paintRasterSticker(Canvas canvas, double refSize, String path) async {
-    final image = await _decodeImageFile(path);
+  Future<void> _paintRasterSticker(
+    Canvas canvas,
+    double refSize,
+    String path,
+  ) async {
+    final image = await _tryDecodeImageFile(path);
+    if (image == null) return;
     try {
       final aspect = image.width / image.height;
       final w = aspect >= 1 ? refSize : refSize * aspect;
@@ -173,7 +213,10 @@ class _TextOverlay extends _Overlay {
   @override
   Future<void> paint(Canvas canvas, Size canvasSize) async {
     final fontSize = canvasSize.shortestSide * item.fontSizeRatio * item.scale;
-    final center = Offset(item.centerX * canvasSize.width, item.centerY * canvasSize.height);
+    final center = Offset(
+      item.centerX * canvasSize.width,
+      item.centerY * canvasSize.height,
+    );
 
     final painter = TextPainter(
       text: TextSpan(
@@ -188,17 +231,37 @@ class _TextOverlay extends _Overlay {
       textAlign: TextAlign.center,
     )..layout();
 
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(item.rotation);
-    painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
-    canvas.restore();
+    try {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(item.rotation);
+      painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+      canvas.restore();
+    } finally {
+      painter.dispose();
+    }
+  }
+}
+
+/// Decodifica [path], devolvendo `null` (em vez de propagar) quando o arquivo
+/// sumiu ou não é uma imagem legível. Uma foto/sticker/fundo que o usuário
+/// apagou do aparelho depois de montar a colagem não pode derrubar a
+/// exportação inteira: o resto da montagem ainda é exportável.
+Future<ui.Image?> _tryDecodeImageFile(String path) async {
+  try {
+    return await _decodeImageFile(path);
+  } catch (_) {
+    return null;
   }
 }
 
 Future<ui.Image> _decodeImageFile(String path) async {
   final bytes = await File(path).readAsBytes();
   final codec = await ui.instantiateImageCodec(bytes);
-  final frame = await codec.getNextFrame();
-  return frame.image;
+  try {
+    final frame = await codec.getNextFrame();
+    return frame.image;
+  } finally {
+    codec.dispose();
+  }
 }

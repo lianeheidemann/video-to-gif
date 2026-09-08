@@ -256,8 +256,9 @@ ColorFilter buildAdjustmentColorFilter({
   return ColorFilter.matrix(result);
 }
 
-// Pesos de luma padrão (Rec. 601/NTSC), mesmos usados por implementações de
-// referência de saturação (ex.: android.graphics.ColorMatrix.setSaturation).
+// Pesos de luma do Rec. 709 (o espaço de cor de sRGB, que é o que a foto
+// decodificada já está usando) — o comentário anterior dizia Rec. 601, mas os
+// coeficientes sempre foram estes.
 const _lumR = 0.2126;
 const _lumG = 0.7152;
 const _lumB = 0.0722;

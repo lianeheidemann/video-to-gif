@@ -39,7 +39,12 @@ class CollageOverlayView extends StatefulWidget {
   final Size canvasSize;
   final bool selected;
   final VoidCallback onSelect;
-  final void Function(double centerX, double centerY, double scale, double rotation)
+  final void Function(
+    double centerX,
+    double centerY,
+    double scale,
+    double rotation,
+  )
   onTransformChanged;
 
   /// Chamado uma vez no início de cada gesto — mesma finalidade de
@@ -55,27 +60,47 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
   double _startScale = 1;
   double _startRotation = 0;
 
+  /// Igual a [CollageCellView]: o checkpoint de desfazer só entra quando o
+  /// gesto muda mesmo alguma coisa, para um gesto que esbarra nos limites
+  /// (escala já no máximo e nenhum movimento, por exemplo) não gastar um
+  /// passo de desfazer que não desfaz nada.
+  bool _checkpointPushed = false;
+
   void _onScaleStart(ScaleStartDetails details) {
     widget.onSelect();
-    widget.onGestureStart?.call();
+    _checkpointPushed = false;
     _startScale = widget.scale;
     _startRotation = widget.rotation;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
-    final newScale = (_startScale * details.scale).clamp(widget.minScale, widget.maxScale);
+    final newScale = (_startScale * details.scale).clamp(
+      widget.minScale,
+      widget.maxScale,
+    );
     final newRotation = _startRotation + details.rotation;
     final currentCenterPx = Offset(
       widget.centerX * widget.canvasSize.width,
       widget.centerY * widget.canvasSize.height,
     );
     final newCenterPx = currentCenterPx + details.focalPointDelta;
-    widget.onTransformChanged(
-      widget.canvasSize.width == 0 ? widget.centerX : newCenterPx.dx / widget.canvasSize.width,
-      widget.canvasSize.height == 0 ? widget.centerY : newCenterPx.dy / widget.canvasSize.height,
-      newScale,
-      newRotation,
-    );
+    final newCenterX = widget.canvasSize.width == 0
+        ? widget.centerX
+        : newCenterPx.dx / widget.canvasSize.width;
+    final newCenterY = widget.canvasSize.height == 0
+        ? widget.centerY
+        : newCenterPx.dy / widget.canvasSize.height;
+    if (newScale == widget.scale &&
+        newRotation == widget.rotation &&
+        newCenterX == widget.centerX &&
+        newCenterY == widget.centerY) {
+      return;
+    }
+    if (!_checkpointPushed) {
+      _checkpointPushed = true;
+      widget.onGestureStart?.call();
+    }
+    widget.onTransformChanged(newCenterX, newCenterY, newScale, newRotation);
   }
 
   @override
@@ -98,10 +123,15 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
               child: Container(
                 decoration: widget.selected
                     ? BoxDecoration(
-                        border: Border.all(color: theme.colorScheme.primary, width: 2),
+                        border: Border.all(
+                          color: theme.colorScheme.primary,
+                          width: 2,
+                        ),
                       )
                     : null,
-                padding: widget.selected ? const EdgeInsets.all(2) : EdgeInsets.zero,
+                padding: widget.selected
+                    ? const EdgeInsets.all(2)
+                    : EdgeInsets.zero,
                 child: widget.child,
               ),
             ),
