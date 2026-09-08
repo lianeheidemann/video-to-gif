@@ -114,6 +114,11 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
     return (topLeft & box.size).contains(globalPosition);
   }
 
+  /// Quanto o dedo andou entre o toque e o momento em que a arena de gestos
+  /// aceitou o arrasto — ver [_onScaleUpdate], que soma isso ao primeiro
+  /// deslocamento e zera em seguida.
+  Offset _pendingSlop = Offset.zero;
+
   void _onScaleStart(ScaleStartDetails details) {
     final downPosition = _lastPointerDown ?? details.focalPoint;
     _ignoreOuterGesture = widget.selected && _pointOverHandle(downPosition);
@@ -122,6 +127,7 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
     _checkpointPushed = false;
     _startScale = widget.scale;
     _startRotation = widget.rotation;
+    _pendingSlop = details.focalPoint - downPosition;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -135,7 +141,16 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
       widget.centerX * widget.canvasSize.width,
       widget.centerY * widget.canvasSize.height,
     );
-    final newCenterPx = currentCenterPx + details.focalPointDelta;
+    // `focalPointDelta` só começa a ser entregue DEPOIS que a arena aceita o
+    // gesto: os ~18px que o dedo anda até lá (o `touch slop`) nunca chegavam
+    // aqui, e o sticker/texto ficava atrasado em relação ao dedo pelo arrasto
+    // inteiro — medido, 100px de arrasto viravam 80px de deslocamento, o que
+    // se sente como "está se movendo devagar". Somar essa sobra no primeiro
+    // deslocamento faz o objeto colar no dedo sem mexer no resto do gesto
+    // (a pinça e a rotação continuam contando a partir do início aceito).
+    final movement = details.focalPointDelta + _pendingSlop;
+    _pendingSlop = Offset.zero;
+    final newCenterPx = currentCenterPx + movement;
     final newCenterX = widget.canvasSize.width == 0
         ? widget.centerX
         : newCenterPx.dx / widget.canvasSize.width;
@@ -250,6 +265,12 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
                             bottom: 0,
                             child: Transform.scale(
                               scale: 1 / widget.scale,
+                              // Ancorada no canto: com o alinhamento padrão
+                              // (centro), um sticker/texto pequeno — onde
+                              // `1/scale` é grande — fazia a alça crescer
+                              // para dentro e cobrir o conteúdo em vez de
+                              // ficar no canto inferior direito.
+                              alignment: Alignment.bottomRight,
                               child: Listener(
                                 behavior: HitTestBehavior.opaque,
                                 onPointerDown: _onHandlePointerDown,

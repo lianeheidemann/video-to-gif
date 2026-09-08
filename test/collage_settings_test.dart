@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
 import 'package:video_to_gif/models/collage_layout.dart';
 import 'package:video_to_gif/models/collage_settings.dart';
@@ -144,6 +146,71 @@ void main() {
       final removed = settings.removingSticker('s1');
       expect(removed.stickers.length, 1);
       expect(removed.stickers.single.id, 's2');
+    });
+  });
+
+  group('estilo compartilhado das fotos', () {
+    test('withSharedCellStyle copia borda, canto e fundo da foto que já '
+        'está na montagem', () {
+      const estilo = CollageCellSettings(
+        photoPath: '/tmp/a.jpg',
+        photoWidth: 100,
+        photoHeight: 100,
+        cornerRatio: 0.3,
+        borderThicknessAtReference: 14,
+        borderColor: Color(0xFF00FF00),
+        background: CollageBackground(
+          mode: CollageBackgroundMode.color,
+          color: Color(0xFF0000FF),
+        ),
+      );
+      final settings = CollageSettings(
+        layout: CollageLayout.grid(2, 1),
+        cells: const [estilo, CollageCellSettings()],
+      );
+
+      // A célula vazia — que é o estado de quem vai receber uma foto depois —
+      // entra com o mesmo visual das que já estavam lá.
+      final nova = settings.withSharedCellStyle(const CollageCellSettings());
+      expect(nova.cornerRatio, 0.3);
+      expect(nova.borderThicknessAtReference, 14);
+      expect(nova.borderColor, const Color(0xFF00FF00));
+      expect(nova.background.mode, CollageBackgroundMode.color);
+      expect(nova.background.color, const Color(0xFF0000FF));
+    });
+
+    test('não mexe no enquadramento nem na foto da célula recebida', () {
+      const estilo = CollageCellSettings(
+        photoPath: '/tmp/a.jpg',
+        borderThicknessAtReference: 8,
+      );
+      final settings = CollageSettings(
+        layout: CollageLayout.row(1),
+        cells: const [estilo],
+      );
+
+      const recebida = CollageCellSettings(
+        photoPath: '/tmp/nova.jpg',
+        photoWidth: 50,
+        photoHeight: 60,
+        zoom: 2,
+        fitMode: CollageCellFitMode.contain,
+      );
+      final resultado = settings.withSharedCellStyle(recebida);
+      expect(resultado.photoPath, '/tmp/nova.jpg');
+      expect(resultado.zoom, 2);
+      expect(resultado.fitMode, CollageCellFitMode.contain);
+      expect(resultado.borderThicknessAtReference, 8);
+    });
+
+    test('sem nenhuma foto ainda, o estilo é o padrão', () {
+      final settings = CollageSettings(
+        layout: CollageLayout.row(2),
+        cells: const [CollageCellSettings(), CollageCellSettings()],
+      );
+      final nova = settings.withSharedCellStyle(const CollageCellSettings());
+      expect(nova.borderThicknessAtReference, 0);
+      expect(nova.background.mode, CollageBackgroundMode.transparent);
     });
   });
 }

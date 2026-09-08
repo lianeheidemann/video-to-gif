@@ -10,19 +10,24 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/collage_background.dart';
 import '../models/collage_cell.dart';
+import '../models/collage_color_adjustment.dart';
+import '../models/collage_export.dart';
 import '../models/collage_layout.dart';
 import '../models/collage_settings.dart';
 import '../models/collage_sticker.dart';
 import '../models/collage_text.dart';
 import '../models/crop_rect.dart';
 import '../models/photo_info.dart';
+import '../services/collage_animation.dart';
 import '../services/collage_compositor.dart';
+import '../services/ffmpeg_service.dart';
 import '../services/imported_asset_store.dart';
 import '../services/output_service.dart';
 import 'photo_crop_page.dart';
 import 'widgets/collage_cell_view.dart';
 import 'widgets/collage_overlay_view.dart';
 import 'widgets/collage_painter.dart';
+import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 
 /// Abas fixas no rodapé da tela de montagem — cada uma abre um painel com o
@@ -48,6 +53,7 @@ class CollagePage extends StatefulWidget {
 
 class _CollagePageState extends State<CollagePage> {
   static const _output = OutputService();
+  final _ffmpeg = FfmpegService();
   static const _stickerStore = ImportedAssetStore(ImportedAssetKind.sticker);
   static const _backgroundStore = ImportedAssetStore(
     ImportedAssetKind.backgroundImage,
@@ -567,7 +573,7 @@ class _CollagePageState extends State<CollagePage> {
 
   Widget _textArt(CollageTextItem item, Size canvasSize) {
     final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
-    return Text(
+    final text = Text(
       item.text,
       textAlign: TextAlign.center,
       style: TextStyle(
@@ -576,6 +582,19 @@ class _CollagePageState extends State<CollagePage> {
         fontFamily: item.fontFamily,
         fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
       ),
+    );
+    final background = item.backgroundColor;
+    if (background == null) return text;
+
+    // O mesmo respiro e o mesmo arredondamento que `_TextOverlay.paint`
+    // desenha na exportação — o raio sai do menor lado da caixa já com o
+    // respiro, então a prévia e o PNG batem em qualquer tamanho de fonte.
+    final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
+    return _TextBackgroundBox(
+      color: background,
+      cornerRatio: item.backgroundCornerRatio,
+      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+      child: text,
     );
   }
 
@@ -845,13 +864,16 @@ class _CollagePageState extends State<CollagePage> {
 
   /// Troca o layout mantendo as fotos já escolhidas nas primeiras células —
   /// células novas (quando o layout cresce) nascem vazias, prontas para
-  /// receber uma foto ao toque (ver [CollageCellView]'s `+`); células
+  /// receber uma foto ao toque (ver [CollageCellView]'s `+`), mas já com a
+  /// borda/canto/fundo das fotos que já estão na montagem; células
   /// excedentes (quando o layout encolhe) são descartadas.
   void _applyLayout(CollageLayout layout) {
     final oldCells = _settings.cells;
     final cells = List<CollageCellSettings>.generate(
       layout.cellCount,
-      (i) => i < oldCells.length ? oldCells[i] : const CollageCellSettings(),
+      (i) => i < oldCells.length
+          ? oldCells[i]
+          : _settings.withSharedCellStyle(const CollageCellSettings()),
     );
     _update(_settings.copyWith(layout: layout, cells: cells));
   }
@@ -1091,6 +1113,23 @@ class _CollagePageState extends State<CollagePage> {
           onChanged: onChanged,
         ),
       ],
+    );
+  }
+
+  /// Linha de liga/desliga no estilo dos painéis do rodapé. Um
+  /// `SwitchListTile` aqui dispara o aviso do Material de "fundo/ink
+  /// invisível" (o painel já tem cor de fundo própria) — e o visual ficaria
+  /// diferente das outras linhas.
+  Widget _switchRow(String label, bool value, ValueChanged<bool> onChanged) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
+          Switch(value: value, onChanged: onChanged),
+        ],
+      ),
     );
   }
 
@@ -1539,6 +1578,9 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Widget _textPanelContent() {
+    final selected = _selectedOverlayId == null
+        ? null
+        : _findText(_selectedOverlayId!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1548,7 +1590,107 @@ class _CollagePageState extends State<CollagePage> {
           icon: const Icon(Icons.add_rounded),
           label: const Text('Adicionar texto'),
         ),
+        // Os controles de estilo só fazem sentido com um texto selecionado —
+        // eles mexem naquele texto, não em todos.
+        if (selected != null) ...[
+          const SizedBox(height: 8),
+          _colorRow(
+            'Cor do texto',
+            selected.color,
+            () => _pickTextColor(selected.id),
+          ),
+          _switchRow(
+            'Fundo do texto',
+            selected.hasBackground,
+            (on) => _toggleTextBackground(selected.id, on),
+          ),
+          if (selected.hasBackground) ...[
+            _colorRow(
+              'Cor do fundo do texto',
+              selected.backgroundColor!,
+              () => _pickTextBackgroundColor(selected.id),
+            ),
+            const SizedBox(height: 4),
+            _sliderRow(
+              label: 'Arredondamento do fundo',
+              value: selected.backgroundCornerRatio,
+              min: 0,
+              max: CollageTextItem.maxBackgroundCornerRatio,
+              display:
+                  '${(selected.backgroundCornerRatio / CollageTextItem.maxBackgroundCornerRatio * 100).round()}%',
+              onChanged: (v) => _update(
+                _settings.replacingText(
+                  selected.id,
+                  selected.copyWith(backgroundCornerRatio: v),
+                ),
+                pushUndo: false,
+              ),
+            ),
+          ],
+        ],
       ],
+    );
+  }
+
+  void _toggleTextBackground(String id, bool on) {
+    final item = _findText(id);
+    if (item == null) return;
+    _update(
+      _settings.replacingText(
+        id,
+        on
+            ? item.copyWith(
+                backgroundColor:
+                    item.backgroundColor ?? const Color(0xFF000000),
+              )
+            : item.copyWith(clearBackgroundColor: true),
+      ),
+    );
+  }
+
+  void _pickTextColor(String id) => _pickOverlayTextColor(
+    id: id,
+    title: 'Cor do texto',
+    current: (item) => item.color,
+    apply: (item, color) => item.copyWith(color: color),
+  );
+
+  void _pickTextBackgroundColor(String id) => _pickOverlayTextColor(
+    id: id,
+    title: 'Cor do fundo do texto',
+    current: (item) => item.backgroundColor ?? const Color(0xFF000000),
+    apply: (item, color) => item.copyWith(backgroundColor: color),
+  );
+
+  /// Mesma folha de cor do resto da montagem (com conta-gotas na prévia),
+  /// servindo tanto à cor do texto quanto à do fundo dele — [current]/[apply]
+  /// são o que muda entre as duas, no mesmo espírito de [_pickBorderColor].
+  void _pickOverlayTextColor({
+    required String id,
+    required String title,
+    required Color Function(CollageTextItem item) current,
+    required CollageTextItem Function(CollageTextItem item, Color color) apply,
+  }) {
+    final item = _findText(id);
+    if (item == null) return;
+    var checkpointPushed = false;
+    showCollageColorPickerSheet(
+      context: context,
+      title: title,
+      initialColor: current(item),
+      onColorSelected: (color) {
+        final latest = _findText(id);
+        if (latest == null) return;
+        if (!checkpointPushed) {
+          checkpointPushed = true;
+          _pushUndoCheckpoint();
+        }
+        _update(
+          _settings.replacingText(id, apply(latest, color)),
+          pushUndo: false,
+        );
+      },
+      previewImageBuilder: _renderPreviewImage,
     );
   }
 
@@ -1927,14 +2069,19 @@ class _CollagePageState extends State<CollagePage> {
       }
 
       final cell = _settings.cells[index];
-      final replaced = cell
-          .copyWith(
-            photoPath: path,
-            photoWidth: width,
-            photoHeight: height,
-            clearManualCrop: true,
-          )
-          .resetFraming();
+      // O estilo compartilhado entra por cima: uma foto escolhida depois
+      // (numa célula que nasceu vazia, antes de a borda/fundo terem sido
+      // ajustados) tem que aparecer igual às outras, não com os padrões.
+      final replaced = _settings.withSharedCellStyle(
+        cell
+            .copyWith(
+              photoPath: path,
+              photoWidth: width,
+              photoHeight: height,
+              clearManualCrop: true,
+            )
+            .resetFraming(),
+      );
       _update(_settings.replacingCell(index, replaced));
     } catch (_) {
       _message('Não foi possível abrir esta foto.');
@@ -1995,7 +2142,13 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
+  /// Folha de ajuste de cor: uma fileira de bolinhas (uma por ajuste, como
+  /// nos editores de foto), o nome do ajuste escolhido em cima e a régua de
+  /// intensidade embaixo, com o zero no centro. Cada mexida na régua é
+  /// aplicada na hora à célula, então a prévia atrás da folha mostra o
+  /// resultado enquanto o dedo ainda está na tela.
   void _openCellColorAdjust(int index) {
+    var current = CollageColorAdjustment.brightness;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -2003,63 +2156,79 @@ class _CollagePageState extends State<CollagePage> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, sheetSetState) {
+            if (index >= _settings.cells.length) return const SizedBox.shrink();
             final cell = _settings.cells[index];
+            final theme = Theme.of(sheetContext);
 
-            void applyAdjustment(CollageCellSettings updated) {
-              _update(_settings.replacingCell(index, updated), pushUndo: false);
-              sheetSetState(() {});
-            }
-
-            Widget adjustSlider(
-              String label,
-              double value,
-              CollageCellSettings Function(double) apply,
-            ) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: Theme.of(sheetContext).textTheme.bodyMedium,
-                  ),
-                  Slider(
-                    min: -1,
-                    max: 1,
-                    value: value.clamp(-1.0, 1.0),
-                    onChangeStart: (_) => _pushUndoCheckpoint(),
-                    onChanged: (v) => applyAdjustment(apply(v)),
-                  ),
-                ],
+            void applyValue(double value) {
+              _update(
+                _settings.replacingCell(index, current.apply(cell, value)),
+                pushUndo: false,
               );
+              sheetSetState(() {});
             }
 
             return SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Ajustar cor',
-                      style: Theme.of(sheetContext).textTheme.titleMedium,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Ajustar cor',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                        if (cell.hasColorAdjustments)
+                          TextButton(
+                            onPressed: () {
+                              _pushUndoCheckpoint();
+                              _update(
+                                _settings.replacingCell(
+                                  index,
+                                  cell.withoutColorAdjustments(),
+                                ),
+                                pushUndo: false,
+                              );
+                              sheetSetState(() {});
+                            },
+                            child: const Text('Redefinir'),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    adjustSlider(
-                      'Brilho',
-                      cell.brightness,
-                      (v) => cell.copyWith(brightness: v),
+                    SizedBox(
+                      height: 84,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          for (final adjustment
+                              in CollageColorAdjustment.values)
+                            ColorAdjustButton(
+                              adjustment: adjustment,
+                              selected: adjustment == current,
+                              value: adjustment.valueOf(cell),
+                              onTap: () =>
+                                  sheetSetState(() => current = adjustment),
+                            ),
+                        ],
+                      ),
                     ),
-                    adjustSlider(
-                      'Contraste',
-                      cell.contrast,
-                      (v) => cell.copyWith(contrast: v),
+                    const SizedBox(height: 10),
+                    Text(
+                      current.label,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    adjustSlider(
-                      'Saturação',
-                      cell.saturation,
-                      (v) => cell.copyWith(saturation: v),
+                    IntensityRuler(
+                      value: current.valueOf(cell),
+                      onChangeStart: _pushUndoCheckpoint,
+                      onChanged: applyValue,
                     ),
                   ],
                 ),
@@ -2126,8 +2295,12 @@ class _CollagePageState extends State<CollagePage> {
     return rect.width / rect.height;
   }
 
-  /// Abre o recorte de uma foto específica, travado na proporção da própria
-  /// célula (o resultado sempre precisa preencher a célula sem sobra).
+  /// Abre o recorte de uma foto específica. O recorte é livre por padrão (a
+  /// proporção da célula é só mais uma opção da fileira), então o resultado
+  /// quase nunca tem a mesma proporção da célula: por isso a foto recortada
+  /// entra em "encaixar" e com o enquadramento zerado — aparece inteira,
+  /// centralizada e na horizontal, em vez de ser esticada/cortada pelo
+  /// "preencher" para caber na célula.
   Future<void> _openCropTool(int index) async {
     final cell = _settings.cells[index];
     if (!cell.hasPhoto) return;
@@ -2137,7 +2310,7 @@ class _CollagePageState extends State<CollagePage> {
           photoPath: cell.photoPath!,
           photoWidth: cell.photoWidth,
           photoHeight: cell.photoHeight,
-          aspectRatio: _cellAspectRatioFor(index),
+          cellAspectRatio: _cellAspectRatioFor(index),
           initialCrop: cell.manualCrop,
         ),
       ),
@@ -2145,7 +2318,12 @@ class _CollagePageState extends State<CollagePage> {
     if (crop == null || !mounted) return;
     _pushUndoCheckpoint();
     _update(
-      _settings.replacingCell(index, cell.copyWith(manualCrop: crop)),
+      _settings.replacingCell(
+        index,
+        cell
+            .copyWith(manualCrop: crop, fitMode: CollageCellFitMode.contain)
+            .resetFraming(),
+      ),
       pushUndo: false,
     );
   }
@@ -2164,27 +2342,182 @@ class _CollagePageState extends State<CollagePage> {
     return maxSide.clamp(480, 2200);
   }
 
-  Future<File> _writeTempPng(Uint8List bytes) async {
+  Future<File> _writeTempFile(Uint8List bytes, String extension) async {
     final dir = await getTemporaryDirectory();
     final path =
-        '${dir.path}/montagem_${DateTime.now().millisecondsSinceEpoch}.png';
+        '${dir.path}/montagem_${DateTime.now().millisecondsSinceEpoch}'
+        '.$extension';
     final file = File(path);
     await file.writeAsBytes(bytes, flush: true);
     return file;
   }
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
+  /// Formato e regra de duração escolhidos na última exportação — a folha de
+  /// opções reabre já marcada no que a pessoa usou da última vez.
+  CollageExportFormat _exportFormat = CollageExportFormat.gif;
+  CollageDurationRule _durationRule = CollageDurationRule.longest;
+
+  /// Pergunta o formato quando há foto animada na montagem; sem nenhuma, o
+  /// PNG é a única saída possível e a folha não aparece. Devolve `null`
+  /// quando a pessoa fecha a folha sem escolher.
+  Future<CollageExportFormat?> _askExportFormat() async {
+    final info = await inspectCollageAnimation(_settings);
+    if (!mounted) return null;
+    if (!info.hasAnimation) return CollageExportFormat.png;
+
+    return showModalBottomSheet<CollageExportFormat>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, sheetSetState) {
+          final theme = Theme.of(sheetContext);
+          return SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Exportar', style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      info.animatedCount == 1
+                          ? 'Uma das fotos é animada — a montagem pode sair '
+                                'animada também.'
+                          : '${info.animatedCount} fotos são animadas — a '
+                                'montagem pode sair animada também.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    RadioGroup<CollageExportFormat>(
+                      groupValue: _exportFormat,
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _exportFormat = value);
+                        sheetSetState(() {});
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final format in CollageExportFormat.values)
+                            RadioListTile<CollageExportFormat>(
+                              contentPadding: EdgeInsets.zero,
+                              value: format,
+                              title: Text(format.label),
+                              subtitle: Text(format.subtitle),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (_exportFormat.isAnimated &&
+                        info.hasDifferentDurations) ...[
+                      const Divider(height: 24),
+                      Text(
+                        'Duração',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      RadioGroup<CollageDurationRule>(
+                        groupValue: _durationRule,
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _durationRule = value);
+                          sheetSetState(() {});
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final rule in CollageDurationRule.values)
+                              RadioListTile<CollageDurationRule>(
+                                contentPadding: EdgeInsets.zero,
+                                value: rule,
+                                title: Text(
+                                  '${rule.label} '
+                                  '(${_formatSeconds(info.durationFor(rule))})',
+                                ),
+                                subtitle: Text(rule.subtitle),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: () =>
+                          Navigator.of(sheetContext).pop(_exportFormat),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                      child: const Text('Continuar'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatSeconds(Duration duration) =>
+      '${(duration.inMilliseconds / 1000).toStringAsFixed(1)} s';
+
+  /// Gera o arquivo final no formato escolhido: PNG direto do compositor, ou
+  /// a sequência de quadros da montagem animada codificada pelo FFmpeg.
+  Future<File> _buildExportFile(CollageExportFormat format) async {
+    if (!format.isAnimated) {
       final bytes = await composeCollage(
         settings: _settings,
         outputWidth: _exportWidth(),
       );
-      final file = await _writeTempPng(bytes);
+      return _writeTempFile(bytes, format.extension);
+    }
+
+    final temp = await getTemporaryDirectory();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final workDir = await Directory(
+      '${temp.path}/montagem_quadros_$stamp',
+    ).create(recursive: true);
+    try {
+      final sequence = await renderCollageFrames(
+        settings: _settings,
+        // A animação multiplica o custo por quadro; um limite mais baixo que
+        // o do PNG mantém a exportação viável no celular.
+        outputWidth: math.min(_exportWidth(), 1080),
+        rule: _durationRule,
+        workDir: workDir,
+      );
+      return await _ffmpeg.encodeCollageSequence(
+        framePattern: sequence.pattern,
+        fps: sequence.fps,
+        outputPath: '${temp.path}/montagem_$stamp.${format.extension}',
+        webp: format == CollageExportFormat.webp,
+      );
+    } finally {
+      if (await workDir.exists()) await workDir.delete(recursive: true);
+    }
+  }
+
+  Future<void> _save() async {
+    final format = await _askExportFormat();
+    if (format == null || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      final file = await _buildExportFile(format);
       await _output.saveToGallery(file);
       if (!mounted) return;
       _message('Montagem salva na galeria.');
     } on OutputException catch (e) {
+      if (!mounted) return;
+      _message(e.message);
+    } on FfmpegException catch (e) {
       if (!mounted) return;
       _message(e.message);
     } catch (_) {
@@ -2196,18 +2529,19 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Future<void> _share() async {
+    final format = await _askExportFormat();
+    if (format == null || !mounted) return;
     setState(() => _sharing = true);
     try {
-      final bytes = await composeCollage(
-        settings: _settings,
-        outputWidth: _exportWidth(),
-      );
-      final file = await _writeTempPng(bytes);
+      final file = await _buildExportFile(format);
       await _output.share(
         file,
-        mimeType: 'image/png',
+        mimeType: format.mimeType,
         text: 'Montagem de fotos feita com o app Video to GIF',
       );
+    } on FfmpegException catch (e) {
+      if (!mounted) return;
+      _message(e.message);
     } catch (_) {
       if (!mounted) return;
       _message('Não foi possível gerar a imagem.');
@@ -2387,4 +2721,50 @@ class _FontThumb extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Caixa colorida atrás de um texto da montagem, com o arredondamento em
+/// razão do menor lado (a mesma unidade proporcional que
+/// [CollageTextItem.backgroundCornerRatio] tem na exportação). Precisa de um
+/// `LayoutBuilder` porque o raio depende do tamanho final da caixa, que só é
+/// conhecido depois de medir o texto.
+class _TextBackgroundBox extends StatelessWidget {
+  const _TextBackgroundBox({
+    required this.color,
+    required this.cornerRatio,
+    required this.padding,
+    required this.child,
+  });
+
+  final Color color;
+  final double cornerRatio;
+  final EdgeInsets padding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _TextBackgroundPainter(color: color, cornerRatio: cornerRatio),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+class _TextBackgroundPainter extends CustomPainter {
+  const _TextBackgroundPainter({
+    required this.color,
+    required this.cornerRatio,
+  });
+
+  final Color color;
+  final double cornerRatio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    paintCollageTextBackground(canvas, Offset.zero & size, color, cornerRatio);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TextBackgroundPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.cornerRatio != cornerRatio;
 }

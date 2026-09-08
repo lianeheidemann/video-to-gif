@@ -226,6 +226,119 @@ void main() {
       expect(pixel[0], pixel[1]);
       expect(pixel[1], pixel[2]);
     });
+
+    test('todos os oito ajustes no zero não alteram a cor', () async {
+      final filter = buildAdjustmentColorFilter(
+        brightness: 0,
+        exposure: 0,
+        contrast: 0,
+        highlights: 0,
+        shadows: 0,
+        saturation: 0,
+        hue: 0,
+        temperature: 0,
+      );
+      final pixel = await _renderPixel(filter);
+      expect(pixel, [128, 64, 32, 255]);
+    });
+
+    test('exposição multiplica a luz (o preto continua preto)', () async {
+      // Diferente do brilho, que soma: dobrando a exposição, cada canal
+      // aproximadamente dobra em vez de ganhar um valor fixo.
+      final filter = buildAdjustmentColorFilter(
+        brightness: 0,
+        exposure: 1,
+        contrast: 0,
+        saturation: 0,
+      );
+      final pixel = await _renderPixel(filter);
+      expect(pixel[1], closeTo(128, 6)); // 64 * 2
+      expect(pixel[2], closeTo(64, 6)); // 32 * 2
+    });
+
+    test('realces mexem mais no claro do que no escuro', () async {
+      final filter = buildAdjustmentColorFilter(
+        brightness: 0,
+        contrast: 0,
+        highlights: 1,
+        saturation: 0,
+      );
+      final pixel = await _renderPixel(filter);
+      final deltaClaro = pixel[0] - 128; // canal mais claro (R = 128)
+      final deltaEscuro = pixel[2] - 32; // canal mais escuro (B = 32)
+      expect(deltaClaro, greaterThan(deltaEscuro));
+    });
+
+    test('sombras levantam o escuro sem estourar o claro', () async {
+      final filter = buildAdjustmentColorFilter(
+        brightness: 0,
+        contrast: 0,
+        shadows: 1,
+        saturation: 0,
+      );
+      final pixel = await _renderPixel(filter);
+      final deltaEscuro = pixel[2] - 32;
+      final deltaClaro = pixel[0] - 128;
+      expect(deltaEscuro, greaterThan(0));
+      expect(deltaEscuro, greaterThan(deltaClaro));
+    });
+
+    test('temperatura positiva esquenta (mais vermelho, menos azul)', () async {
+      final filter = buildAdjustmentColorFilter(
+        brightness: 0,
+        contrast: 0,
+        saturation: 0,
+        temperature: 1,
+      );
+      final pixel = await _renderPixel(filter);
+      expect(pixel[0], greaterThan(128));
+      expect(pixel[2], lessThan(32));
+      expect(pixel[1], 64); // o verde não entra na conta
+    });
+
+    test('matiz gira a cor mantendo a luminosidade parecida', () async {
+      final filter = buildAdjustmentColorFilter(
+        brightness: 0,
+        contrast: 0,
+        saturation: 0,
+        hue: 0.5,
+      );
+      final pixel = await _renderPixel(filter);
+      // A cor muda de verdade...
+      expect(pixel[0], isNot(128));
+      // ...mas a luma (Rec. 709) fica na mesma vizinhança.
+      double luma(List<int> p) => 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+      expect(luma(pixel), closeTo(luma([128, 64, 32, 255]), 25));
+    });
+  });
+
+  group('hasColorAdjustments / withoutColorAdjustments', () {
+    test('célula recém-criada não tem ajuste nenhum', () {
+      expect(const CollageCellSettings().hasColorAdjustments, isFalse);
+    });
+
+    test('qualquer ajuste fora do zero conta', () {
+      expect(const CollageCellSettings(hue: 0.2).hasColorAdjustments, isTrue);
+      expect(
+        const CollageCellSettings(temperature: -0.1).hasColorAdjustments,
+        isTrue,
+      );
+    });
+
+    test('redefinir zera só os ajustes de cor', () {
+      const cell = CollageCellSettings(
+        photoPath: '/tmp/a.jpg',
+        zoom: 2,
+        brightness: 0.4,
+        exposure: -0.3,
+        highlights: 0.5,
+        hue: 0.2,
+      );
+      final limpa = cell.withoutColorAdjustments();
+      expect(limpa.hasColorAdjustments, isFalse);
+      expect(limpa.zoom, 2);
+      expect(limpa.photoPath, '/tmp/a.jpg');
+    });
   });
 
   group('resetFraming', () {

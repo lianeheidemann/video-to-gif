@@ -134,6 +134,33 @@ class CollageSettings {
     CollageCellSettings Function(CollageCellSettings cell) update,
   ) => copyWith(cells: [for (final c in cells) update(c)]);
 
+  /// Célula que representa o estilo em vigor para as fotos — borda,
+  /// arredondamento e fundo, os três eixos que as abas "Borda e cantos" e
+  /// "Fundo" aplicam em lote. É a primeira célula com foto (uma célula vazia
+  /// pode nunca ter passado por esses controles); sem nenhuma foto ainda,
+  /// vale o padrão.
+  CollageCellSettings get cellStyleTemplate {
+    for (final cell in cells) {
+      if (cell.hasPhoto) return cell;
+    }
+    return const CollageCellSettings();
+  }
+
+  /// [cell] com o estilo compartilhado das outras fotos ([cellStyleTemplate])
+  /// por cima — enquadramento, recorte e ajustes de cor da própria célula
+  /// ficam como estão. Usado ao criar células novas e ao pôr uma foto numa
+  /// célula vazia: a foto que chega depois já entra com a mesma borda, o
+  /// mesmo canto e o mesmo fundo das que já estavam lá.
+  CollageCellSettings withSharedCellStyle(CollageCellSettings cell) {
+    final template = cellStyleTemplate;
+    return cell.copyWith(
+      cornerRatio: template.cornerRatio,
+      borderThicknessAtReference: template.borderThicknessAtReference,
+      borderColor: template.borderColor,
+      background: template.background,
+    );
+  }
+
   /// Adiciona um sticker acima de todas as sobreposições existentes.
   CollageSettings addingSticker(CollageSticker sticker) =>
       copyWith(stickers: [...stickers, sticker]);

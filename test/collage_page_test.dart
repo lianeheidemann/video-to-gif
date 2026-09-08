@@ -6,9 +6,12 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_to_gif/models/collage_background.dart';
+import 'package:video_to_gif/models/collage_cell.dart';
+import 'package:video_to_gif/models/collage_color_adjustment.dart';
 import 'package:video_to_gif/models/photo_info.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
+import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
   final recorder = ui.PictureRecorder();
@@ -168,6 +171,134 @@ void main() {
     expect(find.text('Transparente'), findsOneWidget);
     expect(find.text('Cor'), findsOneWidget);
     expect(find.text('Imagem'), findsOneWidget);
+  });
+
+  testWidgets('recorte aprovado entra em "encaixar", na horizontal', (
+    tester,
+  ) async {
+    // Com o recorte livre, o resultado quase nunca tem a proporção da célula:
+    // se continuasse em "preencher", a foto recortada apareceria esticada/
+    // cortada de novo. Depois de "Usar recorte" ela tem que aparecer inteira,
+    // centralizada e a 0°.
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    // Toque com duração de verdade: o `GestureDetector` da célula tem
+    // `onDoubleTap`, então o toque do "..." só é entregue depois que a arena
+    // de gestos desiste do duplo toque.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byIcon(Icons.more_horiz_rounded).first),
+    );
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Recortar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Usar recorte'));
+    await tester.pumpAndSettle();
+
+    final cell = tester
+        .widgetList<CollageCellView>(find.byType(CollageCellView))
+        .first
+        .cell;
+    expect(cell.manualCrop, isNotNull);
+    expect(cell.fitMode, CollageCellFitMode.contain);
+    expect(cell.rotation, 0);
+    expect(cell.zoom, CollageCellSettings.minZoom);
+    expect(cell.offsetX, 0);
+    expect(cell.offsetY, 0);
+  });
+
+  testWidgets('"Ajustar cor" abre com as bolinhas dos oito ajustes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    // Toque com duração de verdade: o "..." só é entregue depois que a arena
+    // desiste do duplo toque da célula.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byIcon(Icons.more_horiz_rounded).first),
+    );
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajustar cor'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(IntensityRuler), findsOneWidget);
+    expect(
+      find.byType(ColorAdjustButton),
+      findsNWidgets(CollageColorAdjustment.values.length),
+    );
+    // Começa no brilho, com a régua no zero.
+    expect(find.text('0'), findsOneWidget);
+    expect(find.text('Brilho'), findsWidgets);
+  });
+
+  testWidgets('texto ganha fundo, cor e arredondamento pelo painel', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Texto'), 200, scrollable: page);
+    await tester.tap(find.text('Texto'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Adicionar texto'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'oi');
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    // Com o texto recém-criado selecionado, o painel mostra os controles de
+    // estilo dele.
+    expect(find.text('Cor do texto'), findsOneWidget);
+    expect(find.text('Fundo do texto'), findsOneWidget);
+    expect(find.text('Arredondamento do fundo'), findsNothing);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cor do fundo do texto'), findsOneWidget);
+    expect(find.text('Arredondamento do fundo'), findsOneWidget);
+  });
+
+  testWidgets('sem foto animada, o download não pergunta formato nenhum', (
+    tester,
+  ) async {
+    // Só com PNGs parados a montagem tem uma saída possível — a folha de
+    // formato seria uma pergunta com uma resposta só.
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Salvar na galeria'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Exportar'), findsNothing);
+    expect(find.text('GIF'), findsNothing);
   });
 
   testWidgets('fundo com alvo "Fotos" muda só as fotos, não a montagem', (

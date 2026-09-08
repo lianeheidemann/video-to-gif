@@ -185,6 +185,43 @@ void main() {
     },
   );
 
+  testWidgets('o botão "..." abre o menu da célula', (tester) async {
+    var menus = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox.fromSize(
+              size: cellSize,
+              child: CollageCellView(
+                cell: CollageCellSettings(
+                  photoPath: photoPath,
+                  photoWidth: 100,
+                  photoHeight: 100,
+                ),
+                cellSize: cellSize,
+                onChanged: (_) {},
+                onMenu: () => menus++,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Toque com duração de verdade: o `GestureDetector` da célula tem
+    // `onDoubleTap`, então o toque do botão só é entregue depois que a arena
+    // desiste do duplo toque — um `tester.tap()` instantâneo não chega lá.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byIcon(Icons.more_horiz_rounded)),
+    );
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(menus, 1);
+  });
+
   testWidgets('fundo próprio da foto aparece por baixo dela', (tester) async {
     await pumpCell(
       tester,

@@ -20,10 +20,6 @@ Future<Uint8List> composeCollage({
   required CollageSettings settings,
   required int outputWidth,
 }) async {
-  final width = outputWidth < 2 ? 2 : outputWidth;
-  final height = (width / settings.aspectRatio).round().clamp(2, 1 << 20);
-  final size = Size(width.toDouble(), height.toDouble());
-
   final cellImages = await Future.wait(
     settings.cells.map<Future<ui.Image?>>(
       (cell) => cell.photoPath == null
@@ -38,53 +34,14 @@ Future<Uint8List> composeCollage({
       : null;
   final cellBackgroundImages = await _decodeCellBackgrounds(settings);
 
-  final geometry = CollageGeometry.of(size, settings);
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
   try {
-    canvas.save();
-    canvas.clipRRect(geometry.outerClip);
-    paintCollageBorder(canvas, size, settings);
-
-    canvas.save();
-    canvas.clipRRect(geometry.innerClip);
-    paintCollageBackground(
-      canvas,
-      geometry.innerClip.outerRect,
-      settings.background,
+    return await composeCollageFrame(
+      settings: settings,
+      outputWidth: outputWidth,
+      cellImages: cellImages,
       backgroundImage: backgroundImage,
+      cellBackgroundImages: cellBackgroundImages,
     );
-    for (
-      var i = 0;
-      i < settings.cells.length && i < geometry.cellRects.length;
-      i++
-    ) {
-      final cell = settings.cells[i];
-      paintCollageCell(
-        canvas,
-        geometry.cellRects[i],
-        cell,
-        cellImages[i],
-        cellBackgroundImage: cellBackgroundImages[cell.background.imagePath],
-      );
-    }
-    canvas.restore();
-
-    await _paintOverlays(canvas, size, settings);
-    canvas.restore();
-
-    final picture = recorder.endRecording();
-    try {
-      final image = await picture.toImage(width, height);
-      try {
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        return bytes!.buffer.asUint8List();
-      } finally {
-        image.dispose();
-      }
-    } finally {
-      picture.dispose();
-    }
   } finally {
     for (final image in cellImages) {
       image?.dispose();
@@ -93,6 +50,73 @@ Future<Uint8List> composeCollage({
       image?.dispose();
     }
     backgroundImage?.dispose();
+  }
+}
+
+/// Desenha UM quadro da montagem a partir de imagens **já decodificadas** —
+/// o miolo de [composeCollage], separado para a exportação animada
+/// (`collage_animation.dart`) poder trocar só as fotos das células a cada
+/// quadro sem decodificar tudo de novo (e sem duplicar o desenho, que
+/// continua sendo o mesmo `paintCollageBorder`/`paintCollageBackground`/
+/// `paintCollageCell` da prévia). Nenhuma imagem recebida é liberada aqui:
+/// quem decodificou é quem libera.
+Future<Uint8List> composeCollageFrame({
+  required CollageSettings settings,
+  required int outputWidth,
+  required List<ui.Image?> cellImages,
+  ui.Image? backgroundImage,
+  Map<String, ui.Image?> cellBackgroundImages = const {},
+}) async {
+  final width = outputWidth < 2 ? 2 : outputWidth;
+  final height = (width / settings.aspectRatio).round().clamp(2, 1 << 20);
+  final size = Size(width.toDouble(), height.toDouble());
+
+  final geometry = CollageGeometry.of(size, settings);
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+
+  canvas.save();
+  canvas.clipRRect(geometry.outerClip);
+  paintCollageBorder(canvas, size, settings);
+
+  canvas.save();
+  canvas.clipRRect(geometry.innerClip);
+  paintCollageBackground(
+    canvas,
+    geometry.innerClip.outerRect,
+    settings.background,
+    backgroundImage: backgroundImage,
+  );
+  for (
+    var i = 0;
+    i < settings.cells.length && i < geometry.cellRects.length;
+    i++
+  ) {
+    final cell = settings.cells[i];
+    paintCollageCell(
+      canvas,
+      geometry.cellRects[i],
+      cell,
+      i < cellImages.length ? cellImages[i] : null,
+      cellBackgroundImage: cellBackgroundImages[cell.background.imagePath],
+    );
+  }
+  canvas.restore();
+
+  await _paintOverlays(canvas, size, settings);
+  canvas.restore();
+
+  final picture = recorder.endRecording();
+  try {
+    final image = await picture.toImage(width, height);
+    try {
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      return bytes!.buffer.asUint8List();
+    } finally {
+      image.dispose();
+    }
+  } finally {
+    picture.dispose();
   }
 }
 
@@ -259,6 +283,24 @@ class _TextOverlay extends _Overlay {
       canvas.save();
       canvas.translate(center.dx, center.dy);
       canvas.rotate(item.rotation);
+
+      // Caixa de fundo primeiro, texto por cima — o mesmo respiro e o mesmo
+      // arredondamento que a prévia usa (ver `CollagePage._textArt`).
+      final background = item.backgroundColor;
+      if (background != null) {
+        final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
+        paintCollageTextBackground(
+          canvas,
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: painter.width + padH * 2,
+            height: painter.height + padV * 2,
+          ),
+          background,
+          item.backgroundCornerRatio,
+        );
+      }
+
       painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
       canvas.restore();
     } finally {

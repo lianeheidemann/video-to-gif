@@ -5,6 +5,7 @@ import 'package:flutter/material.dart' hide Image;
 import '../../models/collage_background.dart';
 import '../../models/collage_cell.dart';
 import '../../models/collage_settings.dart';
+import '../../models/collage_text.dart';
 
 /// Geometria de uma montagem já calculada para um [Size] específico: raio de
 /// canto externo, espessura da borda em pixels e o retângulo de cada célula
@@ -184,7 +185,23 @@ void paintCollageCell(
     RRect.fromRectAndRadius(cellRect, Radius.circular(outerRadius)),
   );
   if (borderThickness > 0) {
-    canvas.drawRect(cellRect, Paint()..color = cell.borderColor);
+    // Só o anel, nunca a célula inteira preenchida: pintar o retângulo todo
+    // com a cor da borda (como era antes) só funcionava em "preencher", onde
+    // a foto cobre tudo por cima. Em "encaixar" a sobra ao redor da foto
+    // ficava com a cor da borda mesmo com o fundo da foto transparente, sem
+    // jeito de ter borda e fundo transparente juntos — o mesmo problema que
+    // [paintCollageBorder] já tinha resolvido para a borda da montagem, e o
+    // mesmo `overlap` de meio pixel para não sobrar uma linha clara de
+    // antialiasing entre o anel e o que é desenhado logo em seguida.
+    final overlap = borderThickness < 1 ? borderThickness / 2 : 0.5;
+    canvas.drawDRRect(
+      RRect.fromRectAndRadius(cellRect, Radius.circular(outerRadius)),
+      RRect.fromRectAndRadius(
+        contentRect,
+        Radius.circular(innerRadius),
+      ).deflate(overlap),
+      Paint()..color = cell.borderColor,
+    );
   }
   canvas.clipRRect(
     RRect.fromRectAndRadius(contentRect, Radius.circular(innerRadius)),
@@ -256,6 +273,28 @@ void paintCollageCell(
       }
   }
   canvas.restore();
+}
+
+/// Caixa colorida atrás de um texto da montagem. O raio sai do menor lado da
+/// própria caixa (mesma unidade proporcional das outras razões de canto do
+/// app), então o arredondamento parece o mesmo em qualquer tamanho de fonte
+/// e em qualquer resolução de saída. Compartilhado entre a prévia
+/// (`_TextBackgroundPainter`) e a exportação (`_TextOverlay.paint`), para as
+/// duas nunca divergirem.
+void paintCollageTextBackground(
+  Canvas canvas,
+  Rect rect,
+  Color color,
+  double cornerRatio,
+) {
+  if (rect.isEmpty) return;
+  final radius =
+      rect.shortestSide *
+      cornerRatio.clamp(0.0, CollageTextItem.maxBackgroundCornerRatio);
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(rect, Radius.circular(radius)),
+    Paint()..color = color,
+  );
 }
 
 /// Retângulo de origem que, desenhado no destino `dstW`×`dstH`, cobre todo o
