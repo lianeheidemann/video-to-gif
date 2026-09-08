@@ -608,6 +608,70 @@ void main() {
     expect(gapPixel[1], lessThan(60));
   });
 
+  test('fundo do texto é desenhado atrás dele, na exportação', () async {
+    // Texto branco com fundo azul sobre montagem transparente: o pixel
+    // logo ao lado do texto (dentro do respiro da caixa) tem que estar azul
+    // e opaco, e um ponto bem fora da caixa, vazio.
+    final settings =
+        CollageSettings(
+          layout: CollageLayout.row(1),
+          aspectRatio: 1.0,
+          cells: const [CollageCellSettings()],
+        ).addingText(
+          const CollageTextItem(
+            id: 't1',
+            text: 'AA',
+            color: Color(0xFFFFFFFF),
+            backgroundColor: Color(0xFF0000FF),
+            backgroundCornerRatio: 0,
+            fontSizeRatio: 0.2,
+            centerX: 0.5,
+            centerY: 0.5,
+            zIndex: 1,
+          ),
+        );
+
+    const outputWidth = 300;
+    final bytes = await composeCollage(
+      settings: settings,
+      outputWidth: outputWidth,
+    );
+
+    final besideText = await _decodePixel(bytes, outputWidth, 150, 118);
+    expect(besideText[2], greaterThan(200), reason: 'a caixa azul do texto');
+    expect(besideText[3], 255);
+
+    final outside = await _decodePixel(bytes, outputWidth, 10, 10);
+    expect(outside[3], 0, reason: 'fora da caixa segue transparente');
+  });
+
+  test('sem cor de fundo, o texto continua sem caixa nenhuma', () async {
+    final settings =
+        CollageSettings(
+          layout: CollageLayout.row(1),
+          aspectRatio: 1.0,
+          cells: const [CollageCellSettings()],
+        ).addingText(
+          const CollageTextItem(
+            id: 't1',
+            text: 'AA',
+            color: Color(0xFFFFFFFF),
+            fontSizeRatio: 0.2,
+            centerX: 0.5,
+            centerY: 0.5,
+            zIndex: 1,
+          ),
+        );
+
+    const outputWidth = 300;
+    final bytes = await composeCollage(
+      settings: settings,
+      outputWidth: outputWidth,
+    );
+    final besideText = await _decodePixel(bytes, outputWidth, 150, 118);
+    expect(besideText[3], 0);
+  });
+
   test(
     'texto com fonte embutida (fontFamily) é desenhado na exportação',
     () async {

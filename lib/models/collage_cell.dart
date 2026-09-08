@@ -57,8 +57,13 @@ class CollageCellSettings {
     this.borderThicknessAtReference = 0.0,
     this.borderColor = const Color(0xFFFFFFFF),
     this.brightness = 0.0,
+    this.exposure = 0.0,
     this.contrast = 0.0,
+    this.highlights = 0.0,
+    this.shadows = 0.0,
     this.saturation = 0.0,
+    this.hue = 0.0,
+    this.temperature = 0.0,
   });
 
   /// `null` representa uma célula ainda sem foto escolhida.
@@ -116,10 +121,23 @@ class CollageCellSettings {
   final double borderThicknessAtReference;
   final Color borderColor;
 
-  /// Ajustes de cor, todos em `[-1, 1]` (0 = neutro).
+  /// Ajustes de cor, todos em `[-1, 1]` (0 = neutro) e todos aplicados por
+  /// uma matriz só ([colorFilter]/[buildAdjustmentColorFilter]), na ordem em
+  /// que aparecem aqui.
+  ///
+  /// [brightness] soma luz linearmente (clareia sombras e altas junto);
+  /// [exposure] multiplica (mais parecido com abrir o diafragma, mantém o
+  /// preto no lugar); [highlights] e [shadows] puxam só a parte alta ou só a
+  /// parte baixa da faixa; [hue] gira a roda de cores; [temperature] esquenta
+  /// (mais vermelho, menos azul) ou esfria.
   final double brightness;
+  final double exposure;
   final double contrast;
+  final double highlights;
+  final double shadows;
   final double saturation;
+  final double hue;
+  final double temperature;
 
   static const minZoom = 1.0;
   static const maxZoom = 4.0;
@@ -333,8 +351,38 @@ class CollageCellSettings {
 
   ColorFilter get colorFilter => buildAdjustmentColorFilter(
     brightness: brightness,
+    exposure: exposure,
     contrast: contrast,
+    highlights: highlights,
+    shadows: shadows,
     saturation: saturation,
+    hue: hue,
+    temperature: temperature,
+  );
+
+  /// `true` quando nenhum ajuste de cor está em uso — atalho para a tela
+  /// mostrar/esconder o "Redefinir" e para não gastar um passo de desfazer
+  /// zerando o que já está zerado.
+  bool get hasColorAdjustments =>
+      brightness != 0 ||
+      exposure != 0 ||
+      contrast != 0 ||
+      highlights != 0 ||
+      shadows != 0 ||
+      saturation != 0 ||
+      hue != 0 ||
+      temperature != 0;
+
+  /// Volta todos os ajustes de cor ao neutro, sem tocar em mais nada.
+  CollageCellSettings withoutColorAdjustments() => copyWith(
+    brightness: 0,
+    exposure: 0,
+    contrast: 0,
+    highlights: 0,
+    shadows: 0,
+    saturation: 0,
+    hue: 0,
+    temperature: 0,
   );
 
   CollageCellSettings copyWith({
@@ -356,8 +404,13 @@ class CollageCellSettings {
     double? borderThicknessAtReference,
     Color? borderColor,
     double? brightness,
+    double? exposure,
     double? contrast,
+    double? highlights,
+    double? shadows,
     double? saturation,
+    double? hue,
+    double? temperature,
   }) {
     return CollageCellSettings(
       photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
@@ -377,8 +430,13 @@ class CollageCellSettings {
           borderThicknessAtReference ?? this.borderThicknessAtReference,
       borderColor: borderColor ?? this.borderColor,
       brightness: brightness ?? this.brightness,
+      exposure: exposure ?? this.exposure,
       contrast: contrast ?? this.contrast,
+      highlights: highlights ?? this.highlights,
+      shadows: shadows ?? this.shadows,
       saturation: saturation ?? this.saturation,
+      hue: hue ?? this.hue,
+      temperature: temperature ?? this.temperature,
     );
   }
 
@@ -399,21 +457,132 @@ class CollageCellSettings {
   );
 }
 
-/// Uma única matriz 4x5 (`ColorFilter.matrix`) compondo saturação, contraste
-/// e brilho — só uma composição pode ser aplicada por [Paint], então as três
-/// precisam virar uma conta só em vez de três [ColorFilter]s encadeados.
-/// Todos os parâmetros em `[-1, 1]` (0 = neutro).
+/// Uma única matriz 4x5 (`ColorFilter.matrix`) compondo todos os ajustes de
+/// cor — só uma composição pode ser aplicada por [Paint], então todos
+/// precisam virar uma conta só em vez de vários [ColorFilter]s encadeados.
+/// Todos os parâmetros em `[-1, 1]` (0 = neutro), e a ordem de composição é
+/// a mesma de um editor de foto comum: primeiro o que mexe na exposição da
+/// cena (exposição/realces/sombras/brilho), depois contraste, depois cor
+/// (saturação/matiz/temperatura).
+///
+/// Realces e sombras são aproximações por matriz: puxam a imagem inteira
+/// para cima ou para baixo com um peso maior na ponta correspondente da
+/// faixa. Um ajuste tonal "de verdade" precisaria de curva por pixel (um
+/// shader), fora do que uma matriz 4x5 consegue expressar.
 ColorFilter buildAdjustmentColorFilter({
   required double brightness,
+  double exposure = 0,
   required double contrast,
+  double highlights = 0,
+  double shadows = 0,
   required double saturation,
+  double hue = 0,
+  double temperature = 0,
 }) {
-  final m = _multiply4x5(
-    _contrastMatrix(contrast),
-    _saturationMatrix(saturation),
-  );
-  final result = _multiply4x5(_brightnessMatrix(brightness), m);
-  return ColorFilter.matrix(result);
+  var m = _identity4x5();
+  m = _multiply4x5(_exposureMatrix(exposure), m);
+  m = _multiply4x5(_highlightsMatrix(highlights), m);
+  m = _multiply4x5(_shadowsMatrix(shadows), m);
+  m = _multiply4x5(_brightnessMatrix(brightness), m);
+  m = _multiply4x5(_contrastMatrix(contrast), m);
+  m = _multiply4x5(_saturationMatrix(saturation), m);
+  m = _multiply4x5(_hueMatrix(hue), m);
+  m = _multiply4x5(_temperatureMatrix(temperature), m);
+  return ColorFilter.matrix(m);
+}
+
+List<double> _identity4x5() => [
+  1, 0, 0, 0, 0, //
+  0, 1, 0, 0, 0, //
+  0, 0, 1, 0, 0, //
+  0, 0, 0, 1, 0, //
+];
+
+/// Exposição: multiplica a cena (como abrir/fechar o diafragma), então o
+/// preto continua preto e o efeito cresce nas partes claras — ao contrário
+/// do brilho, que soma um valor fixo em tudo. `+1` dobra a luz; `-1` corta
+/// pela metade.
+List<double> _exposureMatrix(double exposure) {
+  final e = math.pow(2, exposure.clamp(-1.0, 1.0)).toDouble();
+  return [
+    e, 0, 0, 0, 0, //
+    0, e, 0, 0, 0, //
+    0, 0, e, 0, 0, //
+    0, 0, 0, 1, 0, //
+  ];
+}
+
+/// Realces: mexe mais na parte alta da faixa. Multiplicar por um ganho e
+/// compensar com uma translação negativa mantém os tons escuros quase
+/// parados enquanto os claros sobem (ou descem, com valor negativo).
+List<double> _highlightsMatrix(double highlights) {
+  final h = highlights.clamp(-1.0, 1.0);
+  if (h == 0) return _identity4x5();
+  final gain = 1 + h * 0.5;
+  final shift = -h * 0.5 * 96;
+  return [
+    gain, 0, 0, 0, shift, //
+    0, gain, 0, 0, shift, //
+    0, 0, gain, 0, shift, //
+    0, 0, 0, 1, 0, //
+  ];
+}
+
+/// Sombras: o espelho de [_highlightsMatrix] — levanta (ou afunda) a parte
+/// baixa da faixa, deixando os tons claros praticamente onde estavam.
+List<double> _shadowsMatrix(double shadows) {
+  final s = shadows.clamp(-1.0, 1.0);
+  if (s == 0) return _identity4x5();
+  final gain = 1 - s * 0.35;
+  final shift = s * 0.35 * 190;
+  return [
+    gain, 0, 0, 0, shift, //
+    0, gain, 0, 0, shift, //
+    0, 0, gain, 0, shift, //
+    0, 0, 0, 1, 0, //
+  ];
+}
+
+/// Matiz: gira a roda de cores em até 180° para cada lado, mantendo a luma
+/// (a fórmula clássica de rotação de hue em espaço RGB, com os pesos de
+/// [_lumR]/[_lumG]/[_lumB]).
+List<double> _hueMatrix(double hue) {
+  final angle = hue.clamp(-1.0, 1.0) * math.pi;
+  if (angle == 0) return _identity4x5();
+  final c = math.cos(angle);
+  final s = math.sin(angle);
+  double m(double weight, double cosPart, double sinPart) =>
+      weight + c * cosPart + s * sinPart;
+  return [
+    m(_lumR, 1 - _lumR, -_lumR),
+    m(_lumG, -_lumG, -_lumG),
+    m(_lumB, -_lumB, 1 - _lumB),
+    0, 0, //
+    m(_lumR, -_lumR, 0.143),
+    m(_lumG, 1 - _lumG, 0.140),
+    m(_lumB, -_lumB, -0.283),
+    0, 0, //
+    m(_lumR, -_lumR, -(1 - _lumR)),
+    m(_lumG, -_lumG, _lumG),
+    m(_lumB, 1 - _lumB, _lumB),
+    0, 0, //
+    0, 0, 0, 1, 0, //
+  ];
+}
+
+/// Temperatura: positivo esquenta (mais vermelho, menos azul), negativo
+/// esfria. O verde fica de fora, como na maioria dos editores.
+List<double> _temperatureMatrix(double temperature) {
+  final t = temperature.clamp(-1.0, 1.0);
+  if (t == 0) return _identity4x5();
+  final warm = 1 + t * 0.25;
+  final cool = 1 - t * 0.25;
+  return [
+    warm, 0, 0, 0, 0, //
+    0, 1, 0, 0, 0, //
+    0, 0, cool, 0, 0, //
+    0, 0, 0, 1, 0, //
+  ];
 }
 
 // Pesos de luma do Rec. 709 (o espaço de cor de sRGB, que é o que a foto

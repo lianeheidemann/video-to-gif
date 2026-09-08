@@ -7,9 +7,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
+import 'package:video_to_gif/models/collage_color_adjustment.dart';
 import 'package:video_to_gif/models/photo_info.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
+import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
   final recorder = ui.PictureRecorder();
@@ -211,6 +213,72 @@ void main() {
     expect(cell.zoom, CollageCellSettings.minZoom);
     expect(cell.offsetX, 0);
     expect(cell.offsetY, 0);
+  });
+
+  testWidgets('"Ajustar cor" abre com as bolinhas dos oito ajustes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    // Toque com duração de verdade: o "..." só é entregue depois que a arena
+    // desiste do duplo toque da célula.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byIcon(Icons.more_horiz_rounded).first),
+    );
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajustar cor'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(IntensityRuler), findsOneWidget);
+    expect(
+      find.byType(ColorAdjustButton),
+      findsNWidgets(CollageColorAdjustment.values.length),
+    );
+    // Começa no brilho, com a régua no zero.
+    expect(find.text('0'), findsOneWidget);
+    expect(find.text('Brilho'), findsWidgets);
+  });
+
+  testWidgets('texto ganha fundo, cor e arredondamento pelo painel', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Texto'), 200, scrollable: page);
+    await tester.tap(find.text('Texto'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Adicionar texto'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'oi');
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    // Com o texto recém-criado selecionado, o painel mostra os controles de
+    // estilo dele.
+    expect(find.text('Cor do texto'), findsOneWidget);
+    expect(find.text('Fundo do texto'), findsOneWidget);
+    expect(find.text('Arredondamento do fundo'), findsNothing);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cor do fundo do texto'), findsOneWidget);
+    expect(find.text('Arredondamento do fundo'), findsOneWidget);
   });
 
   testWidgets('sem foto animada, o download não pergunta formato nenhum', (

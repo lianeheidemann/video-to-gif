@@ -5,6 +5,7 @@ import 'package:flutter/material.dart' hide Image;
 import '../../models/collage_background.dart';
 import '../../models/collage_cell.dart';
 import '../../models/collage_settings.dart';
+import '../../models/collage_text.dart';
 
 /// Geometria de uma montagem já calculada para um [Size] específico: raio de
 /// canto externo, espessura da borda em pixels e o retângulo de cada célula
@@ -272,6 +273,28 @@ void paintCollageCell(
       }
   }
   canvas.restore();
+}
+
+/// Caixa colorida atrás de um texto da montagem. O raio sai do menor lado da
+/// própria caixa (mesma unidade proporcional das outras razões de canto do
+/// app), então o arredondamento parece o mesmo em qualquer tamanho de fonte
+/// e em qualquer resolução de saída. Compartilhado entre a prévia
+/// (`_TextBackgroundPainter`) e a exportação (`_TextOverlay.paint`), para as
+/// duas nunca divergirem.
+void paintCollageTextBackground(
+  Canvas canvas,
+  Rect rect,
+  Color color,
+  double cornerRatio,
+) {
+  if (rect.isEmpty) return;
+  final radius =
+      rect.shortestSide *
+      cornerRatio.clamp(0.0, CollageTextItem.maxBackgroundCornerRatio);
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(rect, Radius.circular(radius)),
+    Paint()..color = color,
+  );
 }
 
 /// Retângulo de origem que, desenhado no destino `dstW`×`dstH`, cobre todo o

@@ -283,6 +283,24 @@ class _TextOverlay extends _Overlay {
       canvas.save();
       canvas.translate(center.dx, center.dy);
       canvas.rotate(item.rotation);
+
+      // Caixa de fundo primeiro, texto por cima — o mesmo respiro e o mesmo
+      // arredondamento que a prévia usa (ver `CollagePage._textArt`).
+      final background = item.backgroundColor;
+      if (background != null) {
+        final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
+        paintCollageTextBackground(
+          canvas,
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: painter.width + padH * 2,
+            height: painter.height + padV * 2,
+          ),
+          background,
+          item.backgroundCornerRatio,
+        );
+      }
+
       painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
       canvas.restore();
     } finally {

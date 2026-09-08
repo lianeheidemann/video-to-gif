@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/collage_background.dart';
 import '../models/collage_cell.dart';
+import '../models/collage_color_adjustment.dart';
 import '../models/collage_export.dart';
 import '../models/collage_layout.dart';
 import '../models/collage_settings.dart';
@@ -26,6 +27,7 @@ import 'photo_crop_page.dart';
 import 'widgets/collage_cell_view.dart';
 import 'widgets/collage_overlay_view.dart';
 import 'widgets/collage_painter.dart';
+import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 
 /// Abas fixas no rodapé da tela de montagem — cada uma abre um painel com o
@@ -571,7 +573,7 @@ class _CollagePageState extends State<CollagePage> {
 
   Widget _textArt(CollageTextItem item, Size canvasSize) {
     final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
-    return Text(
+    final text = Text(
       item.text,
       textAlign: TextAlign.center,
       style: TextStyle(
@@ -580,6 +582,19 @@ class _CollagePageState extends State<CollagePage> {
         fontFamily: item.fontFamily,
         fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
       ),
+    );
+    final background = item.backgroundColor;
+    if (background == null) return text;
+
+    // O mesmo respiro e o mesmo arredondamento que `_TextOverlay.paint`
+    // desenha na exportação — o raio sai do menor lado da caixa já com o
+    // respiro, então a prévia e o PNG batem em qualquer tamanho de fonte.
+    final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
+    return _TextBackgroundBox(
+      color: background,
+      cornerRatio: item.backgroundCornerRatio,
+      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+      child: text,
     );
   }
 
@@ -1101,6 +1116,23 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
+  /// Linha de liga/desliga no estilo dos painéis do rodapé. Um
+  /// `SwitchListTile` aqui dispara o aviso do Material de "fundo/ink
+  /// invisível" (o painel já tem cor de fundo própria) — e o visual ficaria
+  /// diferente das outras linhas.
+  Widget _switchRow(String label, bool value, ValueChanged<bool> onChanged) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
+          Switch(value: value, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+
   Widget _colorRow(String label, Color color, VoidCallback onTap) {
     final theme = Theme.of(context);
     return InkWell(
@@ -1546,6 +1578,9 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Widget _textPanelContent() {
+    final selected = _selectedOverlayId == null
+        ? null
+        : _findText(_selectedOverlayId!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1555,7 +1590,107 @@ class _CollagePageState extends State<CollagePage> {
           icon: const Icon(Icons.add_rounded),
           label: const Text('Adicionar texto'),
         ),
+        // Os controles de estilo só fazem sentido com um texto selecionado —
+        // eles mexem naquele texto, não em todos.
+        if (selected != null) ...[
+          const SizedBox(height: 8),
+          _colorRow(
+            'Cor do texto',
+            selected.color,
+            () => _pickTextColor(selected.id),
+          ),
+          _switchRow(
+            'Fundo do texto',
+            selected.hasBackground,
+            (on) => _toggleTextBackground(selected.id, on),
+          ),
+          if (selected.hasBackground) ...[
+            _colorRow(
+              'Cor do fundo do texto',
+              selected.backgroundColor!,
+              () => _pickTextBackgroundColor(selected.id),
+            ),
+            const SizedBox(height: 4),
+            _sliderRow(
+              label: 'Arredondamento do fundo',
+              value: selected.backgroundCornerRatio,
+              min: 0,
+              max: CollageTextItem.maxBackgroundCornerRatio,
+              display:
+                  '${(selected.backgroundCornerRatio / CollageTextItem.maxBackgroundCornerRatio * 100).round()}%',
+              onChanged: (v) => _update(
+                _settings.replacingText(
+                  selected.id,
+                  selected.copyWith(backgroundCornerRatio: v),
+                ),
+                pushUndo: false,
+              ),
+            ),
+          ],
+        ],
       ],
+    );
+  }
+
+  void _toggleTextBackground(String id, bool on) {
+    final item = _findText(id);
+    if (item == null) return;
+    _update(
+      _settings.replacingText(
+        id,
+        on
+            ? item.copyWith(
+                backgroundColor:
+                    item.backgroundColor ?? const Color(0xFF000000),
+              )
+            : item.copyWith(clearBackgroundColor: true),
+      ),
+    );
+  }
+
+  void _pickTextColor(String id) => _pickOverlayTextColor(
+    id: id,
+    title: 'Cor do texto',
+    current: (item) => item.color,
+    apply: (item, color) => item.copyWith(color: color),
+  );
+
+  void _pickTextBackgroundColor(String id) => _pickOverlayTextColor(
+    id: id,
+    title: 'Cor do fundo do texto',
+    current: (item) => item.backgroundColor ?? const Color(0xFF000000),
+    apply: (item, color) => item.copyWith(backgroundColor: color),
+  );
+
+  /// Mesma folha de cor do resto da montagem (com conta-gotas na prévia),
+  /// servindo tanto à cor do texto quanto à do fundo dele — [current]/[apply]
+  /// são o que muda entre as duas, no mesmo espírito de [_pickBorderColor].
+  void _pickOverlayTextColor({
+    required String id,
+    required String title,
+    required Color Function(CollageTextItem item) current,
+    required CollageTextItem Function(CollageTextItem item, Color color) apply,
+  }) {
+    final item = _findText(id);
+    if (item == null) return;
+    var checkpointPushed = false;
+    showCollageColorPickerSheet(
+      context: context,
+      title: title,
+      initialColor: current(item),
+      onColorSelected: (color) {
+        final latest = _findText(id);
+        if (latest == null) return;
+        if (!checkpointPushed) {
+          checkpointPushed = true;
+          _pushUndoCheckpoint();
+        }
+        _update(
+          _settings.replacingText(id, apply(latest, color)),
+          pushUndo: false,
+        );
+      },
+      previewImageBuilder: _renderPreviewImage,
     );
   }
 
@@ -2007,7 +2142,13 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
+  /// Folha de ajuste de cor: uma fileira de bolinhas (uma por ajuste, como
+  /// nos editores de foto), o nome do ajuste escolhido em cima e a régua de
+  /// intensidade embaixo, com o zero no centro. Cada mexida na régua é
+  /// aplicada na hora à célula, então a prévia atrás da folha mostra o
+  /// resultado enquanto o dedo ainda está na tela.
   void _openCellColorAdjust(int index) {
+    var current = CollageColorAdjustment.brightness;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -2015,63 +2156,79 @@ class _CollagePageState extends State<CollagePage> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, sheetSetState) {
+            if (index >= _settings.cells.length) return const SizedBox.shrink();
             final cell = _settings.cells[index];
+            final theme = Theme.of(sheetContext);
 
-            void applyAdjustment(CollageCellSettings updated) {
-              _update(_settings.replacingCell(index, updated), pushUndo: false);
-              sheetSetState(() {});
-            }
-
-            Widget adjustSlider(
-              String label,
-              double value,
-              CollageCellSettings Function(double) apply,
-            ) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: Theme.of(sheetContext).textTheme.bodyMedium,
-                  ),
-                  Slider(
-                    min: -1,
-                    max: 1,
-                    value: value.clamp(-1.0, 1.0),
-                    onChangeStart: (_) => _pushUndoCheckpoint(),
-                    onChanged: (v) => applyAdjustment(apply(v)),
-                  ),
-                ],
+            void applyValue(double value) {
+              _update(
+                _settings.replacingCell(index, current.apply(cell, value)),
+                pushUndo: false,
               );
+              sheetSetState(() {});
             }
 
             return SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Ajustar cor',
-                      style: Theme.of(sheetContext).textTheme.titleMedium,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Ajustar cor',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                        if (cell.hasColorAdjustments)
+                          TextButton(
+                            onPressed: () {
+                              _pushUndoCheckpoint();
+                              _update(
+                                _settings.replacingCell(
+                                  index,
+                                  cell.withoutColorAdjustments(),
+                                ),
+                                pushUndo: false,
+                              );
+                              sheetSetState(() {});
+                            },
+                            child: const Text('Redefinir'),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    adjustSlider(
-                      'Brilho',
-                      cell.brightness,
-                      (v) => cell.copyWith(brightness: v),
+                    SizedBox(
+                      height: 84,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          for (final adjustment
+                              in CollageColorAdjustment.values)
+                            ColorAdjustButton(
+                              adjustment: adjustment,
+                              selected: adjustment == current,
+                              value: adjustment.valueOf(cell),
+                              onTap: () =>
+                                  sheetSetState(() => current = adjustment),
+                            ),
+                        ],
+                      ),
                     ),
-                    adjustSlider(
-                      'Contraste',
-                      cell.contrast,
-                      (v) => cell.copyWith(contrast: v),
+                    const SizedBox(height: 10),
+                    Text(
+                      current.label,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    adjustSlider(
-                      'Saturação',
-                      cell.saturation,
-                      (v) => cell.copyWith(saturation: v),
+                    IntensityRuler(
+                      value: current.valueOf(cell),
+                      onChangeStart: _pushUndoCheckpoint,
+                      onChanged: applyValue,
                     ),
                   ],
                 ),
@@ -2564,4 +2721,50 @@ class _FontThumb extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Caixa colorida atrás de um texto da montagem, com o arredondamento em
+/// razão do menor lado (a mesma unidade proporcional que
+/// [CollageTextItem.backgroundCornerRatio] tem na exportação). Precisa de um
+/// `LayoutBuilder` porque o raio depende do tamanho final da caixa, que só é
+/// conhecido depois de medir o texto.
+class _TextBackgroundBox extends StatelessWidget {
+  const _TextBackgroundBox({
+    required this.color,
+    required this.cornerRatio,
+    required this.padding,
+    required this.child,
+  });
+
+  final Color color;
+  final double cornerRatio;
+  final EdgeInsets padding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _TextBackgroundPainter(color: color, cornerRatio: cornerRatio),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+class _TextBackgroundPainter extends CustomPainter {
+  const _TextBackgroundPainter({
+    required this.color,
+    required this.cornerRatio,
+  });
+
+  final Color color;
+  final double cornerRatio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    paintCollageTextBackground(canvas, Offset.zero & size, color, cornerRatio);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TextBackgroundPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.cornerRatio != cornerRatio;
 }

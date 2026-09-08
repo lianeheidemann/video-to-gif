@@ -9,6 +9,8 @@ class CollageTextItem {
     required this.id,
     required this.text,
     this.color = const Color(0xFFFFFFFF),
+    this.backgroundColor,
+    this.backgroundCornerRatio = defaultBackgroundCornerRatio,
     this.fontSizeRatio = defaultFontSizeRatio,
     this.bold = true,
     required this.centerX,
@@ -22,6 +24,24 @@ class CollageTextItem {
   final String id;
   final String text;
   final Color color;
+
+  /// Cor da caixa desenhada atrás do texto. `null` (padrão) é sem fundo
+  /// nenhum — o texto fica direto sobre a montagem, como sempre foi.
+  final Color? backgroundColor;
+
+  /// Arredondamento dos cantos dessa caixa, como razão do menor lado dela
+  /// (mesma unidade proporcional de `CollageCellSettings.cornerRatio`):
+  /// `0` é canto reto e [maxBackgroundCornerRatio] é a cápsula completa.
+  final double backgroundCornerRatio;
+
+  bool get hasBackground => backgroundColor != null;
+
+  /// Respiro entre o texto e a borda da caixa de fundo, proporcional ao
+  /// tamanho da fonte — a mesma conta na prévia e na exportação, para as
+  /// duas desenharem a mesma caixa.
+  static (double horizontal, double vertical) backgroundPaddingFor(
+    double fontSize,
+  ) => (fontSize * 0.34, fontSize * 0.16);
 
   /// `null` = fonte padrão do tema (nenhum asset embutido para carregar).
   /// Um dos nomes de família registrados no bloco `fonts:` do `pubspec.yaml`
@@ -50,10 +70,15 @@ class CollageTextItem {
   static const defaultFontSizeRatio = 0.07;
   static const minScale = 0.3;
   static const maxScale = 4.0;
+  static const defaultBackgroundCornerRatio = 0.3;
+  static const maxBackgroundCornerRatio = 0.5;
 
   CollageTextItem copyWith({
     String? text,
     Color? color,
+    Color? backgroundColor,
+    bool clearBackgroundColor = false,
+    double? backgroundCornerRatio,
     double? fontSizeRatio,
     bool? bold,
     double? centerX,
@@ -68,6 +93,11 @@ class CollageTextItem {
       id: id,
       text: text ?? this.text,
       color: color ?? this.color,
+      backgroundColor: clearBackgroundColor
+          ? null
+          : (backgroundColor ?? this.backgroundColor),
+      backgroundCornerRatio:
+          backgroundCornerRatio ?? this.backgroundCornerRatio,
       fontSizeRatio: fontSizeRatio ?? this.fontSizeRatio,
       bold: bold ?? this.bold,
       centerX: centerX ?? this.centerX,
