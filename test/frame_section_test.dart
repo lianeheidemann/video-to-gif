@@ -5,13 +5,12 @@ import 'package:video_to_gif/models/frame_settings.dart';
 import 'package:video_to_gif/models/video_info.dart';
 import 'package:video_to_gif/ui/editor_page.dart';
 
-// A aba "Frame" tem duas famílias de moldura em caixas separadas — as
-// procedurais ("Moldura") e as artes prontas ("Moldura de imagem") — e só
-// uma pode estar ativa por vez. Cada fileira tem a sua própria miniatura
-// "Sem moldura" e mostra sempre exatamente uma opção marcada: é assim que se
-// vê que escolher de um lado desativou o outro. Estes testes garantem que as
-// duas fileiras sempre aparecem, sem exceção, e que essa exclusão mútua vale
-// nos dois sentidos.
+// As molduras moram em duas abas do rodapé — "Moldura" (as procedurais) e
+// "Imagem" (as artes prontas) — e só uma família pode estar ativa por vez.
+// Cada fileira tem a sua própria miniatura "Sem moldura" e mostra sempre
+// exatamente uma opção marcada: é assim que se vê que escolher de um lado
+// desativou o outro. Estes testes garantem que as duas fileiras existem nas
+// suas abas e que essa exclusão mútua vale nos dois sentidos.
 const _video = VideoInfo(
   path: '/tmp/video-inexistente-para-teste.mp4',
   fileName: 'video.mp4',
@@ -29,11 +28,9 @@ Finder _checkIn(String key) => find.descendant(
   matching: find.byIcon(Icons.check_rounded),
 );
 
-Future<void> _openFrameSection(WidgetTester tester) async {
-  // Viewport retrato: em paisagem o app esconde as abas "Ajustar"/"Frame"
-  // para aproveitar o espaço vertical, e o tamanho padrão de teste
-  // (800x600) é "paisagem".
-  tester.view.physicalSize = const Size(1080, 5000);
+/// Monta a tela e abre a aba [tab] do rodapé (o rótulo curto da barra).
+Future<void> _openTab(WidgetTester tester, String tab) async {
+  tester.view.physicalSize = const Size(1080, 2340);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -48,12 +45,12 @@ Future<void> _openFrameSection(WidgetTester tester) async {
   // tempo dele desistir e marcar `_previewFailed` antes de seguir.
   await tester.pump(const Duration(seconds: 1));
 
-  await tester.tap(find.text('Frame'));
-  await tester.pump();
-  // As duas famílias moram em seções recolhidas separadas; abrir as duas.
-  await tester.tap(find.text('Moldura'));
-  await tester.pump();
-  await tester.tap(find.text('Moldura de imagem'));
+  await _switchTab(tester, tab);
+}
+
+/// Troca de aba numa tela já montada.
+Future<void> _switchTab(WidgetTester tester, String tab) async {
+  await tester.tap(find.text(tab).last);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
 }
@@ -68,7 +65,7 @@ void main() {
   testWidgets('cor do fundo aparece somente com transparência desligada', (
     tester,
   ) async {
-    await _openFrameSection(tester);
+    await _openTab(tester, 'Fundo');
 
     expect(
       find.text('Desligado, a área fora da moldura fica preta'),
@@ -83,17 +80,27 @@ void main() {
     expect(find.text('Cor do fundo'), findsOneWidget);
   });
 
-  testWidgets('as duas fileiras de moldura aparecem juntas, sem erro', (
+  testWidgets('cada família de moldura aparece na sua aba, sem erro', (
     tester,
   ) async {
-    await _openFrameSection(tester);
-
+    await _openTab(tester, 'Moldura');
     expect(tester.takeException(), isNull);
     for (final key in [
       'frameStyleThumb_none',
       'frameStyleThumb_thin',
       'frameStyleThumb_medium',
       'frameStyleThumb_thick',
+    ]) {
+      expect(
+        find.byKey(ValueKey(key)),
+        findsOneWidget,
+        reason: '$key deveria estar na aba "Moldura"',
+      );
+    }
+
+    await _switchTab(tester, 'Imagem');
+    expect(tester.takeException(), isNull);
+    for (final key in [
       'imageFrameThumb_none',
       'imageFrameThumb_bundled_transparente',
       'imageFrameThumb_bundled_graphite',
@@ -105,22 +112,20 @@ void main() {
       expect(
         find.byKey(ValueKey(key)),
         findsOneWidget,
-        reason: '$key deveria estar na tela',
+        reason: '$key deveria estar na aba "Imagem"',
       );
     }
   });
 
-  testWidgets('escolher numa fileira volta a outra para "Sem moldura"', (
+  testWidgets('escolher numa aba volta a outra para "Sem moldura"', (
     tester,
   ) async {
-    await _openFrameSection(tester);
-
+    await _openTab(tester, 'Imagem');
     expect(
-      _checkIn('frameStyleThumb_none'),
+      _checkIn('imageFrameThumb_none'),
       findsOneWidget,
-      reason: 'sem nada escolhido, as duas fileiras começam em "Sem moldura"',
+      reason: 'sem nada escolhido, a fileira começa em "Sem moldura"',
     );
-    expect(_checkIn('imageFrameThumb_none'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
@@ -138,91 +143,57 @@ void main() {
       reason: '"Sem moldura" da fileira de imagem sai de marcada',
     );
     expect(
-      _checkIn('frameStyleThumb_none'),
-      findsOneWidget,
-      reason: 'a fileira de moldura volta para "Sem moldura"',
-    );
-    expect(
       find.text('Titânio'),
       findsWidgets,
-      reason: 'o resumo da seção deve refletir a moldura de imagem ativa',
+      reason: 'o cabeçalho do painel deve refletir a moldura ativa',
+    );
+
+    await _switchTab(tester, 'Moldura');
+    expect(
+      _checkIn('frameStyleThumb_none'),
+      findsOneWidget,
+      reason: 'a família procedural continua em "Sem moldura"',
     );
 
     await tester.tap(find.byKey(const ValueKey('frameStyleThumb_medium')));
     await tester.pump();
+    expect(_checkIn('frameStyleThumb_medium'), findsOneWidget);
 
-    expect(
-      _checkIn('frameStyleThumb_medium'),
-      findsOneWidget,
-      reason: 'a moldura procedural escolhida fica marcada',
-    );
-    expect(
-      _checkIn('frameStyleThumb_none'),
-      findsNothing,
-      reason: '"Sem moldura" da fileira procedural sai de marcada',
-    );
+    await _switchTab(tester, 'Imagem');
     expect(
       _checkIn('imageFrameThumb_bundled_titanio'),
       findsNothing,
       reason: 'a moldura de imagem é desativada',
     );
-    expect(
-      _checkIn('imageFrameThumb_none'),
-      findsOneWidget,
-      reason: 'a fileira de imagem volta para "Sem moldura"',
-    );
+    expect(_checkIn('imageFrameThumb_none'), findsOneWidget);
   });
 
-  testWidgets('trocar a família de moldura mantém as opções no mesmo lugar', (
+  testWidgets('escolher uma moldura não fecha nem troca a aba aberta', (
     tester,
   ) async {
-    await _openFrameSection(tester);
-    tester.view.physicalSize = const Size(1080, 2340);
-    await tester.pump();
-
+    // Antes as seções viviam numa lista rolável junto com a prévia, e mudar
+    // de moldura mexia na rolagem (havia toda uma compensação para isso).
+    // Com o painel fixo no rodapé, a fileira simplesmente continua no lugar.
+    await _openTab(tester, 'Imagem');
     final imageFrame = find.byKey(
       const ValueKey('imageFrameThumb_bundled_titanio'),
     );
-    await tester.ensureVisible(imageFrame);
-    await tester.pump();
-    final imageY = tester.getTopLeft(imageFrame).dy;
 
     await tester.tap(imageFrame);
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump();
 
-    expect(
-      tester.getTopLeft(imageFrame).dy,
-      closeTo(imageY, 1),
-      reason: 'a fileira de imagens não deve pular quando a prévia muda',
-    );
-
-    final proceduralFrame = find.byKey(
-      const ValueKey('frameStyleThumb_medium'),
-    );
-    await tester.ensureVisible(proceduralFrame);
-    await tester.pump();
-
-    await tester.tap(proceduralFrame);
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump();
-
-    expect(
-      tester.getTopLeft(proceduralFrame).dy,
-      greaterThanOrEqualTo(0),
-      reason: 'a fileira procedural deve continuar visível',
-    );
-    expect(
-      tester.getBottomRight(proceduralFrame).dy,
-      lessThanOrEqualTo(tester.view.physicalSize.height),
-      reason: 'a fileira procedural não deve sair da tela',
-    );
+    // A aba continua a mesma e a fileira continua na tela — o painel só
+    // cresce para baixo do próprio cabeçalho, com as opções novas da
+    // moldura escolhida.
+    expect(imageFrame, findsOneWidget);
+    expect(_checkIn('imageFrameThumb_bundled_titanio'), findsOneWidget);
+    expect(find.text('Moldura de imagem'), findsWidgets);
   });
 
   testWidgets('painel de ajuste só aparece com moldura de imagem ativa', (
     tester,
   ) async {
-    await _openFrameSection(tester);
+    await _openTab(tester, 'Imagem');
 
     expect(find.text('Ajuste do conteúdo'), findsNothing);
     expect(find.text('Resolução da moldura'), findsNothing);
@@ -245,13 +216,15 @@ void main() {
   testWidgets(
     'zoom aparece somente em Expandir sem cortar e vai de 10% a 300%',
     (tester) async {
-      await _openFrameSection(tester);
+      await _openTab(tester, 'Imagem');
       await tester.tap(
         find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
       );
       await tester.pump(const Duration(milliseconds: 300));
 
       final contentHeader = find.text('Ajuste do conteúdo');
+      await tester.ensureVisible(contentHeader);
+      await tester.pump();
       await tester.tap(contentHeader);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -280,6 +253,8 @@ void main() {
       expect(find.text('Preenche com fundo estendido'), findsNothing);
 
       final expand = find.byKey(const ValueKey('contentFitTile_expand'));
+      await tester.ensureVisible(expand);
+      await tester.pump();
       await tester.tap(expand);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -290,6 +265,8 @@ void main() {
       expect(slider.max, FrameSettings.maxContentZoom);
 
       final auto = find.byKey(const ValueKey('contentFitTile_auto'));
+      await tester.ensureVisible(auto);
+      await tester.pump();
       await tester.tap(auto);
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -304,7 +281,7 @@ void main() {
   testWidgets('resolução da moldura aparece como card próprio do painel', (
     tester,
   ) async {
-    await _openFrameSection(tester);
+    await _openTab(tester, 'Imagem');
     await tester.tap(
       find.byKey(const ValueKey('imageFrameThumb_bundled_titanio')),
     );
@@ -346,6 +323,46 @@ void main() {
           .widget<SegmentedButton<ImageFrameResolutionMode>>(selector)
           .selected,
       {ImageFrameResolutionMode.nativeMax},
+    );
+  });
+
+  testWidgets('desfazer e refazer voltam e refazem a escolha de moldura', (
+    tester,
+  ) async {
+    await _openTab(tester, 'Moldura');
+
+    // Sem nenhuma mudança ainda, os dois botões nascem desligados.
+    // O `Tooltip` fica DENTRO do `IconButton` (é ele que o cria), então o
+    // botão é o ancestral, não o descendente.
+    IconButton buttonWith(String tooltip) => tester.widget<IconButton>(
+      find
+          .ancestor(
+            of: find.byTooltip(tooltip),
+            matching: find.byType(IconButton),
+          )
+          .first,
+    );
+    expect(buttonWith('Desfazer').onPressed, isNull);
+    expect(buttonWith('Refazer').onPressed, isNull);
+
+    await tester.tap(find.byKey(const ValueKey('frameStyleThumb_medium')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_checkIn('frameStyleThumb_medium'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Desfazer'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      _checkIn('frameStyleThumb_none'),
+      findsOneWidget,
+      reason: 'desfazer volta para "Sem moldura"',
+    );
+
+    await tester.tap(find.byTooltip('Refazer'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      _checkIn('frameStyleThumb_medium'),
+      findsOneWidget,
+      reason: 'refazer traz a moldura de volta',
     );
   });
 }

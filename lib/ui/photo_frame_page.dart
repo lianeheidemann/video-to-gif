@@ -11,8 +11,8 @@ import '../models/photo_info.dart';
 import '../services/imported_frame_store.dart';
 import '../services/output_service.dart';
 import '../services/photo_frame_compositor.dart';
+import 'widgets/editor_tabs_footer.dart';
 import 'widgets/frame_painter.dart';
-import 'widgets/labeled_section.dart';
 
 /// Mesmos três modos apresentados ao usuário em `EditorPage` — `fit` só
 /// existe como resultado interno do ajuste automático.
@@ -43,7 +43,16 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
 
   FrameSettings _frame = const FrameSettings();
   List<ImageFrameAsset> _importedImageFrames = [];
-  bool _contentFitExpanded = false;
+
+  /// Aba aberta no rodapé (índice em [_sections]) — `null` fecha o painel e
+  /// deixa a prévia com o máximo de espaço.
+  int? _activeSection = 0;
+
+  /// Histórico de desfazer/refazer da moldura, no mesmo formato da tela de
+  /// montagem: pilhas do próprio [FrameSettings], com os arrastes contínuos
+  /// (sliders) empilhando um checkpoint só no início do gesto.
+  final List<FrameSettings> _undoStack = [];
+  final List<FrameSettings> _redoStack = [];
 
   bool _saving = false;
   bool _sharing = false;
@@ -62,7 +71,38 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
 
   double get _photoAspectRatio => widget.photo.aspectRatio;
 
-  void _updateFrame(FrameSettings frame) => setState(() => _frame = frame);
+  void _updateFrame(FrameSettings frame, {bool pushUndo = true}) {
+    if (pushUndo) {
+      _undoStack.add(_frame);
+      _redoStack.clear();
+    }
+    setState(() => _frame = frame);
+  }
+
+  /// Empilha o estado atual antes de um gesto contínuo (slider), para o
+  /// arrasto inteiro virar UM passo de desfazer em vez de um por quadro.
+  void _pushUndoCheckpoint() {
+    _undoStack.add(_frame);
+    _redoStack.clear();
+  }
+
+  void _undo() {
+    if (_undoStack.isEmpty) return;
+    final previous = _undoStack.removeLast();
+    setState(() {
+      _redoStack.add(_frame);
+      _frame = previous;
+    });
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    final next = _redoStack.removeLast();
+    setState(() {
+      _undoStack.add(_frame);
+      _frame = next;
+    });
+  }
 
   void _message(String text) {
     ScaffoldMessenger.of(context)
@@ -122,21 +162,106 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     }
   }
 
+  /// O estilo procedural que a aba "Moldura" deve mostrar. Com uma moldura
+  /// de imagem ativa é sempre "Sem moldura": as duas famílias são mutuamente
+  /// exclusivas, como na aba "Frame" do editor de vídeo.
+  FrameStyle get _activeFrameStyle =>
+      _frame.imageFrame == null ? _frame.style : FrameStyle.none;
+
+  /// As seções da tela, na ordem em que aparecem na barra de baixo — as
+  /// mesmas de antes, só que como abas em vez de cards empilhados numa lista
+  /// rolável (mesmo rodapé da tela de montagem).
+  List<EditorSection> get _sections => [
+    EditorSection(
+      icon: Icons.smartphone_rounded,
+      title: 'Moldura',
+      value: _activeFrameStyle.label,
+      builder: (_) => _frameStyleSection(),
+    ),
+    EditorSection(
+      icon: Icons.image_outlined,
+      title: 'Moldura de imagem',
+      label: 'Imagem',
+      value: _frame.imageFrame?.label ?? FrameStyle.none.label,
+      builder: (_) => _imageFrameSection(),
+    ),
+    if (_frame.hasFixedAspect)
+      EditorSection(
+        icon: Icons.fit_screen_rounded,
+        title: 'Ajuste da foto',
+        label: 'Ajuste',
+        value: _frame.contentFit.label,
+        builder: (_) => _contentFitSection(),
+      ),
+    EditorSection(
+      icon: Icons.wallpaper_rounded,
+      title: 'Fundo',
+      value: _frame.transparentBackground ? 'Transparente' : 'Cor',
+      builder: (_) => _backgroundSection(),
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final busy = _saving || _sharing;
+    final sections = _sections;
+    final active = _activeSection == null
+        ? null
+        : (_activeSection! < sections.length ? _activeSection : null);
     return Scaffold(
-      appBar: AppBar(title: const Text('Moldura em foto')),
+      appBar: AppBar(
+        title: const Text('Moldura em foto'),
+        actions: [
+          IconButton(
+            tooltip: 'Desfazer',
+            onPressed: _undoStack.isEmpty ? null : _undo,
+            icon: const Icon(Icons.undo_rounded),
+          ),
+          IconButton(
+            tooltip: 'Refazer',
+            onPressed: _redoStack.isEmpty ? null : _redo,
+            icon: const Icon(Icons.redo_rounded),
+          ),
+          IconButton(
+            tooltip: _saving ? 'Salvando…' : 'Salvar na galeria',
+            onPressed: busy ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download_rounded),
+          ),
+          IconButton(
+            tooltip: _sharing ? 'Preparando…' : 'Compartilhar',
+            onPressed: busy ? null : _share,
+            icon: _sharing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.share_outlined),
+          ),
+        ],
+      ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: Column(
           children: [
-            _framedPreview(),
-            const SizedBox(height: 20),
-            _frameStyleSection(),
-            _imageFrameSection(),
-            _backgroundSection(),
-            const SizedBox(height: 4),
-            _actions(),
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: _framedPreview(),
+                ),
+              ),
+            ),
+            EditorTabsFooter(
+              sections: sections,
+              activeIndex: active,
+              onSelected: (index) => setState(() => _activeSection = index),
+            ),
           ],
         ),
       ),
@@ -290,40 +415,29 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     final theme = Theme.of(context);
     final style = _frame.style;
 
-    return LabeledSection(
-      icon: Icons.smartphone_rounded,
-      title: 'Moldura',
-      value: style.label,
-      hint: 'Escolha uma opção',
-      initiallyExpanded: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _frameStyleThumbnails(),
-          if (style != FrameStyle.none) ...[
-            const SizedBox(height: 18),
-            _sectionCard(
-              children: [
-                _frameColorRow(),
-                Divider(
-                  height: 17,
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.45,
-                  ),
-                ),
-                _frameThicknessRow(),
-                Divider(
-                  height: 17,
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.45,
-                  ),
-                ),
-                _cornerRadiusRow(),
-              ],
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _frameStyleThumbnails(),
+        if (style != FrameStyle.none) ...[
+          const SizedBox(height: 18),
+          _sectionCard(
+            children: [
+              _frameColorRow(),
+              Divider(
+                height: 17,
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+              ),
+              _frameThicknessRow(),
+              Divider(
+                height: 17,
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+              ),
+              _cornerRadiusRow(),
+            ],
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -417,24 +531,34 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   // ---------------------------------------------------------------------
 
   Widget _imageFrameSection() {
-    final hasFixedAspect = _frame.hasFixedAspect;
-    return LabeledSection(
-      icon: Icons.image_outlined,
-      title: 'Moldura de imagem',
-      value: _frame.imageFrame?.label ?? FrameStyle.none.label,
-      hint: 'Escolha uma opção',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _imageFrameThumbnails(),
-          if (hasFixedAspect) ...[
-            const SizedBox(height: 18),
-            _sectionCard(children: [_contentFitSubsection()]),
-            const SizedBox(height: 18),
-            _sectionCard(children: [_frameResolutionSelector()]),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _imageFrameThumbnails(),
+        // A resolução só existe para moldura de imagem — sem uma escolhida,
+        // não há canvas próprio para dimensionar.
+        if (_frame.hasFixedAspect) ...[
+          const SizedBox(height: 18),
+          _sectionCard(children: [_frameResolutionSelector()]),
         ],
-      ),
+      ],
+    );
+  }
+
+  /// "Ajuste da foto" virou aba própria (só aparece com moldura de imagem
+  /// ativa), então aqui não cabe mais o cabeçalho recolhível que ela tinha
+  /// como sub-seção.
+  Widget _contentFitSection() {
+    final selected = _frame.contentFit;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final mode in _selectableContentFitModes) ...[
+          _contentFitTile(mode, selected: mode == selected),
+          if (mode != _selectableContentFitModes.last)
+            const SizedBox(height: 8),
+        ],
+      ],
     );
   }
 
@@ -767,8 +891,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           divisions: 24,
           value: thickness,
           label: '${thickness.round()}px',
-          onChanged: (v) =>
-              _updateFrame(frame.copyWith(thicknessAtReference: v)),
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) => _updateFrame(
+            frame.copyWith(thicknessAtReference: v),
+            pushUndo: false,
+          ),
         ),
       ],
     );
@@ -806,7 +933,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           divisions: 25,
           value: ratio,
           label: '${(ratio / max * 100).round()}%',
-          onChanged: (v) => _updateFrame(frame.copyWith(cornerRatio: v)),
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) =>
+              _updateFrame(frame.copyWith(cornerRatio: v), pushUndo: false),
         ),
       ],
     );
@@ -815,26 +944,6 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   // ---------------------------------------------------------------------
   // "Ajuste do conteúdo" / "Resolução da moldura"
   // ---------------------------------------------------------------------
-
-  Widget _contentFitSubsection() {
-    final selected = _frame.contentFit;
-    return _collapsibleSubsection(
-      label: 'Ajuste do conteúdo',
-      expanded: _contentFitExpanded,
-      onToggle: () =>
-          setState(() => _contentFitExpanded = !_contentFitExpanded),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final mode in _selectableContentFitModes) ...[
-            _contentFitTile(mode, selected: mode == selected),
-            if (mode != _selectableContentFitModes.last)
-              const SizedBox(height: 8),
-          ],
-        ],
-      ),
-    );
-  }
 
   Widget _contentZoomRow() {
     final theme = Theme.of(context);
@@ -871,7 +980,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           divisions: 58,
           value: zoom,
           label: '$percent%',
-          onChanged: (v) => _updateFrame(frame.copyWith(contentZoom: v)),
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) =>
+              _updateFrame(frame.copyWith(contentZoom: v), pushUndo: false),
         ),
       ],
     );
@@ -1013,65 +1124,40 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
 
   Widget _backgroundSection() {
     final frame = _frame;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: _sectionCard(
-        children: [
-          SwitchListTile(
-            key: const ValueKey('transparentBackgroundSwitch'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Fundo transparente'),
-            value: frame.transparentBackground,
-            onChanged: (v) =>
-                _updateFrame(frame.copyWith(transparentBackground: v)),
-          ),
-          if (!frame.transparentBackground) ...[
-            const Divider(height: 1),
-            _backgroundColorRow(),
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          key: const ValueKey('transparentBackgroundSwitch'),
+          children: [
+            Expanded(
+              child: Text(
+                'Fundo transparente',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            Switch(
+              value: frame.transparentBackground,
+              onChanged: (v) =>
+                  _updateFrame(frame.copyWith(transparentBackground: v)),
+            ),
           ],
+        ),
+        if (!frame.transparentBackground) ...[
+          Divider(
+            height: 17,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+          ),
+          _backgroundColorRow(),
         ],
-      ),
+      ],
     );
   }
 
   // ---------------------------------------------------------------------
   // Ações
   // ---------------------------------------------------------------------
-
-  Widget _actions() {
-    final busy = _saving || _sharing;
-    return Column(
-      children: [
-        FilledButton.icon(
-          onPressed: busy ? null : _save,
-          icon: _saving
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.download_rounded),
-          label: Text(_saving ? 'Salvando…' : 'Salvar na galeria'),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: busy ? null : _share,
-          icon: _sharing
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.share_outlined),
-          label: Text(_sharing ? 'Preparando…' : 'Compartilhar'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(56),
-          ),
-        ),
-      ],
-    );
-  }
 
   // ---------------------------------------------------------------------
   // Utilitários visuais compartilhados
@@ -1167,55 +1253,6 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           children: children,
         ),
       ),
-    );
-  }
-
-  Widget _collapsibleSubsection({
-    required String label,
-    String? subtitle,
-    required bool expanded,
-    required VoidCallback onToggle,
-    required Widget child,
-  }) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: onToggle,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(label, style: theme.textTheme.bodySmall),
-                      if (subtitle != null)
-                        Text(
-                          subtitle,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  expanded
-                      ? Icons.expand_less_rounded
-                      : Icons.expand_more_rounded,
-                  size: 20,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (expanded) ...[const SizedBox(height: 8), child],
-      ],
     );
   }
 }

@@ -16,6 +16,7 @@ import '../theme_controller.dart';
 import 'converting_page.dart';
 import 'widgets/crop_overlay.dart';
 import 'widgets/cropped_view.dart';
+import 'widgets/editor_tabs_footer.dart';
 import 'widgets/frame_painter.dart';
 import 'widgets/labeled_section.dart';
 import 'widgets/size_panel.dart';
@@ -31,11 +32,6 @@ const _selectableContentFitModes = [
   ContentFitMode.fill,
   ContentFitMode.expand,
 ];
-
-/// As duas abas do editor: "Ajustar" (duração, recorte, velocidade,
-/// resolução, cor — tudo que define o tamanho do GIF) e "Frame" (a moldura
-/// desenhada em volta do vídeo já cortado).
-enum _EditorTab { ajustar, frame }
 
 /// Tela principal de edição: prévia do vídeo, corte de duração, recorte de
 /// área, velocidade, resolução, FPS/cores e o painel de estimativa de
@@ -76,7 +72,16 @@ class _EditorPageState extends State<EditorPage> {
   bool _ditherExpanded = false;
   bool _paletteExpanded = false;
   bool _contentFitExpanded = false;
-  _EditorTab _tab = _EditorTab.ajustar;
+
+  /// Aba aberta no rodapé (índice em [_sections]); `null` fecha o painel e
+  /// deixa a prévia com a tela inteira.
+  int? _activeSection = 0;
+
+  /// Histórico de desfazer/refazer das configurações, igual ao da tela de
+  /// montagem: pilhas do próprio [ConversionSettings], com os gestos
+  /// contínuos (sliders) empilhando um checkpoint só no começo.
+  final List<ConversionSettings> _undoStack = [];
+  final List<ConversionSettings> _redoStack = [];
 
   final _widthController = TextEditingController();
   final _heightController = TextEditingController();
@@ -141,8 +146,37 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Substitui as configurações atuais e reconstrói a tela.
-  void _update(ConversionSettings next) {
+  void _update(ConversionSettings next, {bool pushUndo = true}) {
+    if (pushUndo) {
+      _undoStack.add(_settings);
+      _redoStack.clear();
+    }
     setState(() => _settings = next);
+  }
+
+  /// Empilha o estado atual antes de um gesto contínuo (arrastar um slider),
+  /// para o arrasto inteiro virar UM passo de desfazer.
+  void _pushUndoCheckpoint() {
+    _undoStack.add(_settings);
+    _redoStack.clear();
+  }
+
+  void _undo() {
+    if (_undoStack.isEmpty) return;
+    final previous = _undoStack.removeLast();
+    setState(() {
+      _redoStack.add(_settings);
+      _settings = previous;
+    });
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    final next = _redoStack.removeLast();
+    setState(() {
+      _undoStack.add(_settings);
+      _settings = next;
+    });
   }
 
   /// Move o player de prévia para o instante [seconds].
@@ -203,207 +237,131 @@ class _EditorPageState extends State<EditorPage> {
     if (mounted) setState(() => _openingConversion = false);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final (width, height) = _settings.outputDimensions(_video);
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
-
+  /// Todas as seções da tela como abas do rodapé, na ordem da barra — as de
+  /// ajuste primeiro, depois o tamanho estimado e as de moldura. O seletor
+  /// "Ajustar/Frame" que existia em cima saiu: uma barra só, que rola na
+  /// horizontal, é o mesmo padrão da tela de montagem.
+  List<EditorSection> _sections() {
     final isWebp = _settings.format == OutputFormat.webp;
+    final (width, height) = _settings.outputDimensions(_video);
     final baseSummary =
         '$width×$height px · ${_settings.fps} FPS · '
         '${_settings.outputDurationSeconds.toStringAsFixed(1)} s';
 
-    final optionSections = [
-      _formatSection(),
-      _durationSection(),
-      _aspectSection(),
-      _speedSection(),
-      _resolutionSection(),
-      _fpsSection(),
-      if (isWebp) _webpQualitySection() else _colorSection(),
+    return [
+      EditorSection.fromLabeled(_formatSection(), label: 'Formato'),
+      EditorSection.fromLabeled(_durationSection(), label: 'Duração'),
+      EditorSection.fromLabeled(_aspectSection(), label: 'Janela'),
+      EditorSection.fromLabeled(_speedSection(), label: 'Velocidade'),
+      EditorSection.fromLabeled(_resolutionSection(), label: 'Resolução'),
+      EditorSection.fromLabeled(_fpsSection(), label: 'FPS'),
       if (isWebp)
-        WebpConvertPanel(
-          summary: '$baseSummary · qualidade ${_settings.webpQuality}',
-          onConvert: _openingConversion ? () {} : _convert,
-        )
+        EditorSection.fromLabeled(_webpQualitySection(), label: 'Qualidade')
       else
-        SizePanel(
-          estimate: _estimate,
-          originalBytes: _video.fileSizeBytes,
-          summary: '$baseSummary · ${_settings.colors} cores',
-          measuring: _measuring,
-          onMeasure: _measure,
-          onConvert: _openingConversion ? () {} : _convert,
-        ),
+        EditorSection.fromLabeled(_colorSection(), label: 'Cores'),
+      EditorSection(
+        icon: Icons.data_usage_rounded,
+        title: 'Estimativa de tamanho',
+        label: 'Tamanho',
+        value: isWebp ? null : _estimate.formatted,
+        builder: (_) => isWebp
+            ? WebpConvertPanel(
+                summary: '$baseSummary · qualidade ${_settings.webpQuality}',
+                onConvert: _openingConversion ? () {} : _convert,
+              )
+            : SizePanel(
+                estimate: _estimate,
+                originalBytes: _video.fileSizeBytes,
+                summary: '$baseSummary · ${_settings.colors} cores',
+                measuring: _measuring,
+                onMeasure: _measure,
+                onConvert: _openingConversion ? () {} : _convert,
+              ),
+      ),
+      EditorSection.fromLabeled(_frameStyleSection(), label: 'Moldura'),
+      EditorSection.fromLabeled(_imageFrameSection(), label: 'Imagem'),
+      EditorSection(
+        icon: Icons.wallpaper_rounded,
+        title: 'Fundo',
+        value: _settings.frame.transparentBackground ? 'Transparente' : 'Cor',
+        builder: (_) => _backgroundSection(),
+      ),
     ];
+  }
 
-    final sections = _tab == _EditorTab.ajustar
-        ? optionSections
-        : _frameSections();
+  @override
+  Widget build(BuildContext context) {
+    final sections = _sections();
+    final active = _activeSection != null && _activeSection! < sections.length
+        ? _activeSection
+        : null;
 
     return Scaffold(
-      // Na horizontal, esconde a barra superior (título + ações) e o
-      // seletor de abas para aproveitar melhor o espaço vertical, que já é
-      // escasso nesse formato — a navegação de voltar continua disponível
-      // pelo gesto/botão do sistema.
-      appBar: isLandscape
-          ? null
-          : AppBar(
-              title: const Text('Editar GIF'),
-              actions: [
-                ValueListenableBuilder<ThemeMode>(
+      appBar: AppBar(
+        title: const Text('Editar GIF'),
+        actions: [
+          IconButton(
+            tooltip: 'Desfazer',
+            onPressed: _undoStack.isEmpty ? null : _undo,
+            icon: const Icon(Icons.undo_rounded),
+          ),
+          IconButton(
+            tooltip: 'Refazer',
+            onPressed: _redoStack.isEmpty ? null : _redo,
+            icon: const Icon(Icons.redo_rounded),
+          ),
+          IconButton(
+            tooltip: 'Converter em ${_settings.format.shortLabel}',
+            onPressed: _openingConversion ? null : _convert,
+            icon: const Icon(Icons.swap_horiz_rounded),
+          ),
+          // Tema e ajuda saíram para o menu: com desfazer/refazer/converter
+          // fixos, quatro ícones soltos não cabem numa tela estreita.
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'tema') {
+                toggleThemeMode();
+              } else {
+                _showHelp();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'tema',
+                child: ValueListenableBuilder<ThemeMode>(
                   valueListenable: themeModeNotifier,
-                  builder: (context, mode, _) {
-                    final isDark = mode == ThemeMode.dark;
-                    return IconButton(
-                      tooltip: isDark
-                          ? 'Ativar modo claro'
-                          : 'Ativar modo escuro',
-                      icon: Icon(
-                        isDark
-                            ? Icons.light_mode_outlined
-                            : Icons.dark_mode_outlined,
-                      ),
-                      onPressed: toggleThemeMode,
-                    );
-                  },
+                  builder: (context, mode, _) => Text(
+                    mode == ThemeMode.dark
+                        ? 'Ativar modo claro'
+                        : 'Ativar modo escuro',
+                  ),
                 ),
-                IconButton(
-                  tooltip: 'Como deixar o GIF mais leve',
-                  onPressed: _showHelp,
-                  icon: const Icon(Icons.help_outline_rounded),
-                ),
-                const SizedBox(width: 6),
-              ],
-            ),
+              ),
+              const PopupMenuItem(
+                value: 'ajuda',
+                child: Text('Como deixar o GIF mais leve'),
+              ),
+            ],
+          ),
+        ],
+      ),
       body: SafeArea(
-        top: isLandscape,
         child: Column(
           children: [
-            if (!isLandscape) _tabBar(),
             Expanded(
-              child: isLandscape
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          flex: 4,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 14, 10, 14),
-                            child: SingleChildScrollView(
-                              child: Center(child: _previewArea()),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 5,
-                          child: ListView(
-                            key: const ValueKey('editorSectionsList'),
-                            controller: _sectionsScrollController,
-                            padding: const EdgeInsets.fromLTRB(10, 14, 20, 28),
-                            children: sections,
-                          ),
-                        ),
-                      ],
-                    )
-                  : ListView(
-                      key: const ValueKey('editorSectionsList'),
-                      controller: _sectionsScrollController,
-                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-                      children: [
-                        KeyedSubtree(
-                          key: _previewAreaKey,
-                          child: _previewArea(),
-                        ),
-                        const SizedBox(height: 18),
-                        ...sections,
-                      ],
-                    ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                child: Center(child: _previewArea()),
+              ),
+            ),
+            EditorTabsFooter(
+              sections: sections,
+              activeIndex: active,
+              onSelected: (index) => setState(() => _activeSection = index),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  /// Seletor com as abas "Ajustar" e "Frame", que alterna o conteúdo
-  /// mostrado abaixo dele.
-  Widget _tabBar() {
-    final theme = Theme.of(context);
-
-    Widget segment(_EditorTab tab, String label) {
-      final selected = _tab == tab;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => setState(() => _tab = tab),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            decoration: BoxDecoration(
-              color: selected ? theme.colorScheme.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: selected
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        children: [
-          segment(_EditorTab.ajustar, 'Ajustar'),
-          segment(_EditorTab.frame, 'Frame'),
-        ],
-      ),
-    );
-  }
-
-  /// Seções mostradas na aba "Frame", nesta ordem: a moldura procedural
-  /// (estilo + cor/espessura/cantos), as molduras de imagem (que já
-  /// incluem, quando uma arte está ativa, o ajuste do conteúdo e a
-  /// resolução da moldura no mesmo painel — ver [_imageFrameSection]), o
-  /// fundo transparente e o botão de converter — para não obrigar a voltar
-  /// para "Ajustar" só para iniciar a conversão.
-  ///
-  /// As duas famílias de moldura ficam em caixas separadas de propósito:
-  /// só uma pode estar ativa por vez (ver [_activeFrameStyle]) e cada caixa
-  /// mostra no cabeçalho qual das suas opções está valendo.
-  List<Widget> _frameSections() {
-    return [
-      KeyedSubtree(key: _frameStyleAnchorKey, child: _frameStyleSection()),
-      KeyedSubtree(key: _imageFrameAnchorKey, child: _imageFrameSection()),
-      _backgroundSection(),
-      const SizedBox(height: 4),
-      _convertButton(),
-    ];
-  }
-
-  /// Botão "Converter em GIF/WebP", usado tanto ao final da aba "Ajustar"
-  /// (dentro do [SizePanel]/[WebpConvertPanel]) quanto da aba "Frame".
-  Widget _convertButton() {
-    return FilledButton.icon(
-      onPressed: _openingConversion ? null : _convert,
-      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(60)),
-      icon: const Icon(Icons.swap_horiz_rounded),
-      label: Text('Converter em ${_settings.format.shortLabel}'),
     );
   }
 
@@ -423,8 +381,8 @@ class _EditorPageState extends State<EditorPage> {
   int _frameTransitionGeneration = 0;
 
   /// Substitui as configurações da moldura, mantendo o resto igual.
-  void _updateFrame(FrameSettings next) {
-    _update(_settings.copyWith(frame: next));
+  void _updateFrame(FrameSettings next, {bool pushUndo = true}) {
+    _update(_settings.copyWith(frame: next), pushUndo: pushUndo);
   }
 
   /// Atualiza a moldura compensando a variação de altura da prévia. Assim o
@@ -538,9 +496,15 @@ class _EditorPageState extends State<EditorPage> {
   /// a correção acompanha quadro a quadro e nunca precisa de um salto
   /// grande.
   Widget _previewArea() {
-    final preview = _tab == _EditorTab.ajustar
-        ? _timelined(_preview())
-        : _framedPreview();
+    // Com uma barra de abas só, a prévia mostra a moldura sempre que houver
+    // uma (antes isso dependia de estar na aba "Frame"), e a linha do tempo
+    // fica sempre à mão — é o controle de duração.
+    final hasFrame =
+        _settings.frame.hasImageFrame ||
+        _settings.frame.style != FrameStyle.none;
+    final preview = hasFrame
+        ? _timelined(_framedPreview())
+        : _timelined(_preview());
     return AnimatedSize(
       duration: _previewTransitionDuration,
       curve: Curves.easeOutCubic,
@@ -729,7 +693,7 @@ class _EditorPageState extends State<EditorPage> {
 
   /// Seção "Moldura": as opções procedurais e, quando uma delas está ativa,
   /// os controles de cor, espessura da borda e arredondamento dos cantos.
-  Widget _frameStyleSection() {
+  LabeledSection _frameStyleSection() {
     final theme = Theme.of(context);
     final style = _activeFrameStyle;
 
@@ -779,7 +743,7 @@ class _EditorPageState extends State<EditorPage> {
   /// tamanho/qualidade do arquivo final). São perguntas diferentes, então
   /// cada uma tem seu próprio card e a segunda nunca depende de a primeira
   /// estar expandida.
-  Widget _imageFrameSection() {
+  LabeledSection _imageFrameSection() {
     final hasFixedAspect = _settings.frame.hasFixedAspect;
     return LabeledSection(
       icon: Icons.image_outlined,
@@ -1389,8 +1353,11 @@ class _EditorPageState extends State<EditorPage> {
           divisions: 24,
           value: thickness,
           label: '${thickness.round()}px',
-          onChanged: (v) =>
-              _updateFrame(frame.copyWith(thicknessAtReference: v)),
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) => _updateFrame(
+            frame.copyWith(thicknessAtReference: v),
+            pushUndo: false,
+          ),
         ),
       ],
     );
@@ -1433,7 +1400,9 @@ class _EditorPageState extends State<EditorPage> {
           divisions: 25,
           value: ratio,
           label: '${(ratio / max * 100).round()}%',
-          onChanged: (v) => _updateFrame(frame.copyWith(cornerRatio: v)),
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) =>
+              _updateFrame(frame.copyWith(cornerRatio: v), pushUndo: false),
         ),
       ],
     );
@@ -1501,7 +1470,9 @@ class _EditorPageState extends State<EditorPage> {
           divisions: 58,
           value: zoom,
           label: '$percent%',
-          onChanged: (v) => _updateFrame(frame.copyWith(contentZoom: v)),
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) =>
+              _updateFrame(frame.copyWith(contentZoom: v), pushUndo: false),
         ),
       ],
     );
@@ -1992,7 +1963,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Seção com o slider de intervalo (início/fim) do trecho a converter.
-  Widget _durationSection() {
+  LabeledSection _durationSection() {
     final start = _settings.startSeconds;
     final end = _settings.endSeconds;
 
@@ -2009,6 +1980,7 @@ class _EditorPageState extends State<EditorPage> {
             divisions: (_video.durationSeconds * 10).round().clamp(1, 2000),
             values: RangeValues(start, end),
             labels: RangeLabels(_formatSeconds(start), _formatSeconds(end)),
+            onChangeStart: (_) => _pushUndoCheckpoint(),
             onChanged: (values) {
               if (values.end - values.start < 0.2) return;
               _update(
@@ -2016,6 +1988,7 @@ class _EditorPageState extends State<EditorPage> {
                   startSeconds: values.start,
                   endSeconds: values.end,
                 ),
+                pushUndo: false,
               );
             },
             onChangeEnd: (values) => _seekPreview(values.start),
@@ -2051,7 +2024,7 @@ class _EditorPageState extends State<EditorPage> {
 
   /// Seção de formato/recorte: presets de proporção e, quando há recorte
   /// ativo, os campos numéricos da janela.
-  Widget _aspectSection() {
+  LabeledSection _aspectSection() {
     final crop = _settings.crop;
     final visiblePresets = <AspectPreset>[
       ...AspectPreset.presets.take(5),
@@ -2346,7 +2319,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Seção de velocidade de reprodução do GIF.
-  Widget _speedSection() {
+  LabeledSection _speedSection() {
     const min = ConversionSettings.minSpeed;
     const max = ConversionSettings.maxSpeed;
     final speed = _settings.speed.clamp(min, max).toDouble();
@@ -2364,8 +2337,9 @@ class _EditorPageState extends State<EditorPage> {
             divisions: ((max - min) / 0.05).round(),
             value: speed,
             label: '${_formatSpeed(speed)}x',
+            onChangeStart: (_) => _pushUndoCheckpoint(),
             onChanged: (value) {
-              _update(_settings.copyWith(speed: value));
+              _update(_settings.copyWith(speed: value), pushUndo: false);
               _player?.setPlaybackSpeed(value);
             },
           ),
@@ -2389,7 +2363,7 @@ class _EditorPageState extends State<EditorPage> {
 
   /// Seção de resolução: larguras maiores que o vídeo original ficam
   /// desabilitadas, para não deixar o usuário tentar ampliar a imagem.
-  Widget _resolutionSection() {
+  LabeledSection _resolutionSection() {
     final available = ConversionSettings.widthOptions
         .where((w) => w <= _video.width)
         .toList();
@@ -2419,7 +2393,7 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Seção de quadros por segundo do GIF.
-  Widget _fpsSection() {
+  LabeledSection _fpsSection() {
     return LabeledSection(
       icon: Icons.animation_rounded,
       title: 'Quadros por segundo (FPS)',
@@ -2442,7 +2416,7 @@ class _EditorPageState extends State<EditorPage> {
   /// seções de "Ajustar" porque muda qual seção de qualidade aparece logo
   /// abaixo ([_colorSection] ou [_webpQualitySection]) e se a estimativa de
   /// tamanho calibrada é mostrada ([SizePanel] ou [WebpConvertPanel]).
-  Widget _formatSection() {
+  LabeledSection _formatSection() {
     return LabeledSection(
       icon: Icons.image_outlined,
       title: 'Formato de saída',
@@ -2464,7 +2438,7 @@ class _EditorPageState extends State<EditorPage> {
   /// `libwebp` não usa paleta nem dither — só o parâmetro `-quality`, então
   /// aqui sobra apenas o controle de qualidade e o loop (que continua
   /// valendo igual para os dois formatos).
-  Widget _webpQualitySection() {
+  LabeledSection _webpQualitySection() {
     final options = <int>{
       ...ConversionSettings.webpQualityOptions,
       _settings.webpQuality,
@@ -2505,7 +2479,7 @@ class _EditorPageState extends State<EditorPage> {
 
   /// Seção de qualidade de cor: quantidade de cores, modo de dither, modo
   /// de paleta e se o GIF deve repetir em loop.
-  Widget _colorSection() {
+  LabeledSection _colorSection() {
     final theme = Theme.of(context);
     final colors = <int>{
       ...ConversionSettings.primaryColorOptions,
