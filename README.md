@@ -27,6 +27,8 @@ the aspect ratio, adjust speed, resolution and frame rate, and add a custom
 frame before exporting. For GIF, the app also **estimates the final file size
 before conversion**.
 
+<img src="assets/image/interface-2.png"/>
+
 Choose the format that best fits your destination:
 
 | Format | Best for | Notes |
@@ -44,15 +46,11 @@ Choose the format that best fits your destination:
 
 ## Gif
 
-<div align="center">
+<div align="left">
 
 <img width="40%" src="assets/gif/frames-demonstration-v1.gif"/>
 
 </div>
-
-## Interface
-
-<img src="assets/image/interface-2.png"/>
 
 ## The problem it solves
 
