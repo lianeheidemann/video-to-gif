@@ -40,6 +40,9 @@ dependencies:
   # precisar de BuildContext).
   flutter_svg: ^2.2.1
 
+  # Roda de cor HSV usada no seletor de fundo da montagem de fotos.
+  flutter_colorpicker: ^1.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
