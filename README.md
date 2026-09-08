@@ -27,7 +27,7 @@ the aspect ratio, adjust speed, resolution and frame rate, and add a custom
 frame before exporting. For GIF, the app also **estimates the final file size
 before conversion**.
 
-<img src="assets/image/interface-2.png"/>
+<img src="assets/image/interface-3.png"/>
 
 Choose the format that best fits your destination:
 
