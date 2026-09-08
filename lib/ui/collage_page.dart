@@ -845,13 +845,16 @@ class _CollagePageState extends State<CollagePage> {
 
   /// Troca o layout mantendo as fotos já escolhidas nas primeiras células —
   /// células novas (quando o layout cresce) nascem vazias, prontas para
-  /// receber uma foto ao toque (ver [CollageCellView]'s `+`); células
+  /// receber uma foto ao toque (ver [CollageCellView]'s `+`), mas já com a
+  /// borda/canto/fundo das fotos que já estão na montagem; células
   /// excedentes (quando o layout encolhe) são descartadas.
   void _applyLayout(CollageLayout layout) {
     final oldCells = _settings.cells;
     final cells = List<CollageCellSettings>.generate(
       layout.cellCount,
-      (i) => i < oldCells.length ? oldCells[i] : const CollageCellSettings(),
+      (i) => i < oldCells.length
+          ? oldCells[i]
+          : _settings.withSharedCellStyle(const CollageCellSettings()),
     );
     _update(_settings.copyWith(layout: layout, cells: cells));
   }
@@ -1927,14 +1930,19 @@ class _CollagePageState extends State<CollagePage> {
       }
 
       final cell = _settings.cells[index];
-      final replaced = cell
-          .copyWith(
-            photoPath: path,
-            photoWidth: width,
-            photoHeight: height,
-            clearManualCrop: true,
-          )
-          .resetFraming();
+      // O estilo compartilhado entra por cima: uma foto escolhida depois
+      // (numa célula que nasceu vazia, antes de a borda/fundo terem sido
+      // ajustados) tem que aparecer igual às outras, não com os padrões.
+      final replaced = _settings.withSharedCellStyle(
+        cell
+            .copyWith(
+              photoPath: path,
+              photoWidth: width,
+              photoHeight: height,
+              clearManualCrop: true,
+            )
+            .resetFraming(),
+      );
       _update(_settings.replacingCell(index, replaced));
     } catch (_) {
       _message('Não foi possível abrir esta foto.');
@@ -2126,8 +2134,12 @@ class _CollagePageState extends State<CollagePage> {
     return rect.width / rect.height;
   }
 
-  /// Abre o recorte de uma foto específica, travado na proporção da própria
-  /// célula (o resultado sempre precisa preencher a célula sem sobra).
+  /// Abre o recorte de uma foto específica. O recorte é livre por padrão (a
+  /// proporção da célula é só mais uma opção da fileira), então o resultado
+  /// quase nunca tem a mesma proporção da célula: por isso a foto recortada
+  /// entra em "encaixar" e com o enquadramento zerado — aparece inteira,
+  /// centralizada e na horizontal, em vez de ser esticada/cortada pelo
+  /// "preencher" para caber na célula.
   Future<void> _openCropTool(int index) async {
     final cell = _settings.cells[index];
     if (!cell.hasPhoto) return;
@@ -2137,7 +2149,7 @@ class _CollagePageState extends State<CollagePage> {
           photoPath: cell.photoPath!,
           photoWidth: cell.photoWidth,
           photoHeight: cell.photoHeight,
-          aspectRatio: _cellAspectRatioFor(index),
+          cellAspectRatio: _cellAspectRatioFor(index),
           initialCrop: cell.manualCrop,
         ),
       ),
@@ -2145,7 +2157,12 @@ class _CollagePageState extends State<CollagePage> {
     if (crop == null || !mounted) return;
     _pushUndoCheckpoint();
     _update(
-      _settings.replacingCell(index, cell.copyWith(manualCrop: crop)),
+      _settings.replacingCell(
+        index,
+        cell
+            .copyWith(manualCrop: crop, fitMode: CollageCellFitMode.contain)
+            .resetFraming(),
+      ),
       pushUndo: false,
     );
   }

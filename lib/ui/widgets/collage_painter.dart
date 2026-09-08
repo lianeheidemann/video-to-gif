@@ -184,7 +184,23 @@ void paintCollageCell(
     RRect.fromRectAndRadius(cellRect, Radius.circular(outerRadius)),
   );
   if (borderThickness > 0) {
-    canvas.drawRect(cellRect, Paint()..color = cell.borderColor);
+    // Só o anel, nunca a célula inteira preenchida: pintar o retângulo todo
+    // com a cor da borda (como era antes) só funcionava em "preencher", onde
+    // a foto cobre tudo por cima. Em "encaixar" a sobra ao redor da foto
+    // ficava com a cor da borda mesmo com o fundo da foto transparente, sem
+    // jeito de ter borda e fundo transparente juntos — o mesmo problema que
+    // [paintCollageBorder] já tinha resolvido para a borda da montagem, e o
+    // mesmo `overlap` de meio pixel para não sobrar uma linha clara de
+    // antialiasing entre o anel e o que é desenhado logo em seguida.
+    final overlap = borderThickness < 1 ? borderThickness / 2 : 0.5;
+    canvas.drawDRRect(
+      RRect.fromRectAndRadius(cellRect, Radius.circular(outerRadius)),
+      RRect.fromRectAndRadius(
+        contentRect,
+        Radius.circular(innerRadius),
+      ).deflate(overlap),
+      Paint()..color = cell.borderColor,
+    );
   }
   canvas.clipRRect(
     RRect.fromRectAndRadius(contentRect, Radius.circular(innerRadius)),

@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_to_gif/models/collage_background.dart';
+import 'package:video_to_gif/models/collage_cell.dart';
 import 'package:video_to_gif/models/photo_info.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
@@ -168,6 +169,48 @@ void main() {
     expect(find.text('Transparente'), findsOneWidget);
     expect(find.text('Cor'), findsOneWidget);
     expect(find.text('Imagem'), findsOneWidget);
+  });
+
+  testWidgets('recorte aprovado entra em "encaixar", na horizontal', (
+    tester,
+  ) async {
+    // Com o recorte livre, o resultado quase nunca tem a proporção da célula:
+    // se continuasse em "preencher", a foto recortada apareceria esticada/
+    // cortada de novo. Depois de "Usar recorte" ela tem que aparecer inteira,
+    // centralizada e a 0°.
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    // Toque com duração de verdade: o `GestureDetector` da célula tem
+    // `onDoubleTap`, então o toque do "..." só é entregue depois que a arena
+    // de gestos desiste do duplo toque.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byIcon(Icons.more_horiz_rounded).first),
+    );
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Recortar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Usar recorte'));
+    await tester.pumpAndSettle();
+
+    final cell = tester
+        .widgetList<CollageCellView>(find.byType(CollageCellView))
+        .first
+        .cell;
+    expect(cell.manualCrop, isNotNull);
+    expect(cell.fitMode, CollageCellFitMode.contain);
+    expect(cell.rotation, 0);
+    expect(cell.zoom, CollageCellSettings.minZoom);
+    expect(cell.offsetX, 0);
+    expect(cell.offsetY, 0);
   });
 
   testWidgets('fundo com alvo "Fotos" muda só as fotos, não a montagem', (

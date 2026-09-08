@@ -66,10 +66,21 @@ class _CollageCellViewState extends State<CollageCellView> {
     return Size(w, h);
   }
 
+  /// Posição do toque que iniciou o gesto e o quanto o dedo andou dali até a
+  /// arena aceitar o arrasto — ver [_onScaleUpdate].
+  Offset? _lastPointerDown;
+  Offset _pendingSlop = Offset.zero;
+
+  void _onPointerDown(PointerDownEvent event) {
+    _lastPointerDown = event.position;
+  }
+
   void _onScaleStart(ScaleStartDetails details) {
     _checkpointPushed = false;
     _startZoom = widget.cell.zoom;
     _startRotation = widget.cell.rotation;
+    _pendingSlop =
+        details.focalPoint - (_lastPointerDown ?? details.focalPoint);
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -81,14 +92,21 @@ class _CollageCellViewState extends State<CollageCellView> {
     );
     final newRotation = _startRotation + details.rotation;
 
+    // Recupera o trecho que a arena de gestos engoliu antes de aceitar o
+    // arrasto (o `touch slop`), pelo mesmo motivo de `CollageOverlayView`:
+    // sem isso a foto começa atrasada em relação ao dedo e fica assim até o
+    // fim do gesto.
+    final movement = details.focalPointDelta + _pendingSlop;
+    _pendingSlop = Offset.zero;
+
     final probe = cell.copyWith(zoom: newZoom, rotation: newRotation);
     final delta = switch (cell.fitMode) {
       CollageCellFitMode.cover => probe.offsetDeltaForDrag(
-        details.focalPointDelta,
+        movement,
         contentSize,
       ),
       CollageCellFitMode.contain => probe.containOffsetDeltaForDrag(
-        details.focalPointDelta,
+        movement,
         contentSize,
       ),
     };
@@ -144,59 +162,69 @@ class _CollageCellViewState extends State<CollageCellView> {
     final innerRadius = (outerRadius - borderThickness).clamp(0.0, outerRadius);
     final contentSize = _contentSize;
 
-    // Borda própria da foto: uma faixa sólida ao redor do conteúdo — o
-    // mesmo truque de layout (cor de fundo do Container + padding
-    // reservando a faixa) que a montagem inteira já usava antes de virar
-    // pintura em canvas; aqui não tem o mesmo problema de "vazar" por baixo
-    // de fotos vizinhas porque cada célula cuida só da própria borda.
+    // Borda própria da foto: um anel ao redor do conteúdo, desenhado com
+    // `border` (não com uma cor de fundo por baixo de tudo, como era antes) —
+    // pintar a célula inteira da cor da borda deixava a sobra do modo
+    // "encaixar" com a cor da borda mesmo com o fundo transparente. Mesma
+    // correção que `paintCollageCell` recebeu na exportação. O `Container` já
+    // afasta o filho pela espessura do próprio `Border` (a
+    // `decoration.padding`), então a faixa continua reservada sem um
+    // `padding` explícito — que agora somaria duas vezes.
+    final hasBorder = cell.hasPhoto && borderThickness > 0;
     return Container(
       decoration: BoxDecoration(
-        color: cell.hasPhoto && borderThickness > 0 ? cell.borderColor : null,
+        border: hasBorder
+            ? Border.all(color: cell.borderColor, width: borderThickness)
+            : null,
         borderRadius: BorderRadius.circular(outerRadius),
       ),
-      padding: cell.hasPhoto && borderThickness > 0
-          ? EdgeInsets.all(borderThickness)
-          : EdgeInsets.zero,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(innerRadius),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onScaleStart: cell.hasPhoto ? _onScaleStart : null,
-          onScaleUpdate: cell.hasPhoto ? _onScaleUpdate : null,
-          onDoubleTap: cell.hasPhoto ? _toggleFitMode : null,
-          onTap: cell.hasPhoto ? null : widget.onMenu,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // O placeholder cinza só aparece em células vazias ou em modo
-              // "cover" (onde a foto sempre preenche 100% da célula, então é
-              // inofensivo tê-lo por baixo). Em modo "contain" com foto, ele
-              // TEM que sumir: a sobra ao redor da foto precisa mostrar o
-              // fundo real da montagem (pintado por baixo, no mesmo Stack de
-              // `_preview()`), não um cinza que a exportação não reproduz.
-              if (!cell.hasPhoto || cell.fitMode == CollageCellFitMode.cover)
-                ColoredBox(color: theme.colorScheme.surfaceContainerHigh),
-              // Fundo próprio da foto, por baixo dela e por cima do
-              // placeholder — mesma camada que `paintCollageCell` pinta na
-              // área de conteúdo da célula antes da foto.
-              _cellBackground(cell.background),
-              if (cell.hasPhoto)
-                _CellPhoto(cell: cell, cellSize: contentSize)
-              else
-                Center(
-                  child: Icon(
-                    Icons.add_photo_alternate_outlined,
-                    color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                    size: 28,
+        // O [Listener] registra onde o dedo tocou antes de a arena decidir de
+        // quem é o gesto — [_onScaleStart] usa isso para não perder o começo
+        // do arrasto (ver [_onScaleUpdate]).
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: _onPointerDown,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onScaleStart: cell.hasPhoto ? _onScaleStart : null,
+            onScaleUpdate: cell.hasPhoto ? _onScaleUpdate : null,
+            onDoubleTap: cell.hasPhoto ? _toggleFitMode : null,
+            onTap: cell.hasPhoto ? null : widget.onMenu,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // O placeholder cinza só aparece em células vazias ou em modo
+                // "cover" (onde a foto sempre preenche 100% da célula, então é
+                // inofensivo tê-lo por baixo). Em modo "contain" com foto, ele
+                // TEM que sumir: a sobra ao redor da foto precisa mostrar o
+                // fundo real da montagem (pintado por baixo, no mesmo Stack de
+                // `_preview()`), não um cinza que a exportação não reproduz.
+                if (!cell.hasPhoto || cell.fitMode == CollageCellFitMode.cover)
+                  ColoredBox(color: theme.colorScheme.surfaceContainerHigh),
+                // Fundo próprio da foto, por baixo dela e por cima do
+                // placeholder — mesma camada que `paintCollageCell` pinta na
+                // área de conteúdo da célula antes da foto.
+                _cellBackground(cell.background),
+                if (cell.hasPhoto)
+                  _CellPhoto(cell: cell, cellSize: contentSize)
+                else
+                  Center(
+                    child: Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                      size: 28,
+                    ),
                   ),
-                ),
-              if (cell.hasPhoto)
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: _MenuButton(onTap: widget.onMenu),
-                ),
-            ],
+                if (cell.hasPhoto)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: _MenuButton(onTap: widget.onMenu),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

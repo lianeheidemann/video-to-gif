@@ -521,6 +521,53 @@ void main() {
     },
   );
 
+  test('borda da foto é um anel: não pinta a sobra do "encaixar"', () async {
+    // Foto quadrada numa célula bem mais larga, em "encaixar", com borda
+    // própria grossa e fundo transparente na foto e na montagem: a sobra ao
+    // lado da foto tem que sair TRANSPARENTE. Antes a borda era um retângulo
+    // preenchendo a célula inteira por baixo da foto, então a sobra saía com
+    // a cor da borda — não havia como ter borda e fundo transparente juntos.
+    final photoPath = '${tempDir.path}/quadrada.png';
+    await _writeSolidPng(photoPath, 100, 100, const Color(0xFFFF0000));
+
+    final settings = CollageSettings(
+      layout: CollageLayout.row(1),
+      aspectRatio: 4.0,
+      marginRatio: 0,
+      cells: [
+        CollageCellSettings(
+          photoPath: photoPath,
+          photoWidth: 100,
+          photoHeight: 100,
+          fitMode: CollageCellFitMode.contain,
+          borderThicknessAtReference: 20,
+          borderColor: const Color(0xFF00FF00),
+        ),
+      ],
+    );
+
+    const outputWidth = 480;
+    final bytes = await composeCollage(
+      settings: settings,
+      outputWidth: outputWidth,
+    );
+
+    // Canvas 480x120: anel de 20px, foto "ajustada" de 80x80 no centro.
+    final ringPixel = await _decodePixel(bytes, outputWidth, 5, 60);
+    expect(ringPixel[1], greaterThan(200)); // o anel continua verde
+    expect(ringPixel[3], greaterThan(200));
+
+    final gapPixel = await _decodePixel(bytes, outputWidth, 80, 60);
+    expect(
+      gapPixel[3],
+      0,
+      reason: 'a sobra dentro da borda tem que sair vazia',
+    );
+
+    final photoPixel = await _decodePixel(bytes, outputWidth, 240, 60);
+    expect(photoPixel[0], greaterThan(200)); // a foto no centro
+  });
+
   test('fundo próprio da foto fica atrás da borda própria dela', () async {
     // Fundo da foto (azul) dentro do anel da borda (verde): a borda continua
     // sendo a moldura externa e o fundo só preenche a área de conteúdo.
