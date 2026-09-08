@@ -1212,6 +1212,93 @@ class FfmpegService {
     return completer.future;
   }
 
+  /// Codifica uma sequência de PNGs numerados (`.../quadro_%05d.png`, gerada
+  /// por `collage_animation.dart`) num GIF ou WebP animado.
+  ///
+  /// GIF: mesmo par `palettegen`/`paletteuse` do caminho de vídeo, com
+  /// `reserve_transparent`/`alpha_threshold` — a montagem pode ter fundo
+  /// transparente, e o GIF só suporta 1 bit de alfa. WebP: um passe só no
+  /// `libwebp`, que aceita alfa de verdade (ver [_webpEncodeArgs]).
+  ///
+  /// Os argumentos são montados por [collageSequenceArgs], separado para os
+  /// testes poderem conferir a linha de comando sem rodar o FFmpeg.
+  Future<File> encodeCollageSequence({
+    required String framePattern,
+    required int fps,
+    required String outputPath,
+    required bool webp,
+    int colors = 256,
+    bool loop = true,
+  }) async {
+    await _run(
+      collageSequenceArgs(
+        framePattern: framePattern,
+        fps: fps,
+        outputPath: outputPath,
+        webp: webp,
+        colors: colors,
+        loop: loop,
+      ),
+      step: 'exportação da montagem',
+    );
+
+    final output = File(outputPath);
+    if (!output.existsSync() || output.lengthSync() == 0) {
+      throw FfmpegException('O arquivo saiu vazio.');
+    }
+    return output;
+  }
+
+  /// Linha de comando de [encodeCollageSequence]. Público (sem `_`) só para
+  /// os testes de unidade.
+  @visibleForTesting
+  List<String> collageSequenceArgs({
+    required String framePattern,
+    required int fps,
+    required String outputPath,
+    required bool webp,
+    int colors = 256,
+    bool loop = true,
+  }) {
+    final input = ['-y', '-framerate', '$fps', '-i', framePattern];
+    if (webp) {
+      return [
+        ...input,
+        '-c:v',
+        'libwebp',
+        '-quality',
+        '85',
+        '-compression_level',
+        '4',
+        '-pix_fmt',
+        'yuva420p',
+        '-loop',
+        loop ? '0' : '1',
+        '-an',
+        '-f',
+        'webp',
+        outputPath,
+      ];
+    }
+    return [
+      ...input,
+      '-filter_complex',
+      '[0:v]split[pal_src][gif_src];'
+          '[pal_src]palettegen=max_colors=$colors:reserve_transparent=1[pal];'
+          '[gif_src][pal]paletteuse=dither=bayer:bayer_scale=3:'
+          'alpha_threshold=128[out]',
+      '-map',
+      '[out]',
+      '-gifflags',
+      '-transdiff',
+      '-loop',
+      loop ? '0' : '-1',
+      '-f',
+      'gif',
+      outputPath,
+    ];
+  }
+
   Future<void> cancel() async {
     _cancelled = true;
     final id = _activeSessionId;

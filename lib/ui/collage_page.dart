@@ -10,13 +10,16 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/collage_background.dart';
 import '../models/collage_cell.dart';
+import '../models/collage_export.dart';
 import '../models/collage_layout.dart';
 import '../models/collage_settings.dart';
 import '../models/collage_sticker.dart';
 import '../models/collage_text.dart';
 import '../models/crop_rect.dart';
 import '../models/photo_info.dart';
+import '../services/collage_animation.dart';
 import '../services/collage_compositor.dart';
+import '../services/ffmpeg_service.dart';
 import '../services/imported_asset_store.dart';
 import '../services/output_service.dart';
 import 'photo_crop_page.dart';
@@ -48,6 +51,7 @@ class CollagePage extends StatefulWidget {
 
 class _CollagePageState extends State<CollagePage> {
   static const _output = OutputService();
+  final _ffmpeg = FfmpegService();
   static const _stickerStore = ImportedAssetStore(ImportedAssetKind.sticker);
   static const _backgroundStore = ImportedAssetStore(
     ImportedAssetKind.backgroundImage,
@@ -2181,27 +2185,182 @@ class _CollagePageState extends State<CollagePage> {
     return maxSide.clamp(480, 2200);
   }
 
-  Future<File> _writeTempPng(Uint8List bytes) async {
+  Future<File> _writeTempFile(Uint8List bytes, String extension) async {
     final dir = await getTemporaryDirectory();
     final path =
-        '${dir.path}/montagem_${DateTime.now().millisecondsSinceEpoch}.png';
+        '${dir.path}/montagem_${DateTime.now().millisecondsSinceEpoch}'
+        '.$extension';
     final file = File(path);
     await file.writeAsBytes(bytes, flush: true);
     return file;
   }
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
+  /// Formato e regra de duração escolhidos na última exportação — a folha de
+  /// opções reabre já marcada no que a pessoa usou da última vez.
+  CollageExportFormat _exportFormat = CollageExportFormat.gif;
+  CollageDurationRule _durationRule = CollageDurationRule.longest;
+
+  /// Pergunta o formato quando há foto animada na montagem; sem nenhuma, o
+  /// PNG é a única saída possível e a folha não aparece. Devolve `null`
+  /// quando a pessoa fecha a folha sem escolher.
+  Future<CollageExportFormat?> _askExportFormat() async {
+    final info = await inspectCollageAnimation(_settings);
+    if (!mounted) return null;
+    if (!info.hasAnimation) return CollageExportFormat.png;
+
+    return showModalBottomSheet<CollageExportFormat>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, sheetSetState) {
+          final theme = Theme.of(sheetContext);
+          return SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Exportar', style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      info.animatedCount == 1
+                          ? 'Uma das fotos é animada — a montagem pode sair '
+                                'animada também.'
+                          : '${info.animatedCount} fotos são animadas — a '
+                                'montagem pode sair animada também.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    RadioGroup<CollageExportFormat>(
+                      groupValue: _exportFormat,
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _exportFormat = value);
+                        sheetSetState(() {});
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final format in CollageExportFormat.values)
+                            RadioListTile<CollageExportFormat>(
+                              contentPadding: EdgeInsets.zero,
+                              value: format,
+                              title: Text(format.label),
+                              subtitle: Text(format.subtitle),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (_exportFormat.isAnimated &&
+                        info.hasDifferentDurations) ...[
+                      const Divider(height: 24),
+                      Text(
+                        'Duração',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      RadioGroup<CollageDurationRule>(
+                        groupValue: _durationRule,
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _durationRule = value);
+                          sheetSetState(() {});
+                        },
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final rule in CollageDurationRule.values)
+                              RadioListTile<CollageDurationRule>(
+                                contentPadding: EdgeInsets.zero,
+                                value: rule,
+                                title: Text(
+                                  '${rule.label} '
+                                  '(${_formatSeconds(info.durationFor(rule))})',
+                                ),
+                                subtitle: Text(rule.subtitle),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: () =>
+                          Navigator.of(sheetContext).pop(_exportFormat),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                      child: const Text('Continuar'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatSeconds(Duration duration) =>
+      '${(duration.inMilliseconds / 1000).toStringAsFixed(1)} s';
+
+  /// Gera o arquivo final no formato escolhido: PNG direto do compositor, ou
+  /// a sequência de quadros da montagem animada codificada pelo FFmpeg.
+  Future<File> _buildExportFile(CollageExportFormat format) async {
+    if (!format.isAnimated) {
       final bytes = await composeCollage(
         settings: _settings,
         outputWidth: _exportWidth(),
       );
-      final file = await _writeTempPng(bytes);
+      return _writeTempFile(bytes, format.extension);
+    }
+
+    final temp = await getTemporaryDirectory();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final workDir = await Directory(
+      '${temp.path}/montagem_quadros_$stamp',
+    ).create(recursive: true);
+    try {
+      final sequence = await renderCollageFrames(
+        settings: _settings,
+        // A animação multiplica o custo por quadro; um limite mais baixo que
+        // o do PNG mantém a exportação viável no celular.
+        outputWidth: math.min(_exportWidth(), 1080),
+        rule: _durationRule,
+        workDir: workDir,
+      );
+      return await _ffmpeg.encodeCollageSequence(
+        framePattern: sequence.pattern,
+        fps: sequence.fps,
+        outputPath: '${temp.path}/montagem_$stamp.${format.extension}',
+        webp: format == CollageExportFormat.webp,
+      );
+    } finally {
+      if (await workDir.exists()) await workDir.delete(recursive: true);
+    }
+  }
+
+  Future<void> _save() async {
+    final format = await _askExportFormat();
+    if (format == null || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      final file = await _buildExportFile(format);
       await _output.saveToGallery(file);
       if (!mounted) return;
       _message('Montagem salva na galeria.');
     } on OutputException catch (e) {
+      if (!mounted) return;
+      _message(e.message);
+    } on FfmpegException catch (e) {
       if (!mounted) return;
       _message(e.message);
     } catch (_) {
@@ -2213,18 +2372,19 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Future<void> _share() async {
+    final format = await _askExportFormat();
+    if (format == null || !mounted) return;
     setState(() => _sharing = true);
     try {
-      final bytes = await composeCollage(
-        settings: _settings,
-        outputWidth: _exportWidth(),
-      );
-      final file = await _writeTempPng(bytes);
+      final file = await _buildExportFile(format);
       await _output.share(
         file,
-        mimeType: 'image/png',
+        mimeType: format.mimeType,
         text: 'Montagem de fotos feita com o app Video to GIF',
       );
+    } on FfmpegException catch (e) {
+      if (!mounted) return;
+      _message(e.message);
     } catch (_) {
       if (!mounted) return;
       _message('Não foi possível gerar a imagem.');

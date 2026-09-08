@@ -213,6 +213,26 @@ void main() {
     expect(cell.offsetY, 0);
   });
 
+  testWidgets('sem foto animada, o download não pergunta formato nenhum', (
+    tester,
+  ) async {
+    // Só com PNGs parados a montagem tem uma saída possível — a folha de
+    // formato seria uma pergunta com uma resposta só.
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Salvar na galeria'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Exportar'), findsNothing);
+    expect(find.text('GIF'), findsNothing);
+  });
+
   testWidgets('fundo com alvo "Fotos" muda só as fotos, não a montagem', (
     tester,
   ) async {
