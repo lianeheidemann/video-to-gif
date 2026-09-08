@@ -206,9 +206,9 @@ void main() {
     test('moldura procedural preserva o formato e o tamanho escolhidos', () {
       final formats = <CropRect?>[
         null,
-        CropRect.centered(_video, 1),
-        CropRect.centered(_video, 4 / 5),
-        CropRect.centered(_video, 16 / 9),
+        CropRect.centeredIn(_video.width, _video.height, 1),
+        CropRect.centeredIn(_video.width, _video.height, 4 / 5),
+        CropRect.centeredIn(_video.width, _video.height, 16 / 9),
       ];
 
       for (final crop in formats) {
@@ -240,7 +240,7 @@ void main() {
         startSeconds: 0,
         endSeconds: 5,
         targetWidth: 720,
-        crop: CropRect.centered(_video, 9 / 16),
+        crop: CropRect.centeredIn(_video.width, _video.height, 9 / 16),
         frame: const FrameSettings(
           style: FrameStyle.medium,
           thicknessAtReference: 10,

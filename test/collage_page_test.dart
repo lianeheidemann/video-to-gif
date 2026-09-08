@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_to_gif/models/photo_info.dart';
@@ -90,4 +91,80 @@ void main() {
       expect(find.text('Duplicar'), findsNothing);
     },
   );
+
+  testWidgets(
+    'layout "Linha" tem contador de fotos, igual "Grade livre" já tinha',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      // A aba "Layout" já começa aberta; troca para "Linha".
+      await tester.tap(find.text('Linha'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fotos'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.add_circle_outline));
+      await tester.pumpAndSettle();
+
+      expect(find.text('3'), findsOneWidget);
+    },
+  );
+
+  testWidgets('sticker embutido pode ser adicionado à montagem', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Stickers'),
+      200,
+      scrollable: page,
+    );
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    // Os 5 stickers embutidos aparecem antes do tile "Importar".
+    expect(find.byType(SvgPicture), findsWidgets);
+
+    await tester.tap(find.byType(SvgPicture).first);
+    await tester.pumpAndSettle();
+
+    // Adicionar um sticker já o seleciona — a barra de ações aparece.
+    expect(find.text('Duplicar'), findsOneWidget);
+  });
+
+  testWidgets('opções de fundo não quebram linha dentro do próprio botão', (
+    tester,
+  ) async {
+    // Largura de tela estreita de propósito, pior caso para o antigo
+    // SegmentedButton (rótulo "Transparente" quebrando ao meio).
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Fundo'), 200, scrollable: page);
+    await tester.tap(find.text('Fundo'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Transparente'), findsOneWidget);
+    expect(find.text('Cor'), findsOneWidget);
+    expect(find.text('Imagem'), findsOneWidget);
+  });
 }

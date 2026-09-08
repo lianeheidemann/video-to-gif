@@ -141,10 +141,12 @@ void paintCollageBackground(
   }
 }
 
-/// Desenha a foto de uma célula, recortada ao arredondamento próprio da
-/// célula, com deslocamento/zoom/rotação/espelhamento/ajustes de cor — a
-/// mesma ordem de transformações (girar, depois espelhar) usada pela prévia
-/// ao vivo (`RotatedBox` por fora de `Transform` de espelhamento), para as
+/// Desenha a foto de uma célula, recortada (modo [CollageCellFitMode.cover])
+/// ou inteira (modo [CollageCellFitMode.contain]) ao arredondamento próprio
+/// da célula, com deslocamento/zoom/rotação livre/espelhamento/ajustes de
+/// cor e a borda própria da célula (se houver) — a mesma ordem de
+/// transformações (girar, depois espelhar) usada pela prévia ao vivo
+/// (`Transform.rotate` por fora de `Transform` de espelhamento), para as
 /// duas nunca divergirem visualmente.
 void paintCollageCell(
   Canvas canvas,
@@ -157,34 +159,79 @@ void paintCollageCell(
   final outerRadius =
       cellRect.size.shortestSide *
       cell.cornerRatio.clamp(0.0, CollageCellSettings.maxCornerRatio);
-  final src = cell.coverSrcRect(cellRect.size);
-  if (src == Rect.zero) return;
 
-  final destWidth = cell.rotation.swapsAxes ? cellRect.height : cellRect.width;
-  final destHeight = cell.rotation.swapsAxes ? cellRect.width : cellRect.height;
-  final dest = Rect.fromCenter(
-    center: Offset.zero,
-    width: destWidth,
-    height: destHeight,
-  );
+  // Borda própria da foto (distinta da borda da montagem inteira): um anel
+  // desenhado no perímetro da célula, encolhendo a área de conteúdo pela
+  // mesma espessura — mesmo princípio de `paintCollageBorder`/
+  // `CollageGeometry`, só que por célula em vez de pela montagem toda.
+  final borderThickness = cell.borderThicknessFor(cellRect.width);
+  final innerRadius = (outerRadius - borderThickness).clamp(0.0, outerRadius);
+  final contentRect = cellRect.deflate(borderThickness);
+  if (contentRect.isEmpty) return;
 
   canvas.save();
   canvas.clipRRect(
     RRect.fromRectAndRadius(cellRect, Radius.circular(outerRadius)),
   );
-  canvas.translate(cellRect.center.dx, cellRect.center.dy);
-  canvas.rotate(cell.rotation.radians);
+  if (borderThickness > 0) {
+    canvas.drawRect(cellRect, Paint()..color = cell.borderColor);
+  }
+  canvas.clipRRect(
+    RRect.fromRectAndRadius(contentRect, Radius.circular(innerRadius)),
+  );
+
+  canvas.translate(contentRect.center.dx, contentRect.center.dy);
+  canvas.rotate(cell.rotation);
   if (cell.flipHorizontal || cell.flipVertical) {
     canvas.scale(cell.flipHorizontal ? -1 : 1, cell.flipVertical ? -1 : 1);
   }
-  canvas.drawImageRect(
-    photoImage,
-    src,
-    dest,
-    Paint()
-      ..filterQuality = FilterQuality.high
-      ..colorFilter = cell.colorFilter,
-  );
+
+  final paint = Paint()
+    ..filterQuality = FilterQuality.high
+    ..colorFilter = cell.colorFilter;
+  switch (cell.fitMode) {
+    case CollageCellFitMode.cover:
+      final src = cell.coverSrcRect(contentRect.size);
+      if (src != Rect.zero) {
+        final (destWidth, destHeight) = rotatedFootprint(
+          contentRect.width,
+          contentRect.height,
+          cell.rotation,
+        );
+        canvas.drawImageRect(
+          photoImage,
+          src,
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: destWidth,
+            height: destHeight,
+          ),
+          paint,
+        );
+      }
+    case CollageCellFitMode.contain:
+      // Foto inteira (sem recorte): o que sobrar dentro da célula mostra o
+      // fundo geral da montagem, já pintado por baixo antes das células.
+      final display = cell.containDisplaySize(contentRect.size);
+      if (display != Size.zero) {
+        final offset = cell.containDisplayOffset(contentRect.size);
+        canvas.drawImageRect(
+          photoImage,
+          Rect.fromLTWH(
+            0,
+            0,
+            photoImage.width.toDouble(),
+            photoImage.height.toDouble(),
+          ),
+          Rect.fromCenter(
+            center: offset,
+            width: display.width,
+            height: display.height,
+          ),
+          paint,
+        );
+      }
+  }
   canvas.restore();
 }
 

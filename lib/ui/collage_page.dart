@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -13,23 +14,29 @@ import '../models/collage_layout.dart';
 import '../models/collage_settings.dart';
 import '../models/collage_sticker.dart';
 import '../models/collage_text.dart';
+import '../models/crop_rect.dart';
 import '../models/photo_info.dart';
 import '../services/collage_compositor.dart';
 import '../services/imported_asset_store.dart';
 import '../services/output_service.dart';
+import 'photo_crop_page.dart';
 import 'widgets/collage_cell_view.dart';
 import 'widgets/collage_overlay_view.dart';
 import 'widgets/collage_painter.dart';
 import 'widgets/color_picker_sheet.dart';
-import 'widgets/labeled_section.dart';
+
+/// Abas fixas no rodapé da tela de montagem — cada uma abre um painel com o
+/// conteúdo daquela seção logo acima da barra de abas, substituindo a antiga
+/// lista rolável de cards expansíveis.
+enum _CollageTab { layout, aspect, margin, border, background, stickers, text }
 
 /// Tela do editor de montagem de fotos: agrupa [photos] num layout (linha,
-/// coluna ou grade), com margem/proporção/borda/cantos configuráveis, fundo
-/// transparente/cor/imagem, stickers e texto sobrepostos, reposicionamento
-/// por toque de cada foto, e opções de trocar/substituir/ajustar cor/girar/
-/// espelhar cada célula. Mesma estrutura de `PhotoFramePage` (lista de
-/// `LabeledSection`s + ações de salvar/compartilhar no fim), generalizada
-/// para N fotos.
+/// coluna ou grade), com margem/proporção/borda/cantos configuráveis (da
+/// montagem inteira e de cada foto), fundo transparente/cor/imagem, stickers
+/// e texto sobrepostos, reposicionamento/rotação/zoom por toque de cada
+/// foto, recorte de uma foto específica e opções de trocar/substituir/
+/// ajustar cor/espelhar/recentralizar cada célula. Prévia fixa em cima,
+/// abas de edição fixas no rodapé (estilo CapCut/Canva).
 class CollagePage extends StatefulWidget {
   const CollagePage({super.key, required this.photos});
 
@@ -46,6 +53,16 @@ class _CollagePageState extends State<CollagePage> {
     ImportedAssetKind.backgroundImage,
   );
 
+  /// Stickers prontos, embutidos no app (`assets/sticker/`) — aparecem antes
+  /// dos importados pelo usuário na seção "Stickers".
+  static const _bundledStickers = <(String path, String label)>[
+    ('assets/sticker/heart.svg', 'Coração'),
+    ('assets/sticker/star.svg', 'Estrela'),
+    ('assets/sticker/thumbs_up.svg', 'Joinha'),
+    ('assets/sticker/smiley.svg', 'Sorriso'),
+    ('assets/sticker/sparkle.svg', 'Brilho'),
+  ];
+
   late CollageSettings _settings = CollageSettings.forLayout(
     _defaultLayoutFor(widget.photos.length),
     widget.photos,
@@ -58,6 +75,11 @@ class _CollagePageState extends State<CollagePage> {
   final List<CollageSettings> _redoStack = [];
 
   String? _selectedOverlayId;
+
+  /// Aba aberta no rodapé — `null` fecha o painel e deixa a prévia com o
+  /// máximo de espaço. Começa em `layout`, equivalente ao
+  /// `initiallyExpanded: true` que a seção de layout já tinha antes.
+  _CollageTab? _activeTab = _CollageTab.layout;
 
   bool _saving = false;
   bool _sharing = false;
@@ -172,6 +194,7 @@ class _CollagePageState extends State<CollagePage> {
   @override
   Widget build(BuildContext context) {
     final toolbar = _selectionToolbar();
+    final busy = _saving || _sharing;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Montagem de fotos'),
@@ -186,29 +209,183 @@ class _CollagePageState extends State<CollagePage> {
             onPressed: _redoStack.isEmpty ? null : _redo,
             icon: const Icon(Icons.redo_rounded),
           ),
+          IconButton(
+            tooltip: _saving ? 'Salvando…' : 'Salvar na galeria',
+            onPressed: busy ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download_rounded),
+          ),
+          IconButton(
+            tooltip: _sharing ? 'Preparando…' : 'Compartilhar',
+            onPressed: busy ? null : _share,
+            icon: _sharing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.share_outlined),
+          ),
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: Column(
           children: [
-            _preview(),
+            Expanded(child: Center(child: _preview())),
             ?toolbar,
-            const SizedBox(height: 20),
-            _layoutSection(),
-            _marginSection(),
-            _aspectSection(),
-            _borderSection(),
-            _backgroundSection(),
-            _stickersSection(),
-            _textSection(),
-            const SizedBox(height: 4),
-            _actions(),
+            ?_activeTabPanel(),
+            _footerTabs(),
           ],
         ),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------
+  // Rodapé de abas
+  // ---------------------------------------------------------------------
+
+  /// Painel da aba aberta: altura limitada com rolagem própria (seções mais
+  /// longas, como Fundo, não estouram a tela), animado ao trocar/fechar aba.
+  Widget? _activeTabPanel() {
+    final tab = _activeTab;
+    if (tab == null) return null;
+    final theme = Theme.of(context);
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 300),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          border: Border(
+            top: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: _panelContentFor(tab),
+        ),
+      ),
+    );
+  }
+
+  Widget _panelContentFor(_CollageTab tab) => switch (tab) {
+    _CollageTab.layout => _layoutPanelContent(),
+    _CollageTab.aspect => _aspectPanelContent(),
+    _CollageTab.margin => _marginPanelContent(),
+    _CollageTab.border => _borderPanelContent(),
+    _CollageTab.background => _backgroundPanelContent(),
+    _CollageTab.stickers => _stickersPanelContent(),
+    _CollageTab.text => _textPanelContent(),
+  };
+
+  /// Título + valor atual de uma seção — mesmo resumo que o `LabeledSection`
+  /// antigo mostrava, agora no topo do próprio painel em vez de no
+  /// cabeçalho de um card expansível.
+  Widget _panelHeader(String title, [String? value]) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (value != null)
+            Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _footerTabs() {
+    final theme = Theme.of(context);
+    return Container(
+      height: 76,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+          ),
+        ),
+      ),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        children: [for (final tab in _CollageTab.values) _footerTabButton(tab)],
+      ),
+    );
+  }
+
+  Widget _footerTabButton(_CollageTab tab) {
+    final theme = Theme.of(context);
+    final selected = _activeTab == tab;
+    final color = selected
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurfaceVariant;
+    return InkWell(
+      onTap: () => setState(() => _activeTab = selected ? null : tab),
+      child: SizedBox(
+        width: 68,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(_tabIcon(tab), color: color),
+            const SizedBox(height: 4),
+            Text(
+              _tabLabel(tab),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _tabIcon(_CollageTab tab) => switch (tab) {
+    _CollageTab.layout => Icons.grid_view_outlined,
+    _CollageTab.aspect => Icons.aspect_ratio_rounded,
+    _CollageTab.margin => Icons.space_dashboard_outlined,
+    _CollageTab.border => Icons.crop_din_rounded,
+    _CollageTab.background => Icons.wallpaper_rounded,
+    _CollageTab.stickers => Icons.emoji_emotions_outlined,
+    _CollageTab.text => Icons.text_fields_rounded,
+  };
+
+  String _tabLabel(_CollageTab tab) => switch (tab) {
+    _CollageTab.layout => 'Layout',
+    _CollageTab.aspect => 'Proporção',
+    _CollageTab.margin => 'Margem',
+    _CollageTab.border => 'Borda',
+    _CollageTab.background => 'Fundo',
+    _CollageTab.stickers => 'Stickers',
+    _CollageTab.text => 'Texto',
+  };
 
   // ---------------------------------------------------------------------
   // Prévia
@@ -436,31 +613,31 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Layout"
   // ---------------------------------------------------------------------
 
-  Widget _layoutSection() {
-    return LabeledSection(
-      icon: Icons.grid_view_outlined,
-      title: 'Layout',
-      value: _settings.layout.kind.label,
-      initiallyExpanded: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: 84,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: CollageLayoutKind.values.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, index) =>
-                  _layoutThumb(CollageLayoutKind.values[index]),
-            ),
+  Widget _layoutPanelContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelHeader('Layout'),
+        SizedBox(
+          height: 84,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: CollageLayoutKind.values.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) =>
+                _layoutThumb(CollageLayoutKind.values[index]),
           ),
-          if (_settings.layout.kind == CollageLayoutKind.freeGrid) ...[
-            const SizedBox(height: 14),
-            _freeGridSteppers(),
-          ],
+        ),
+        if (_settings.layout.kind == CollageLayoutKind.freeGrid) ...[
+          const SizedBox(height: 14),
+          _freeGridSteppers(),
         ],
-      ),
+        if (_settings.layout.kind == CollageLayoutKind.row ||
+            _settings.layout.kind == CollageLayoutKind.column) ...[
+          const SizedBox(height: 14),
+          _rowColumnStepper(),
+        ],
+      ],
     );
   }
 
@@ -487,7 +664,7 @@ class _CollagePageState extends State<CollagePage> {
                   width: selected ? 2 : 1,
                 ),
               ),
-              child: Icon(_layoutIcon(kind), color: theme.colorScheme.primary),
+              child: _layoutIcon(kind, theme.colorScheme.primary),
             ),
             const SizedBox(height: 4),
             Text(
@@ -503,14 +680,53 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
-  IconData _layoutIcon(CollageLayoutKind kind) => switch (kind) {
-    CollageLayoutKind.row => Icons.view_column_outlined,
-    CollageLayoutKind.column => Icons.table_rows_outlined,
-    CollageLayoutKind.grid2x2 => Icons.grid_view_outlined,
-    CollageLayoutKind.grid2x3 => Icons.grid_on_outlined,
-    CollageLayoutKind.grid3x3 => Icons.apps_rounded,
-    CollageLayoutKind.freeGrid => Icons.dashboard_customize_outlined,
-  };
+  /// Ícone de cada opção de layout: uma grade de pontinhos desenhada com o
+  /// número EXATO de colunas/linhas de cada uma — em vez de escolher entre
+  /// os ícones prontos do Material (nenhum bate exatamente com "2 colunas
+  /// por 3 linhas", por exemplo; `Icons.grid_on_outlined` usado antes para
+  /// "Grade 2x3" na real parece uma grade 3x3, confundindo com a opção
+  /// vizinha), garante que o ícone sempre corresponda ao layout real.
+  Widget _layoutIcon(CollageLayoutKind kind, Color color) {
+    final (columns, rows) = switch (kind) {
+      CollageLayoutKind.row => (4, 1),
+      CollageLayoutKind.column => (1, 4),
+      CollageLayoutKind.grid2x2 => (2, 2),
+      CollageLayoutKind.grid2x3 => (2, 3),
+      CollageLayoutKind.grid3x3 => (3, 3),
+      CollageLayoutKind.freeGrid => (0, 0),
+    };
+    if (kind == CollageLayoutKind.freeGrid) {
+      return Icon(Icons.dashboard_customize_outlined, color: color);
+    }
+    const dot = 6.0;
+    const gap = 3.0;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var r = 0; r < rows; r++) ...[
+          if (r > 0) const SizedBox(height: gap),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var c = 0; c < columns; c++) ...[
+                if (c > 0) const SizedBox(width: gap),
+                Container(
+                  width: dot,
+                  height: dot,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
 
   Widget _freeGridSteppers() {
     final layout = _settings.layout;
@@ -520,7 +736,9 @@ class _CollagePageState extends State<CollagePage> {
           child: _stepperRow(
             'Colunas',
             layout.columns < 1 ? 2 : layout.columns,
-            (v) => _applyLayout(layout.copyWith(columns: v)),
+            min: CollageLayout.minFreeGridSpan,
+            max: CollageLayout.maxFreeGridSpan,
+            onChanged: (v) => _applyLayout(layout.copyWith(columns: v)),
           ),
         ),
         const SizedBox(width: 16),
@@ -528,22 +746,50 @@ class _CollagePageState extends State<CollagePage> {
           child: _stepperRow(
             'Linhas',
             layout.rows < 1 ? 2 : layout.rows,
-            (v) => _applyLayout(layout.copyWith(rows: v)),
+            min: CollageLayout.minFreeGridSpan,
+            max: CollageLayout.maxFreeGridSpan,
+            onChanged: (v) => _applyLayout(layout.copyWith(rows: v)),
           ),
         ),
       ],
     );
   }
 
-  Widget _stepperRow(String label, int value, ValueChanged<int> onChanged) {
+  /// Contador de quantas fotos entram na linha/coluna única — mesmo padrão
+  /// visual de [_freeGridSteppers], só que controlando o total de células em
+  /// vez de colunas/linhas separadas (linha/coluna só tem um eixo com mais
+  /// de uma célula).
+  Widget _rowColumnStepper() {
+    final layout = _settings.layout;
+    final count = layout.cellCount < CollageLayout.minRowColumnCount
+        ? CollageLayout.minRowColumnCount
+        : layout.cellCount;
+    return _stepperRow(
+      'Fotos',
+      count,
+      min: CollageLayout.minRowColumnCount,
+      max: CollageLayout.maxRowColumnCount,
+      onChanged: (v) => _applyLayout(
+        layout.kind == CollageLayoutKind.row
+            ? CollageLayout.row(v)
+            : CollageLayout.column(v),
+      ),
+    );
+  }
+
+  Widget _stepperRow(
+    String label,
+    int value, {
+    required int min,
+    required int max,
+    required ValueChanged<int> onChanged,
+  }) {
     final theme = Theme.of(context);
     return Row(
       children: [
         Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
         IconButton(
-          onPressed: value > CollageLayout.minFreeGridSpan
-              ? () => onChanged(value - 1)
-              : null,
+          onPressed: value > min ? () => onChanged(value - 1) : null,
           icon: const Icon(Icons.remove_circle_outline),
         ),
         Text(
@@ -553,9 +799,7 @@ class _CollagePageState extends State<CollagePage> {
           ),
         ),
         IconButton(
-          onPressed: value < CollageLayout.maxFreeGridSpan
-              ? () => onChanged(value + 1)
-              : null,
+          onPressed: value < max ? () => onChanged(value + 1) : null,
           icon: const Icon(Icons.add_circle_outline),
         ),
       ],
@@ -598,109 +842,133 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Margem" / "Proporção" / "Borda e cantos"
   // ---------------------------------------------------------------------
 
-  Widget _marginSection() {
+  Widget _marginPanelContent() {
     final percent =
         (_settings.marginRatio / CollageSettings.maxMarginRatio * 100).round();
-    return LabeledSection(
-      icon: Icons.space_dashboard_outlined,
-      title: 'Margem',
-      value: '$percent%',
-      child: Slider(
-        min: CollageSettings.minMarginRatio,
-        max: CollageSettings.maxMarginRatio,
-        value: _settings.marginRatio.clamp(
-          CollageSettings.minMarginRatio,
-          CollageSettings.maxMarginRatio,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelHeader('Margem', '$percent%'),
+        Slider(
+          min: CollageSettings.minMarginRatio,
+          max: CollageSettings.maxMarginRatio,
+          value: _settings.marginRatio.clamp(
+            CollageSettings.minMarginRatio,
+            CollageSettings.maxMarginRatio,
+          ),
+          label: '$percent%',
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) =>
+              _update(_settings.copyWith(marginRatio: v), pushUndo: false),
         ),
-        label: '$percent%',
-        onChangeStart: (_) => _pushUndoCheckpoint(),
-        onChanged: (v) =>
-            _update(_settings.copyWith(marginRatio: v), pushUndo: false),
-      ),
+      ],
     );
   }
 
-  Widget _aspectSection() {
-    return LabeledSection(
-      icon: Icons.aspect_ratio_rounded,
-      title: 'Proporção',
-      value: _aspectLabel(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final preset in CollageSettings.aspectPresets)
-                ChoiceChip(
-                  label: Text(preset.$1),
-                  selected: (_settings.aspectRatio - preset.$2).abs() < 0.001,
-                  onSelected: (_) =>
-                      _update(_settings.copyWith(aspectRatio: preset.$2)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Slider(
-            min: 0.4,
-            max: 2.5,
-            value: _settings.aspectRatio.clamp(0.4, 2.5),
-            onChangeStart: (_) => _pushUndoCheckpoint(),
-            onChanged: (v) =>
-                _update(_settings.copyWith(aspectRatio: v), pushUndo: false),
-          ),
-        ],
-      ),
+  Widget _aspectPanelContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelHeader('Proporção', _customAspectLabel()),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final preset in CollageSettings.aspectPresets)
+              ChoiceChip(
+                label: Text(preset.$1),
+                selected: (_settings.aspectRatio - preset.$2).abs() < 0.001,
+                onSelected: (_) =>
+                    _update(_settings.copyWith(aspectRatio: preset.$2)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Slider(
+          min: 0.4,
+          max: 2.5,
+          value: _settings.aspectRatio.clamp(0.4, 2.5),
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) =>
+              _update(_settings.copyWith(aspectRatio: v), pushUndo: false),
+        ),
+      ],
     );
   }
 
-  String _aspectLabel() {
+  /// `null` quando a proporção atual bate com um dos chips (o chip
+  /// selecionado já mostra esse rótulo — repetir no cabeçalho do painel só
+  /// duplicaria o mesmo texto na tela). Só devolve algo para uma proporção
+  /// customizada pelo slider, sem chip equivalente para mostrá-la.
+  String? _customAspectLabel() {
     for (final preset in CollageSettings.aspectPresets) {
-      if ((preset.$2 - _settings.aspectRatio).abs() < 0.001) return preset.$1;
+      if ((preset.$2 - _settings.aspectRatio).abs() < 0.001) return null;
     }
     return _settings.aspectRatio.toStringAsFixed(2);
   }
 
-  Widget _borderSection() {
+  Widget _borderPanelContent() {
     final theme = Theme.of(context);
-    return LabeledSection(
-      icon: Icons.crop_din_rounded,
-      title: 'Borda e cantos',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sliderRow(
-            label: 'Espessura da borda',
-            value: _settings.borderThicknessAtReference,
-            min: 0,
-            max: CollageSettings.maxBorderThickness,
-            display: '${_settings.borderThicknessAtReference.round()}px',
-            onChanged: (v) => _update(
-              _settings.copyWith(borderThicknessAtReference: v),
-              pushUndo: false,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelHeader('Borda e cantos'),
+        Text(
+          'Da montagem inteira',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.primary,
           ),
-          const SizedBox(height: 12),
-          _sliderRow(
-            label: 'Arredondamento dos cantos',
-            value: _settings.cornerRatio,
-            min: 0,
-            max: CollageSettings.maxCornerRatio,
-            display:
-                '${(_settings.cornerRatio / CollageSettings.maxCornerRatio * 100).round()}%',
-            onChanged: (v) =>
-                _update(_settings.copyWith(cornerRatio: v), pushUndo: false),
+        ),
+        const SizedBox(height: 8),
+        _sliderRow(
+          label: 'Espessura da borda',
+          value: _settings.borderThicknessAtReference,
+          min: 0,
+          max: CollageSettings.maxBorderThickness,
+          display: '${_settings.borderThicknessAtReference.round()}px',
+          onChanged: (v) => _update(
+            _settings.copyWith(borderThicknessAtReference: v),
+            pushUndo: false,
           ),
-          if (_settings.borderThicknessAtReference > 0) ...[
-            const SizedBox(height: 4),
-            Divider(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
-            ),
-            _colorRow('Cor da borda', _settings.borderColor, _pickBorderColor),
-          ],
+        ),
+        const SizedBox(height: 12),
+        _sliderRow(
+          label: 'Arredondamento dos cantos',
+          value: _settings.cornerRatio,
+          min: 0,
+          max: CollageSettings.maxCornerRatio,
+          display:
+              '${(_settings.cornerRatio / CollageSettings.maxCornerRatio * 100).round()}%',
+          onChanged: (v) =>
+              _update(_settings.copyWith(cornerRatio: v), pushUndo: false),
+        ),
+        if (_settings.borderThicknessAtReference > 0) ...[
+          const SizedBox(height: 4),
+          Divider(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+          ),
+          _colorRow('Cor da borda', _settings.borderColor, _pickBorderColor),
         ],
-      ),
+        const SizedBox(height: 20),
+        Divider(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'De cada foto',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.primary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Toque em "..." numa foto na prévia e escolha "Borda da foto" '
+          'para dar uma moldura só a ela, além da borda da montagem.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 
@@ -792,59 +1060,55 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Fundo"
   // ---------------------------------------------------------------------
 
-  Widget _backgroundSection() {
+  Widget _backgroundPanelContent() {
     final background = _settings.background;
-    return LabeledSection(
-      icon: Icons.wallpaper_rounded,
-      title: 'Fundo',
-      value: switch (background.mode) {
-        CollageBackgroundMode.transparent => 'Transparente',
-        CollageBackgroundMode.color => 'Cor',
-        CollageBackgroundMode.image => 'Imagem',
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SegmentedButton<CollageBackgroundMode>(
-            segments: const [
-              ButtonSegment(
-                value: CollageBackgroundMode.transparent,
-                label: Text('Transparente'),
-                icon: Icon(Icons.check_box_outline_blank_rounded),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelHeader('Fundo'),
+        // `ChoiceChip`s em vez de `SegmentedButton`: os 3 rótulos
+        // ("Transparente" principalmente) não cabem lado a lado com ícone
+        // dentro da largura do painel do rodapé sem quebrar linha dentro do
+        // próprio botão — chip quebra para a linha de baixo inteiro, nunca
+        // no meio de uma palavra.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final entry in const [
+              (
+                CollageBackgroundMode.transparent,
+                'Transparente',
+                Icons.check_box_outline_blank_rounded,
               ),
-              ButtonSegment(
-                value: CollageBackgroundMode.color,
-                label: Text('Cor'),
-                icon: Icon(Icons.palette_outlined),
+              (CollageBackgroundMode.color, 'Cor', Icons.palette_outlined),
+              (CollageBackgroundMode.image, 'Imagem', Icons.image_outlined),
+            ])
+              ChoiceChip(
+                avatar: Icon(entry.$3, size: 18),
+                label: Text(entry.$2),
+                selected: background.mode == entry.$1,
+                onSelected: (_) => _update(
+                  _settings.copyWith(
+                    background: background.copyWith(mode: entry.$1),
+                  ),
+                ),
               ),
-              ButtonSegment(
-                value: CollageBackgroundMode.image,
-                label: Text('Imagem'),
-                icon: Icon(Icons.image_outlined),
-              ),
-            ],
-            selected: {background.mode},
-            showSelectedIcon: false,
-            onSelectionChanged: (selection) => _update(
-              _settings.copyWith(
-                background: background.copyWith(mode: selection.single),
-              ),
-            ),
+          ],
+        ),
+        if (background.mode == CollageBackgroundMode.color) ...[
+          const SizedBox(height: 8),
+          _colorRow(
+            'Cor do fundo',
+            background.color,
+            _openBackgroundColorPicker,
           ),
-          if (background.mode == CollageBackgroundMode.color) ...[
-            const SizedBox(height: 8),
-            _colorRow(
-              'Cor do fundo',
-              background.color,
-              _openBackgroundColorPicker,
-            ),
-          ],
-          if (background.mode == CollageBackgroundMode.image) ...[
-            const SizedBox(height: 12),
-            _backgroundImagePicker(),
-          ],
         ],
-      ),
+        if (background.mode == CollageBackgroundMode.image) ...[
+          const SizedBox(height: 12),
+          _backgroundImagePicker(),
+        ],
+      ],
     );
   }
 
@@ -984,31 +1248,79 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Stickers" / "Texto"
   // ---------------------------------------------------------------------
 
-  Widget _stickersSection() {
-    return LabeledSection(
-      icon: Icons.emoji_emotions_outlined,
-      title: 'Stickers',
-      hint: 'Toque para adicionar um sticker à montagem.',
-      child: SizedBox(
-        height: 70,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: _importedStickers.length + 1,
-          separatorBuilder: (_, _) => const SizedBox(width: 10),
-          itemBuilder: (context, index) {
-            if (index == _importedStickers.length) {
-              return _importTile(onTap: _importSticker, label: 'Importar');
-            }
-            final asset = _importedStickers[index];
-            return GestureDetector(
-              onTap: () => _addStickerFromAsset(asset),
-              onLongPress: () => _confirmRemoveSticker(asset),
-              child: _assetThumb(asset, selected: false),
-            );
-          },
+  Widget _stickersPanelContent() {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelHeader('Stickers'),
+        Text(
+          'Toque para adicionar um sticker à montagem.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 70,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _bundledStickers.length + _importedStickers.length + 1,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              if (index < _bundledStickers.length) {
+                final sticker = _bundledStickers[index];
+                return GestureDetector(
+                  onTap: () => _addBundledSticker(sticker),
+                  child: _bundledStickerThumb(sticker),
+                );
+              }
+              final importedIndex = index - _bundledStickers.length;
+              if (importedIndex == _importedStickers.length) {
+                return _importTile(onTap: _importSticker, label: 'Importar');
+              }
+              final asset = _importedStickers[importedIndex];
+              return GestureDetector(
+                onTap: () => _addStickerFromAsset(asset),
+                onLongPress: () => _confirmRemoveSticker(asset),
+                child: _assetThumb(asset, selected: false),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _bundledStickerThumb((String path, String label) sticker) {
+    final theme = Theme.of(context);
+    return Container(
+      width: 62,
+      height: 46,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
+      child: SvgPicture.asset(sticker.$1, fit: BoxFit.contain),
     );
+  }
+
+  void _addBundledSticker((String path, String label) sticker) {
+    final item = CollageSticker(
+      id: 's_${DateTime.now().microsecondsSinceEpoch}',
+      source: CollageStickerSource.bundledSvg,
+      assetPath: sticker.$1,
+      label: sticker.$2,
+      centerX: 0.5,
+      centerY: 0.5,
+      zIndex: _settings.nextZIndex,
+    );
+    _update(_settings.addingSticker(item));
+    setState(() => _selectedOverlayId = item.id);
   }
 
   Future<void> _importSticker() async {
@@ -1086,15 +1398,17 @@ class _CollagePageState extends State<CollagePage> {
     setState(_dropSelectionIfGone);
   }
 
-  Widget _textSection() {
-    return LabeledSection(
-      icon: Icons.text_fields_rounded,
-      title: 'Texto',
-      child: OutlinedButton.icon(
-        onPressed: _addText,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Adicionar texto'),
-      ),
+  Widget _textPanelContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelHeader('Texto'),
+        OutlinedButton.icon(
+          onPressed: _addText,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Adicionar texto'),
+        ),
+      ],
     );
   }
 
@@ -1333,11 +1647,27 @@ class _CollagePageState extends State<CollagePage> {
                   },
                 ),
               ListTile(
+                leading: const Icon(Icons.crop_rounded),
+                title: const Text('Recortar'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _openCropTool(index);
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.tune_rounded),
                 title: const Text('Ajustar cor'),
                 onTap: () {
                   Navigator.of(sheetContext).pop();
                   _openCellColorAdjust(index);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.border_all_rounded),
+                title: const Text('Borda da foto'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _openCellBorderAdjust(index);
                 },
               ),
               ListTile(
@@ -1362,6 +1692,14 @@ class _CollagePageState extends State<CollagePage> {
                 onTap: () {
                   Navigator.of(sheetContext).pop();
                   _flipCell(index, horizontal: false);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.center_focus_strong_outlined),
+                title: const Text('Recentralizar'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _recenterCell(index);
                 },
               ),
             ],
@@ -1395,7 +1733,12 @@ class _CollagePageState extends State<CollagePage> {
 
       final cell = _settings.cells[index];
       final replaced = cell
-          .copyWith(photoPath: path, photoWidth: width, photoHeight: height)
+          .copyWith(
+            photoPath: path,
+            photoWidth: width,
+            photoHeight: height,
+            clearManualCrop: true,
+          )
           .resetFraming();
       _update(_settings.replacingCell(index, replaced));
     } catch (_) {
@@ -1528,12 +1871,14 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
+  /// Mais um quarto de volta a partir de onde a foto já estiver — continua
+  /// útil como atalho rápido mesmo depois de girar livremente com o dedo.
   void _rotateCell(int index) {
     final cell = _settings.cells[index];
     _update(
       _settings.replacingCell(
         index,
-        cell.copyWith(rotation: cell.rotation.next),
+        cell.copyWith(rotation: cell.rotation + math.pi / 2),
       ),
     );
   }
@@ -1547,6 +1892,144 @@ class _CollagePageState extends State<CollagePage> {
             ? cell.copyWith(flipHorizontal: !cell.flipHorizontal)
             : cell.copyWith(flipVertical: !cell.flipVertical),
       ),
+    );
+  }
+
+  /// Volta ao enquadramento padrão (deslocamento/zoom/rotação/espelhamento),
+  /// mantendo foto, recorte manual, cor e borda — o antigo comportamento do
+  /// duplo toque, agora um item do menu já que o duplo toque passa a
+  /// alternar preencher/ajustar.
+  void _recenterCell(int index) {
+    final cell = _settings.cells[index];
+    _pushUndoCheckpoint();
+    _update(
+      _settings.replacingCell(index, cell.resetFraming()),
+      pushUndo: false,
+    );
+  }
+
+  /// Proporção que a célula [index] tem no layout atual — todas as células de
+  /// um mesmo layout compartilham a mesma proporção (a grade sempre gera
+  /// larguras/alturas uniformes), então basta calcular contra um canvas de
+  /// referência do mesmo formato da montagem (`_settings.aspectRatio`) em vez
+  /// de depender do tamanho real da prévia na tela.
+  double _cellAspectRatioFor(int index) {
+    const refWidth = 1000.0;
+    final refHeight = refWidth / _settings.aspectRatio;
+    final rects = _settings.layout.cellRectsFor(
+      Size(refWidth, refHeight),
+      _settings.marginRatio,
+    );
+    if (index >= rects.length) return 1.0;
+    final rect = rects[index];
+    if (rect.width <= 0 || rect.height <= 0) return 1.0;
+    return rect.width / rect.height;
+  }
+
+  /// Abre o recorte de uma foto específica, travado na proporção da própria
+  /// célula (o resultado sempre precisa preencher a célula sem sobra).
+  Future<void> _openCropTool(int index) async {
+    final cell = _settings.cells[index];
+    if (!cell.hasPhoto) return;
+    final crop = await Navigator.of(context).push<CropRect>(
+      MaterialPageRoute(
+        builder: (_) => PhotoCropPage(
+          photoPath: cell.photoPath!,
+          photoWidth: cell.photoWidth,
+          photoHeight: cell.photoHeight,
+          aspectRatio: _cellAspectRatioFor(index),
+          initialCrop: cell.manualCrop,
+        ),
+      ),
+    );
+    if (crop == null || !mounted) return;
+    _pushUndoCheckpoint();
+    _update(
+      _settings.replacingCell(index, cell.copyWith(manualCrop: crop)),
+      pushUndo: false,
+    );
+  }
+
+  /// Borda só desta foto (distinta da borda da montagem inteira, em
+  /// [_borderPanelContent]) — mesmo padrão de [_openCellColorAdjust]: sheet
+  /// com seu próprio `StatefulBuilder` para o slider atualizar ao vivo sem
+  /// fechar a folha.
+  void _openCellBorderAdjust(int index) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, sheetSetState) {
+            final cell = _settings.cells[index];
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Borda da foto',
+                      style: Theme.of(sheetContext).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    _sliderRow(
+                      label: 'Espessura',
+                      value: cell.borderThicknessAtReference,
+                      min: 0,
+                      max: CollageCellSettings.maxBorderThickness,
+                      display: '${cell.borderThicknessAtReference.round()}px',
+                      onChanged: (v) {
+                        _update(
+                          _settings.replacingCell(
+                            index,
+                            cell.copyWith(borderThicknessAtReference: v),
+                          ),
+                          pushUndo: false,
+                        );
+                        sheetSetState(() {});
+                      },
+                    ),
+                    if (cell.borderThicknessAtReference > 0) ...[
+                      const SizedBox(height: 4),
+                      _colorRow(
+                        'Cor da borda',
+                        cell.borderColor,
+                        () => _pickCellBorderColor(index, sheetSetState),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _pickCellBorderColor(int index, StateSetter sheetSetState) {
+    var checkpointPushed = false;
+    showCollageColorPickerSheet(
+      context: context,
+      title: 'Cor da borda',
+      initialColor: _settings.cells[index].borderColor,
+      onColorSelected: (color) {
+        if (!checkpointPushed) {
+          checkpointPushed = true;
+          _pushUndoCheckpoint();
+        }
+        final current = _settings.cells[index];
+        _update(
+          _settings.replacingCell(index, current.copyWith(borderColor: color)),
+          pushUndo: false,
+        );
+        sheetSetState(() {});
+      },
+      previewImageBuilder: _renderPreviewImage,
     );
   }
 
@@ -1614,41 +2097,6 @@ class _CollagePageState extends State<CollagePage> {
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
-  }
-
-  Widget _actions() {
-    final busy = _saving || _sharing;
-    return Column(
-      children: [
-        FilledButton.icon(
-          onPressed: busy ? null : _save,
-          icon: _saving
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.download_rounded),
-          label: Text(_saving ? 'Salvando…' : 'Salvar na galeria'),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: busy ? null : _share,
-          icon: _sharing
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.share_outlined),
-          label: Text(_sharing ? 'Preparando…' : 'Compartilhar'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(56),
-          ),
-        ),
-      ],
-    );
   }
 }
 
