@@ -462,6 +462,106 @@ void main() {
   );
 
   test(
+    'fundo próprio da foto preenche só a célula, não a montagem inteira',
+    () async {
+      // Duas células lado a lado numa montagem com margem: só a primeira tem
+      // fundo próprio (azul). Em "ajustar", a sobra DENTRO dela sai azul, a
+      // sobra da outra continua no fundo verde da montagem, e a margem entre
+      // as duas também continua verde — o fundo da foto não vaza.
+      final photoPath = '${tempDir.path}/quadrada.png';
+      await _writeSolidPng(photoPath, 100, 100, const Color(0xFFFF0000));
+
+      final photo = CollageCellSettings(
+        photoPath: photoPath,
+        photoWidth: 100,
+        photoHeight: 100,
+        fitMode: CollageCellFitMode.contain,
+      );
+      final settings = CollageSettings(
+        layout: CollageLayout.row(2),
+        aspectRatio: 4.0,
+        marginRatio: 0.05,
+        background: const CollageBackground(
+          mode: CollageBackgroundMode.color,
+          color: Color(0xFF00FF00),
+        ),
+        cells: [
+          photo.copyWith(
+            background: const CollageBackground(
+              mode: CollageBackgroundMode.color,
+              color: Color(0xFF0000FF),
+            ),
+          ),
+          photo,
+        ],
+      );
+
+      const outputWidth = 400;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      // Canvas 400x100, margem de 5px (0.05 do menor lado): células em
+      // x=[5,197] e x=[203,395]; cada foto quadrada "ajustada" ocupa ~90px no
+      // centro da sua célula, então x=20 e x=380 são sobra.
+      final leftGap = await _decodePixel(bytes, outputWidth, 20, 50);
+      expect(leftGap[2], greaterThan(200)); // sobra azul: fundo da foto
+      expect(leftGap[1], lessThan(60));
+
+      final rightGap = await _decodePixel(bytes, outputWidth, 380, 50);
+      expect(rightGap[1], greaterThan(200)); // sobra verde: fundo da montagem
+
+      final marginPixel = await _decodePixel(bytes, outputWidth, 200, 50);
+      expect(marginPixel[1], greaterThan(200)); // margem entre as células
+      expect(marginPixel[2], lessThan(60));
+
+      final photoPixel = await _decodePixel(bytes, outputWidth, 100, 50);
+      expect(photoPixel[0], greaterThan(200)); // a foto continua por cima
+    },
+  );
+
+  test('fundo próprio da foto fica atrás da borda própria dela', () async {
+    // Fundo da foto (azul) dentro do anel da borda (verde): a borda continua
+    // sendo a moldura externa e o fundo só preenche a área de conteúdo.
+    final photoPath = '${tempDir.path}/quadrada.png';
+    await _writeSolidPng(photoPath, 100, 100, const Color(0xFFFF0000));
+
+    final settings = CollageSettings(
+      layout: CollageLayout.row(1),
+      aspectRatio: 4.0,
+      marginRatio: 0,
+      cells: [
+        CollageCellSettings(
+          photoPath: photoPath,
+          photoWidth: 100,
+          photoHeight: 100,
+          fitMode: CollageCellFitMode.contain,
+          borderThicknessAtReference: 20,
+          borderColor: const Color(0xFF00FF00),
+          background: const CollageBackground(
+            mode: CollageBackgroundMode.color,
+            color: Color(0xFF0000FF),
+          ),
+        ),
+      ],
+    );
+
+    const outputWidth = 480;
+    final bytes = await composeCollage(
+      settings: settings,
+      outputWidth: outputWidth,
+    );
+
+    final borderPixel = await _decodePixel(bytes, outputWidth, 5, 60);
+    expect(borderPixel[1], greaterThan(200)); // anel verde na borda
+
+    final gapPixel = await _decodePixel(bytes, outputWidth, 60, 60);
+    expect(gapPixel[2], greaterThan(200)); // fundo azul já dentro da borda
+    expect(gapPixel[1], lessThan(60));
+  });
+
+  test(
     'texto com fonte embutida (fontFamily) é desenhado na exportação',
     () async {
       // Sem foto/aba de fundo nenhuma: só um texto branco grande sobre fundo

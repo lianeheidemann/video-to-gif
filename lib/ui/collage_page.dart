@@ -86,6 +86,10 @@ class _CollagePageState extends State<CollagePage> {
   /// seletor está tocado agora) — não faz parte de [CollageSettings].
   bool _borderTargetsPhotos = false;
 
+  /// Mesmo papel de [_borderTargetsPhotos], para a aba "Fundo": `false` = o
+  /// fundo da montagem inteira, `true` = o fundo de dentro de cada foto.
+  bool _backgroundTargetsPhotos = false;
+
   bool _saving = false;
   bool _sharing = false;
 
@@ -1148,12 +1152,54 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Fundo"
   // ---------------------------------------------------------------------
 
+  /// Fundo do alvo escolhido no seletor "Montagem"/"Fotos": o da montagem
+  /// inteira ou o de dentro das fotos. Com o alvo "Fotos" os controles mexem
+  /// em todas as células de uma vez ([CollageSettings.updatingAllCells]),
+  /// então a primeira célula representa bem todas — mesma lógica de
+  /// [_borderPanelContent].
+  CollageBackground get _targetBackground => _backgroundTargetsPhotos
+      ? (_firstCell?.background ?? const CollageBackground())
+      : _settings.background;
+
+  void _applyBackground(CollageBackground background, {bool pushUndo = true}) {
+    _update(
+      _backgroundTargetsPhotos
+          ? _settings.updatingAllCells(
+              (cell) => cell.copyWith(background: background),
+            )
+          : _settings.copyWith(background: background),
+      pushUndo: pushUndo,
+    );
+  }
+
   Widget _backgroundPanelContent() {
-    final background = _settings.background;
+    final background = _targetBackground;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _panelHeader('Fundo'),
+        // O fundo da montagem (a área fora/entre as fotos) e o fundo de
+        // dentro de cada foto (o que aparece na sobra do modo "encaixar") são
+        // escolhas independentes — mesmo seletor de alvo da aba "Borda e
+        // cantos".
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Montagem'),
+              selected: !_backgroundTargetsPhotos,
+              onSelected: (_) =>
+                  setState(() => _backgroundTargetsPhotos = false),
+            ),
+            ChoiceChip(
+              label: const Text('Fotos'),
+              selected: _backgroundTargetsPhotos,
+              onSelected: (_) =>
+                  setState(() => _backgroundTargetsPhotos = true),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         // `ChoiceChip`s em vez de `SegmentedButton`: os 3 rótulos
         // ("Transparente" principalmente) não cabem lado a lado com ícone
         // dentro da largura do painel do rodapé sem quebrar linha dentro do
@@ -1176,11 +1222,8 @@ class _CollagePageState extends State<CollagePage> {
                 avatar: Icon(entry.$3, size: 18),
                 label: Text(entry.$2),
                 selected: background.mode == entry.$1,
-                onSelected: (_) => _update(
-                  _settings.copyWith(
-                    background: background.copyWith(mode: entry.$1),
-                  ),
-                ),
+                onSelected: (_) =>
+                    _applyBackground(background.copyWith(mode: entry.$1)),
               ),
           ],
         ),
@@ -1215,14 +1258,12 @@ class _CollagePageState extends State<CollagePage> {
             );
           }
           final asset = _importedBackgrounds[index];
-          final selected = _settings.background.imagePath == asset.filePath;
+          final selected = _targetBackground.imagePath == asset.filePath;
           return GestureDetector(
-            onTap: () => _update(
-              _settings.copyWith(
-                background: _settings.background.copyWith(
-                  mode: CollageBackgroundMode.image,
-                  imagePath: asset.filePath,
-                ),
+            onTap: () => _applyBackground(
+              _targetBackground.copyWith(
+                mode: CollageBackgroundMode.image,
+                imagePath: asset.filePath,
               ),
             ),
             onLongPress: () => _confirmRemoveBackground(asset),
@@ -1239,18 +1280,16 @@ class _CollagePageState extends State<CollagePage> {
     showCollageColorPickerSheet(
       context: context,
       title: 'Cor do fundo',
-      initialColor: _settings.background.color,
+      initialColor: _targetBackground.color,
       onColorSelected: (color) {
         if (!checkpointPushed) {
           checkpointPushed = true;
           _pushUndoCheckpoint();
         }
-        _update(
-          _settings.copyWith(
-            background: _settings.background.copyWith(
-              mode: CollageBackgroundMode.color,
-              color: color,
-            ),
+        _applyBackground(
+          _targetBackground.copyWith(
+            mode: CollageBackgroundMode.color,
+            color: color,
           ),
           pushUndo: false,
         );
@@ -1264,12 +1303,10 @@ class _CollagePageState extends State<CollagePage> {
       final asset = await _backgroundStore.import();
       if (!mounted) return;
       setState(() => _importedBackgrounds = [..._importedBackgrounds, asset]);
-      _update(
-        _settings.copyWith(
-          background: _settings.background.copyWith(
-            mode: CollageBackgroundMode.image,
-            imagePath: asset.filePath,
-          ),
+      _applyBackground(
+        _targetBackground.copyWith(
+          mode: CollageBackgroundMode.image,
+          imagePath: asset.filePath,
         ),
       );
     } on ImportedAssetException catch (e) {
@@ -1304,16 +1341,31 @@ class _CollagePageState extends State<CollagePage> {
           .where((a) => a.id != asset.id)
           .toList();
     });
-    if (_settings.background.imagePath == asset.filePath) {
-      _update(
-        _settings.copyWith(
-          background: _settings.background.copyWith(
-            mode: CollageBackgroundMode.transparent,
-            clearImagePath: true,
-          ),
+    // A imagem apagada pode estar em uso como fundo da montagem, das fotos ou
+    // dos dois ao mesmo tempo — quem apontava para o arquivo que sumiu volta
+    // para transparente, independente do alvo selecionado agora.
+    var updated = _settings;
+    if (updated.background.imagePath == asset.filePath) {
+      updated = updated.copyWith(
+        background: updated.background.copyWith(
+          mode: CollageBackgroundMode.transparent,
+          clearImagePath: true,
         ),
       );
     }
+    if (updated.cells.any((c) => c.background.imagePath == asset.filePath)) {
+      updated = updated.updatingAllCells(
+        (cell) => cell.background.imagePath == asset.filePath
+            ? cell.copyWith(
+                background: cell.background.copyWith(
+                  mode: CollageBackgroundMode.transparent,
+                  clearImagePath: true,
+                ),
+              )
+            : cell,
+      );
+    }
+    if (!identical(updated, _settings)) _update(updated);
   }
 
   Future<ui.Image> _renderPreviewImage() async {

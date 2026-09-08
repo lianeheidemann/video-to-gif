@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../models/collage_background.dart';
 import '../../models/collage_cell.dart';
 
 /// Célula interativa de uma montagem: mostra a foto recortada ("cover") ou
@@ -9,9 +10,10 @@ import '../../models/collage_cell.dart';
 /// ajustes de cor aplicados, permite arrastar com 1 dedo e dar pinça com 2
 /// (mesmo callback `onScale*` do Flutter cobre reposicionar, girar e
 /// redimensionar ao mesmo tempo) para manipular a foto dentro da célula,
-/// duplo toque alterna entre preencher e ajustar, e um botão "..." abre o
-/// menu de ações (substituir/trocar/ajustar cor/recortar/girar 90°/
-/// espelhar/borda/recentralizar), fornecido pela tela que usa este widget.
+/// duplo toque alterna entre preencher e ajustar recentralizando a foto (ver
+/// [_CollageCellViewState._toggleFitMode]), e um botão "..." abre o menu de
+/// ações (substituir/trocar/ajustar cor/recortar/girar 90°/espelhar/borda/
+/// recentralizar), fornecido pela tela que usa este widget.
 class CollageCellView extends StatefulWidget {
   const CollageCellView({
     super.key,
@@ -113,10 +115,16 @@ class _CollageCellViewState extends State<CollageCellView> {
     );
   }
 
+  /// Duplo toque: alterna encaixar/expandir E devolve a foto ao enquadramento
+  /// padrão do modo de destino — centralizada, sem zoom e de volta à posição
+  /// horizontal (0°). Girar a foto e depois alternar o modo deixava um
+  /// enquadramento herdado do modo anterior, que raramente é o que se quer ao
+  /// pedir "encaixa isso aqui"; [CollageCellSettings.resetFraming] é o mesmo
+  /// reset que o item "Recentralizar" do menu "..." já usa.
   void _toggleFitMode() {
     widget.onGestureStart?.call();
     widget.onChanged(
-      widget.cell.copyWith(
+      widget.cell.resetFraming().copyWith(
         fitMode: switch (widget.cell.fitMode) {
           CollageCellFitMode.cover => CollageCellFitMode.contain,
           CollageCellFitMode.contain => CollageCellFitMode.cover,
@@ -168,6 +176,10 @@ class _CollageCellViewState extends State<CollageCellView> {
               // `_preview()`), não um cinza que a exportação não reproduz.
               if (!cell.hasPhoto || cell.fitMode == CollageCellFitMode.cover)
                 ColoredBox(color: theme.colorScheme.surfaceContainerHigh),
+              // Fundo próprio da foto, por baixo dela e por cima do
+              // placeholder — mesma camada que `paintCollageCell` pinta na
+              // área de conteúdo da célula antes da foto.
+              _cellBackground(cell.background),
               if (cell.hasPhoto)
                 _CellPhoto(cell: cell, cellSize: contentSize)
               else
@@ -189,6 +201,23 @@ class _CollageCellViewState extends State<CollageCellView> {
         ),
       ),
     );
+  }
+
+  /// Espelho de `CollagePage._backgroundPreview()` para o fundo de uma única
+  /// foto: nada quando transparente (o fundo da montagem continua aparecendo
+  /// por baixo), a cor escolhida, ou a imagem recortada em "cover" — o mesmo
+  /// enquadramento que `paintCollageBackground` usa na exportação.
+  Widget _cellBackground(CollageBackground background) {
+    switch (background.mode) {
+      case CollageBackgroundMode.transparent:
+        return const SizedBox.shrink();
+      case CollageBackgroundMode.color:
+        return ColoredBox(color: background.color);
+      case CollageBackgroundMode.image:
+        final path = background.imagePath;
+        if (path == null) return const SizedBox.shrink();
+        return Image.file(File(path), fit: BoxFit.cover);
+    }
   }
 }
 
@@ -262,13 +291,15 @@ class _CellPhoto extends StatelessWidget {
       cellSize.height,
       cell.rotation,
     );
-    return _CroppedCover(
-      photoPath: cell.photoPath!,
-      photoWidth: cell.photoWidth,
-      photoHeight: cell.photoHeight,
-      src: src,
-      destWidth: destWidth,
-      destHeight: destHeight,
+    return _Unclipped(
+      child: _CroppedCover(
+        photoPath: cell.photoPath!,
+        photoWidth: cell.photoWidth,
+        photoHeight: cell.photoHeight,
+        src: src,
+        destWidth: destWidth,
+        destHeight: destHeight,
+      ),
     );
   }
 
@@ -277,24 +308,47 @@ class _CellPhoto extends StatelessWidget {
     if (display == Size.zero) return null;
     final offset = cell.containDisplayOffset(cellSize);
 
-    return SizedBox.fromSize(
-      size: cellSize,
-      child: Stack(
-        children: [
-          Positioned(
-            left: cellSize.width / 2 + offset.dx - display.width / 2,
-            top: cellSize.height / 2 + offset.dy - display.height / 2,
-            width: display.width,
-            height: display.height,
-            child: Image.file(
-              File(cell.photoPath!),
-              fit: BoxFit.fill,
-              width: display.width,
-              height: display.height,
-            ),
-          ),
-        ],
+    // O deslocamento entra por dentro da rotação (este widget já é filho do
+    // `Transform.rotate` de [build]), igual ao `translate` que
+    // `paintCollageCell` aplica antes de girar o canvas na exportação.
+    return Transform.translate(
+      offset: offset,
+      child: _Unclipped(
+        child: SizedBox(
+          width: display.width,
+          height: display.height,
+          child: Image.file(File(cell.photoPath!), fit: BoxFit.fill),
+        ),
       ),
+    );
+  }
+}
+
+/// Deixa [child] ser medido no tamanho que ele mesmo pede — centralizado no
+/// espaço da célula —, mesmo quando esse tamanho passa do tamanho da célula.
+///
+/// Sem isso, as restrições apertadas que o `Stack(fit: StackFit.expand)` de
+/// [CollageCellView] impõe encolhiam o conteúdo de volta ao tamanho da
+/// célula, e a caixa resultante girava junto com a foto (é filha do
+/// [Transform.rotate]): em "cover" a foto girada saía espremida (a prévia
+/// divergia de `paintCollageCell`, que desenha no tamanho do
+/// [rotatedFootprint]) e em "contain" ela era cortada por um retângulo
+/// girado ao ampliar depois de girar. Quem recorta é só o [ClipRRect] da
+/// célula, que não gira.
+class _Unclipped extends StatelessWidget {
+  const _Unclipped({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return OverflowBox(
+      alignment: Alignment.center,
+      minWidth: 0,
+      minHeight: 0,
+      maxWidth: double.infinity,
+      maxHeight: double.infinity,
+      child: child,
     );
   }
 }

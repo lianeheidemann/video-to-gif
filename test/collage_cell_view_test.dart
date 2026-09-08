@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
 
@@ -77,6 +79,134 @@ void main() {
     await tester.pumpAndSettle();
     return (gestureStarts, changes);
   }
+
+  /// Monta a célula sozinha, sem a tela de montagem em volta.
+  Future<void> pumpCell(
+    WidgetTester tester,
+    CollageCellSettings cell, {
+    ValueChanged<CollageCellSettings>? onChanged,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox.fromSize(
+              size: cellSize,
+              child: CollageCellView(
+                cell: cell,
+                cellSize: cellSize,
+                onChanged: onChanged ?? (_) {},
+                onMenu: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  testWidgets('duplo toque alterna o modo e recentraliza na horizontal', (
+    tester,
+  ) async {
+    final cell = CollageCellSettings(
+      photoPath: photoPath,
+      photoWidth: 100,
+      photoHeight: 100,
+      zoom: 2.5,
+      rotation: math.pi / 5,
+      offsetX: 0.6,
+      offsetY: -0.4,
+      flipHorizontal: true,
+    );
+    CollageCellSettings? changed;
+    await pumpCell(tester, cell, onChanged: (updated) => changed = updated);
+
+    await tester.tap(find.byType(CollageCellView));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byType(CollageCellView));
+    await tester.pumpAndSettle();
+
+    expect(changed, isNotNull);
+    expect(changed!.fitMode, CollageCellFitMode.contain);
+    expect(changed!.rotation, 0);
+    expect(changed!.zoom, CollageCellSettings.minZoom);
+    expect(changed!.offsetX, 0);
+    expect(changed!.offsetY, 0);
+    // A foto e o recorte manual continuam intactos: o duplo toque mexe só no
+    // enquadramento.
+    expect(changed!.photoPath, photoPath);
+  });
+
+  testWidgets('foto girada em "ajustar" não é cortada pelo quadro da célula', (
+    tester,
+  ) async {
+    // Foto ampliada e girada: o widget da imagem tem que ser medido no
+    // tamanho que `containDisplaySize` pede. Antes, a caixa do tamanho da
+    // célula (que gira junto com a foto) recortava o excedente e o resultado
+    // era a foto presa num retângulo girado.
+    final cell = CollageCellSettings(
+      photoPath: photoPath,
+      photoWidth: 100,
+      photoHeight: 100,
+      fitMode: CollageCellFitMode.contain,
+      rotation: math.pi / 6,
+      zoom: 2,
+    );
+    await pumpCell(tester, cell);
+
+    final display = cell.containDisplaySize(cellSize);
+    expect(display.width, greaterThan(cellSize.width));
+    expect(tester.getSize(find.byType(Image)), display);
+  });
+
+  testWidgets(
+    'foto girada em "preencher" é desenhada no tamanho do footprint',
+    (tester) async {
+      // Mesma matemática de `paintCollageCell` na exportação: a foto precisa
+      // sobrar o suficiente para cobrir a célula depois de girada, então a
+      // caixa do conteúdo é maior que a célula — se as restrições apertadas do
+      // `Stack` a encolhessem, a prévia sairia espremida.
+      final cell = CollageCellSettings(
+        photoPath: photoPath,
+        photoWidth: 100,
+        photoHeight: 100,
+        rotation: math.pi / 6,
+      );
+      await pumpCell(tester, cell);
+
+      final (footprintW, footprintH) = rotatedFootprint(
+        cellSize.width,
+        cellSize.height,
+        cell.rotation,
+      );
+      final size = tester.getSize(find.byType(FittedBox));
+      expect(size.width, closeTo(footprintW, 0.01));
+      expect(size.height, closeTo(footprintH, 0.01));
+    },
+  );
+
+  testWidgets('fundo próprio da foto aparece por baixo dela', (tester) async {
+    await pumpCell(
+      tester,
+      CollageCellSettings(
+        photoPath: photoPath,
+        photoWidth: 100,
+        photoHeight: 100,
+        fitMode: CollageCellFitMode.contain,
+        background: const CollageBackground(
+          mode: CollageBackgroundMode.color,
+          color: Color(0xFF0000FF),
+        ),
+      ),
+    );
+
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is ColoredBox && w.color == const Color(0xFF0000FF),
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'arrastar uma foto sem folga nenhuma não gasta um passo de desfazer',

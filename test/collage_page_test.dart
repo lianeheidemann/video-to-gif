@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/photo_info.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
+import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
   final recorder = ui.PictureRecorder();
@@ -166,5 +168,43 @@ void main() {
     expect(find.text('Transparente'), findsOneWidget);
     expect(find.text('Cor'), findsOneWidget);
     expect(find.text('Imagem'), findsOneWidget);
+  });
+
+  testWidgets('fundo com alvo "Fotos" muda só as fotos, não a montagem', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.text('Fundo'), 200, scrollable: page);
+    await tester.tap(find.text('Fundo'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Fotos'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Cor'));
+    await tester.pumpAndSettle();
+
+    final cells = tester.widgetList<CollageCellView>(
+      find.byType(CollageCellView),
+    );
+    expect(cells, isNotEmpty);
+    for (final view in cells) {
+      expect(view.cell.background.mode, CollageBackgroundMode.color);
+    }
+
+    // Voltando o alvo para "Montagem", o fundo da montagem continua
+    // transparente: as duas escolhas são independentes.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Montagem'));
+    await tester.pumpAndSettle();
+    final transparentChip = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, 'Transparente'),
+    );
+    expect(transparentChip.selected, isTrue);
   });
 }
