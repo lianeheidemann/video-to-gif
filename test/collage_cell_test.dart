@@ -1,9 +1,11 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart'
     show Canvas, Color, ColorFilter, Offset, Paint, Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
+import 'package:video_to_gif/models/crop_rect.dart';
 
 /// Desenha um retângulo de cor conhecida com [filter] aplicado e devolve o
 /// pixel resultante (R,G,B,A) — evita depender de `ColorFilter` ter
@@ -83,9 +85,47 @@ void main() {
       },
     );
 
+    test(
+      'nunca deixa buraco também em rotação livre (não só múltiplos de 90°)',
+      () {
+        // O ponto central da rotação livre: girar por um ângulo qualquer
+        // continua exigindo que o recorte de origem caiba dentro da foto —
+        // `rotatedFootprint` precisa inflar a folga corretamente em QUALQUER
+        // ângulo, não só nos 4 que o antigo `CellRotation` cobria.
+        const cell = CollageCellSettings(photoWidth: 800, photoHeight: 600);
+        for (final degrees in [15, 30, 45, 60, 75, 120, 200, 333]) {
+          final rect = cell
+              .copyWith(rotation: degrees * math.pi / 180)
+              .coverSrcRect(const Size(150, 100));
+          expect(rect, isNot(Rect.zero));
+          expect(rect.left, greaterThanOrEqualTo(-0.01));
+          expect(rect.top, greaterThanOrEqualTo(-0.01));
+          expect(rect.right, lessThanOrEqualTo(800.01));
+          expect(rect.bottom, lessThanOrEqualTo(600.01));
+        }
+      },
+    );
+
     test('sem foto devolve Rect.zero', () {
       const cell = CollageCellSettings();
       expect(cell.coverSrcRect(const Size(100, 100)), Rect.zero);
+    });
+
+    test('com manualCrop, trata a sub-região como a "foto" inteira', () {
+      // Foto de 1000x1000 com um recorte manual de 400x300 a partir de
+      // (100,100) — coverSrcRect deve operar só dentro dessa sub-região (sem
+      // zoom/offset, o resultado é a própria sub-região) e continuar
+      // expressando o retângulo final em pixels da foto ORIGINAL.
+      const cell = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 1000,
+        manualCrop: CropRect(x: 100, y: 100, width: 400, height: 300),
+      );
+      final rect = cell.coverSrcRect(const Size(400, 300));
+      expect(rect.left, closeTo(100, 0.01));
+      expect(rect.top, closeTo(100, 0.01));
+      expect(rect.width, closeTo(400, 0.01));
+      expect(rect.height, closeTo(300, 0.01));
     });
   });
 
@@ -123,24 +163,32 @@ void main() {
 
   group('rotação e espelhamento', () {
     test('girar 90° quatro vezes volta ao começo', () {
-      var rotation = CellRotation.none;
+      var rotation = 0.0;
       for (var i = 0; i < 4; i++) {
-        rotation = rotation.next;
+        rotation += math.pi / 2;
       }
-      expect(rotation, CellRotation.none);
+      // 4 * pi/2 == 2*pi: mesmo ângulo que 0°, mas não necessariamente o
+      // mesmo double exato — a rotação é contínua agora, então comparamos
+      // pelo cosseno/seno (periódicos), não pelo valor bruto.
+      expect(math.cos(rotation), closeTo(math.cos(0), 0.0001));
+      expect(math.sin(rotation), closeTo(math.sin(0), 0.0001));
     });
 
     test('aspectRatio troca largura/altura só nos giros de 90°/270°', () {
       const cell = CollageCellSettings(photoWidth: 1000, photoHeight: 500);
       expect(cell.aspectRatio, closeTo(2.0, 0.001));
       expect(
-        cell.copyWith(rotation: CellRotation.quarter).aspectRatio,
+        cell.copyWith(rotation: math.pi / 2).aspectRatio,
         closeTo(0.5, 0.001),
       );
-      expect(
-        cell.copyWith(rotation: CellRotation.half).aspectRatio,
-        closeTo(2.0, 0.001),
-      );
+      expect(cell.copyWith(rotation: math.pi).aspectRatio, closeTo(2.0, 0.001));
+    });
+
+    test('aspectRatio em ângulo livre fica entre os dois extremos', () {
+      const cell = CollageCellSettings(photoWidth: 1000, photoHeight: 500);
+      final at45 = cell.copyWith(rotation: math.pi / 4).aspectRatio;
+      expect(at45, greaterThan(0.5));
+      expect(at45, lessThan(2.0));
     });
   });
 
@@ -180,26 +228,116 @@ void main() {
   });
 
   group('resetFraming', () {
-    test('mantém foto e ajustes de cor, reseta enquadramento', () {
+    test('mantém foto, recorte manual, cor e borda; reseta enquadramento', () {
+      const crop = CropRect(x: 10, y: 10, width: 50, height: 50);
       const cell = CollageCellSettings(
         photoPath: '/tmp/foo.jpg',
         photoWidth: 100,
         photoHeight: 100,
+        manualCrop: crop,
         offsetX: 0.5,
         offsetY: -0.5,
         zoom: 2,
-        rotation: CellRotation.quarter,
+        rotation: math.pi / 2,
         flipHorizontal: true,
         brightness: 0.3,
+        borderThicknessAtReference: 6,
       );
       final reset = cell.resetFraming();
       expect(reset.photoPath, cell.photoPath);
+      expect(reset.manualCrop, crop);
       expect(reset.brightness, cell.brightness);
+      expect(reset.borderThicknessAtReference, cell.borderThicknessAtReference);
       expect(reset.offsetX, 0);
       expect(reset.offsetY, 0);
       expect(reset.zoom, CollageCellSettings.minZoom);
-      expect(reset.rotation, CellRotation.none);
+      expect(reset.rotation, 0.0);
       expect(reset.flipHorizontal, isFalse);
+    });
+  });
+
+  group('modo ajustar (contain)', () {
+    test('zoom 1 mostra a foto inteira, sem cortar', () {
+      const cell = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 500,
+        fitMode: CollageCellFitMode.contain,
+      );
+      // Foto bem mais larga (2:1) que a célula quadrada: o "ajustar" clássico
+      // bate exatamente na largura da célula e sobra espaço na altura.
+      final display = cell.containDisplaySize(const Size(200, 200));
+      expect(display.width, closeTo(200, 0.01));
+      expect(display.height, closeTo(100, 0.01));
+    });
+
+    test('zoom acima de 1 amplia a partir do "ajustar" puro', () {
+      const base = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 500,
+        fitMode: CollageCellFitMode.contain,
+      );
+      final at1 = base.containDisplaySize(const Size(200, 200));
+      final at2 = base
+          .copyWith(zoom: 2)
+          .containDisplaySize(const Size(200, 200));
+      expect(at2.width, closeTo(at1.width * 2, 0.01));
+      expect(at2.height, closeTo(at1.height * 2, 0.01));
+    });
+
+    test('sem foto, containDisplaySize é zero', () {
+      const cell = CollageCellSettings(fitMode: CollageCellFitMode.contain);
+      expect(cell.containDisplaySize(const Size(100, 100)), Size.zero);
+    });
+
+    test('containDisplayOffset move a foto mesmo no zoom mínimo, baseado no '
+        'tamanho da célula', () {
+      const cell = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 500,
+        fitMode: CollageCellFitMode.contain,
+        offsetX: 1.0,
+        offsetY: -1.0,
+      );
+      // zoom == minZoom (o padrão): antes desta mudança o alcance zerava
+      // exatamente aqui, travando a foto centralizada até ampliar.
+      expect(cell.zoom, CollageCellSettings.minZoom);
+      final offset = cell.containDisplayOffset(const Size(200, 200));
+      expect(offset.dx, closeTo(100, 0.01));
+      expect(offset.dy, closeTo(-100, 0.01));
+    });
+
+    test('containOffsetDeltaForDrag converte arrasto em incremento mesmo no '
+        'zoom mínimo', () {
+      const cell = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 500,
+        fitMode: CollageCellFitMode.contain,
+      );
+      final delta = cell.containOffsetDeltaForDrag(
+        const Offset(20, 0),
+        const Size(200, 200),
+      );
+      expect(delta.dx, closeTo(0.2, 0.001));
+      expect(delta.dy, 0);
+    });
+  });
+
+  group('borda por foto', () {
+    test('espessura escala proporcionalmente à largura da célula', () {
+      const cell = CollageCellSettings(borderThicknessAtReference: 12);
+      expect(
+        cell.borderThicknessFor(CollageCellSettings.referenceWidth),
+        closeTo(12, 0.001),
+      );
+      expect(
+        cell.borderThicknessFor(CollageCellSettings.referenceWidth * 2),
+        closeTo(24, 0.001),
+      );
+    });
+
+    test('espessura zero por padrão (sem borda própria)', () {
+      const cell = CollageCellSettings();
+      expect(cell.borderThicknessFor(480), 0);
     });
   });
 }

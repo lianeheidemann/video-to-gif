@@ -2,12 +2,15 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart' show Canvas, Color, Paint, Rect;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
 import 'package:video_to_gif/models/collage_layout.dart';
 import 'package:video_to_gif/models/collage_settings.dart';
+import 'package:video_to_gif/models/collage_text.dart';
 import 'package:video_to_gif/services/collage_compositor.dart';
 
 /// Grava um PNG sólido de [width]x[height] na cor [color] em [path] — usado
@@ -318,6 +321,188 @@ void main() {
       // ...e o lugar da que sumiu fica com o fundo, sem exceção nenhuma.
       final rightPixel = await _decodePixel(bytes, outputWidth, 150, 50);
       expect(rightPixel[1], greaterThan(200));
+    },
+  );
+
+  test(
+    'modo "ajustar" mostra o fundo da montagem na sobra, não um vazio',
+    () async {
+      // Foto quadrada numa célula bem mais larga que alta: em "contain" ela
+      // fica menor que a célula nos dois eixos que sobram, e a sobra
+      // (esquerda/direita) precisa mostrar o fundo da montagem.
+      final photoPath = '${tempDir.path}/quadrada.png';
+      await _writeSolidPng(photoPath, 100, 100, const Color(0xFFFF0000));
+
+      final settings = CollageSettings(
+        layout: CollageLayout.row(1),
+        aspectRatio: 4.0,
+        marginRatio: 0,
+        background: const CollageBackground(
+          mode: CollageBackgroundMode.color,
+          color: Color(0xFF00FF00),
+        ),
+        cells: [
+          CollageCellSettings(
+            photoPath: photoPath,
+            photoWidth: 100,
+            photoHeight: 100,
+            fitMode: CollageCellFitMode.contain,
+          ),
+        ],
+      );
+
+      const outputWidth = 400;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      // Canvas 400x100: a foto quadrada em "ajustar" vira 100x100 centralizada
+      // (x em [150,250]). Fora dela, nas laterais, é o fundo verde.
+      final centerPixel = await _decodePixel(bytes, outputWidth, 200, 50);
+      expect(centerPixel[0], greaterThan(200)); // foto vermelha no centro
+
+      final sidePixel = await _decodePixel(bytes, outputWidth, 20, 50);
+      expect(sidePixel[1], greaterThan(200)); // fundo verde na lateral
+      expect(sidePixel[0], lessThan(50));
+    },
+  );
+
+  test('borda própria da foto forma um anel ao redor dela', () async {
+    final photoPath = '${tempDir.path}/foto.png';
+    await _writeSolidPng(photoPath, 100, 100, const Color(0xFFFF0000));
+
+    final settings = CollageSettings(
+      layout: CollageLayout.row(1),
+      aspectRatio: 1.0,
+      marginRatio: 0,
+      background: const CollageBackground(
+        mode: CollageBackgroundMode.color,
+        color: Color(0xFF0000FF),
+      ),
+      cells: [
+        CollageCellSettings(
+          photoPath: photoPath,
+          photoWidth: 100,
+          photoHeight: 100,
+          borderThicknessAtReference: 40,
+          borderColor: const Color(0xFF00FF00),
+        ),
+      ],
+    );
+
+    const outputWidth = 480;
+    final bytes = await composeCollage(
+      settings: settings,
+      outputWidth: outputWidth,
+    );
+
+    // Espessura efetiva na largura 480: 40 * (480/480) = 40px.
+    final ringPixel = await _decodePixel(bytes, outputWidth, 10, 240);
+    expect(ringPixel[1], greaterThan(200)); // anel verde
+    expect(ringPixel[0], lessThan(50));
+
+    final centerPixel = await _decodePixel(bytes, outputWidth, 240, 240);
+    expect(centerPixel[0], greaterThan(200)); // foto vermelha no centro
+  });
+
+  test(
+    'foto girada livremente (não só 90°) continua cobrindo a célula inteira',
+    () async {
+      final photoPath = '${tempDir.path}/foto.png';
+      await _writeSolidPng(photoPath, 100, 100, const Color(0xFFFF0000));
+
+      final settings = CollageSettings(
+        layout: CollageLayout.row(1),
+        aspectRatio: 1.0,
+        marginRatio: 0,
+        background: const CollageBackground(
+          mode: CollageBackgroundMode.color,
+          color: Color(0xFF0000FF),
+        ),
+        cells: [
+          CollageCellSettings(
+            photoPath: photoPath,
+            photoWidth: 100,
+            photoHeight: 100,
+            rotation: 30 * math.pi / 180,
+          ),
+        ],
+      );
+
+      const outputWidth = 200;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      // Amostra os 4 cantos e o centro da célula (canvas 200x200 sem borda):
+      // nenhum ponto pode mostrar o fundo azul vazando por baixo da foto
+      // girada — é exatamente o que `rotatedFootprint` existe para evitar.
+      for (final point in [
+        (4, 4),
+        (196, 4),
+        (4, 196),
+        (196, 196),
+        (100, 100),
+      ]) {
+        final pixel = await _decodePixel(
+          bytes,
+          outputWidth,
+          point.$1,
+          point.$2,
+        );
+        expect(
+          pixel[0],
+          greaterThan(200),
+          reason: 'ponto ${point.$1},${point.$2} deveria ser a foto vermelha',
+        );
+      }
+    },
+  );
+
+  test(
+    'texto com fonte embutida (fontFamily) é desenhado na exportação',
+    () async {
+      // Sem foto/aba de fundo nenhuma: só um texto branco grande sobre fundo
+      // preto, com uma das fontes embutidas — protege a fiação de
+      // `item.fontFamily` até o `TextStyle` de `_TextOverlay.paint` (se o
+      // parâmetro se perdesse no caminho, o texto ainda apareceria, só que
+      // sem essa cobertura não haveria como notar a regressão).
+      final settings =
+          CollageSettings(
+            layout: CollageLayout.row(1),
+            aspectRatio: 1.0,
+            background: const CollageBackground(
+              mode: CollageBackgroundMode.color,
+              color: Color(0xFF000000),
+            ),
+            cells: const [CollageCellSettings()],
+          ).addingText(
+            const CollageTextItem(
+              id: 't1',
+              text: 'AAAA',
+              color: Color(0xFFFFFFFF),
+              fontSizeRatio: 0.4,
+              centerX: 0.5,
+              centerY: 0.5,
+              zIndex: 1,
+              fontFamily: 'Bebas Neue',
+            ),
+          );
+
+      const outputWidth = 200;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      final centerPixel = await _decodePixel(bytes, outputWidth, 100, 100);
+      expect(
+        centerPixel[0],
+        greaterThan(200),
+        reason: 'o texto branco deveria cobrir o centro do canvas',
+      );
     },
   );
 }

@@ -16,11 +16,18 @@ class CollageTextItem {
     this.scale = 1.0,
     this.rotation = 0.0,
     required this.zIndex,
+    this.fontFamily,
   });
 
   final String id;
   final String text;
   final Color color;
+
+  /// `null` = fonte padrão do tema (nenhum asset embutido para carregar).
+  /// Um dos nomes de família registrados no bloco `fonts:` do `pubspec.yaml`
+  /// (ver [bundledCollageFonts]) quando o usuário escolhe uma fonte
+  /// embutida.
+  final String? fontFamily;
 
   /// Tamanho da fonte como fração do menor lado do canvas — proporcional,
   /// nunca pixels fixos, mesmo princípio do resto do app.
@@ -54,6 +61,8 @@ class CollageTextItem {
     double? scale,
     double? rotation,
     int? zIndex,
+    String? fontFamily,
+    bool clearFontFamily = false,
   }) {
     return CollageTextItem(
       id: id,
@@ -66,6 +75,19 @@ class CollageTextItem {
       scale: scale ?? this.scale,
       rotation: rotation ?? this.rotation,
       zIndex: zIndex ?? this.zIndex,
+      fontFamily: clearFontFamily ? null : (fontFamily ?? this.fontFamily),
     );
   }
 }
+
+/// Fontes embutidas no app (offline, sem baixar nada em tempo de execução —
+/// mesmo espírito dos 5 stickers embutidos em `assets/sticker/`), oferecidas
+/// como opção para o texto da montagem. `null` é "Padrão" (a fonte do tema).
+const bundledCollageFonts = <(String? family, String label)>[
+  (null, 'Padrão'),
+  ('Poppins', 'Poppins'),
+  ('Playfair Display', 'Playfair Display'),
+  ('Pacifico', 'Pacifico'),
+  ('Bebas Neue', 'Bebas Neue'),
+  ('Space Mono', 'Space Mono'),
+];

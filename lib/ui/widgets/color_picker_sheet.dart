@@ -65,10 +65,22 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   late Color _color = widget.initialColor;
   bool _samplingPreview = false;
 
+  /// A roda HSV começa aberta só quando a cor atual já é customizada (não
+  /// bate com nenhum swatch fixo) — senão fica recolhida, e só a bolinha de
+  /// cor customizada (entre os swatches) abre/fecha ela.
+  late bool _wheelOpen = !collageColorSwatches.contains(_color);
+
   void _select(Color color) {
     setState(() => _color = color);
     widget.onColorSelected(color);
   }
+
+  void _selectSwatch(Color color) {
+    setState(() => _wheelOpen = false);
+    _select(color);
+  }
+
+  void _toggleWheel() => setState(() => _wheelOpen = !_wheelOpen);
 
   Future<void> _startEyedropper() async {
     setState(() => _samplingPreview = true);
@@ -133,24 +145,44 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                   for (final color in collageColorSwatches)
                     _SwatchButton(
                       color: color,
-                      selected: color == _color,
-                      onTap: () => _select(color),
+                      selected: !_wheelOpen && color == _color,
+                      onTap: () => _selectSwatch(color),
                     ),
+                  _CustomColorButton(
+                    color: _color,
+                    // "Customizada" tanto quando a cor atual já é uma cor
+                    // fora da paleta fixa quanto quando a roda está aberta
+                    // (o usuário pode estar mexendo nela ainda sem ter saído
+                    // de um swatch) — nos dois casos mostra a cor atual em
+                    // vez do gradiente neutro.
+                    isCustom:
+                        _wheelOpen || !collageColorSwatches.contains(_color),
+                    onTap: _toggleWheel,
+                  ),
                   _EyedropperButton(
                     busy: _samplingPreview,
                     onTap: _startEyedropper,
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              ColorPicker(
-                key: const ValueKey('collageColorPickerWheel'),
-                pickerColor: _color,
-                onColorChanged: _select,
-                enableAlpha: false,
-                displayThumbColor: true,
-                labelTypes: const [],
-                pickerAreaHeightPercent: 0.7,
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                alignment: Alignment.topCenter,
+                child: !_wheelOpen
+                    ? const SizedBox(width: double.infinity)
+                    : Padding(
+                        padding: const EdgeInsets.only(top: 20),
+                        child: ColorPicker(
+                          key: const ValueKey('collageColorPickerWheel'),
+                          pickerColor: _color,
+                          onColorChanged: _select,
+                          enableAlpha: false,
+                          displayThumbColor: true,
+                          labelTypes: const [],
+                          pickerAreaHeightPercent: 0.7,
+                        ),
+                      ),
               ),
             ],
           ),
@@ -190,6 +222,66 @@ class _SwatchButton extends StatelessWidget {
           ),
         ),
         child: selected
+            ? Icon(
+                Icons.check_rounded,
+                size: 18,
+                color: color.computeLuminance() > 0.5
+                    ? Colors.black
+                    : Colors.white,
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+/// Bolinha entre os swatches que abre/fecha a roda HSV completa — mostra a
+/// própria [color] (com a marca de seleção, mesmo padrão de [_SwatchButton])
+/// quando [isCustom], ou um gradiente arco-íris neutro quando a cor atual
+/// ainda é só um dos swatches fixos.
+class _CustomColorButton extends StatelessWidget {
+  const _CustomColorButton({
+    required this.color,
+    required this.isCustom,
+    required this.onTap,
+  });
+
+  final Color color;
+  final bool isCustom;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: isCustom ? color : null,
+          gradient: isCustom
+              ? null
+              : const SweepGradient(
+                  colors: [
+                    Color(0xFFFF0000),
+                    Color(0xFFFFFF00),
+                    Color(0xFF00FF00),
+                    Color(0xFF00FFFF),
+                    Color(0xFF0000FF),
+                    Color(0xFFFF00FF),
+                    Color(0xFFFF0000),
+                  ],
+                ),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isCustom
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outlineVariant,
+            width: isCustom ? 3 : 1.5,
+          ),
+        ),
+        child: isCustom
             ? Icon(
                 Icons.check_rounded,
                 size: 18,

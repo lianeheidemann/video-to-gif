@@ -14,6 +14,7 @@ import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
 import '../theme_controller.dart';
 import 'converting_page.dart';
+import 'widgets/crop_overlay.dart';
 import 'widgets/cropped_view.dart';
 import 'widgets/frame_painter.dart';
 import 'widgets/labeled_section.dart';
@@ -30,20 +31,6 @@ const _selectableContentFitModes = [
   ContentFitMode.fill,
   ContentFitMode.expand,
 ];
-
-/// As alças de canto e de borda usadas para redimensionar a janela de
-/// recorte. As de borda (top/bottom/left/right) só aparecem no preset
-/// "Personalizados", onde largura e altura são independentes.
-enum _CropHandle {
-  topLeft,
-  topRight,
-  bottomLeft,
-  bottomRight,
-  top,
-  bottom,
-  left,
-  right,
-}
 
 /// As duas abas do editor: "Ajustar" (duração, recorte, velocidade,
 /// resolução, cor — tudo que define o tamanho do GIF) e "Frame" (a moldura
@@ -1718,8 +1705,8 @@ class _EditorPageState extends State<EditorPage> {
           children: [
             VideoPlayer(player),
             _playPauseOverlay(player),
-            _CropOverlay(
-              video: _video,
+            CropOverlay(
+              bounds: Size(_video.width.toDouble(), _video.height.toDouble()),
               crop: _settings.crop,
               onResize: _resizeCropFromHandle,
               onMove: _moveCropFromHandle,
@@ -1812,7 +1799,7 @@ class _EditorPageState extends State<EditorPage> {
   /// pixels do vídeo e recalcula o recorte, livre ou travado à proporção
   /// selecionada.
   void _resizeCropFromHandle(
-    _CropHandle handle,
+    CropHandle handle,
     Offset displayDelta,
     Size previewSize,
   ) {
@@ -1826,8 +1813,23 @@ class _EditorPageState extends State<EditorPage> {
 
     final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
     final next = ratio == null
-        ? _resizeFreeCrop(crop, handle, dx, dy)
-        : _resizeLockedCrop(crop, handle, dx, dy, ratio);
+        ? resizeFreeCrop(
+            crop,
+            handle,
+            dx,
+            dy,
+            boundsWidth: _video.width,
+            boundsHeight: _video.height,
+          )
+        : resizeLockedCrop(
+            crop,
+            handle,
+            dx,
+            dy,
+            ratio,
+            boundsWidth: _video.width,
+            boundsHeight: _video.height,
+          );
 
     if (next.width == crop.width &&
         next.height == crop.height &&
@@ -1863,195 +1865,6 @@ class _EditorPageState extends State<EditorPage> {
         crop: crop.copyWith(x: x, y: y),
       ),
     );
-  }
-
-  /// Redimensiona o recorte movendo só o canto arrastado, sem travar a
-  /// proporção (usado no preset "Personalizado").
-  CropRect _resizeFreeCrop(
-    CropRect crop,
-    _CropHandle handle,
-    double dx,
-    double dy,
-  ) {
-    const minSize = 32;
-    var left = crop.x.toDouble();
-    var top = crop.y.toDouble();
-    var right = (crop.x + crop.width).toDouble();
-    var bottom = (crop.y + crop.height).toDouble();
-
-    switch (handle) {
-      case _CropHandle.topLeft:
-        left += dx;
-        top += dy;
-      case _CropHandle.topRight:
-        right += dx;
-        top += dy;
-      case _CropHandle.bottomLeft:
-        left += dx;
-        bottom += dy;
-      case _CropHandle.bottomRight:
-        right += dx;
-        bottom += dy;
-      case _CropHandle.top:
-        top += dy;
-      case _CropHandle.bottom:
-        bottom += dy;
-      case _CropHandle.left:
-        left += dx;
-      case _CropHandle.right:
-        right += dx;
-    }
-
-    left = left.clamp(0.0, right - minSize);
-    top = top.clamp(0.0, bottom - minSize);
-    right = right.clamp(left + minSize, _video.width.toDouble());
-    bottom = bottom.clamp(top + minSize, _video.height.toDouble());
-
-    var width = _even((right - left).round());
-    var height = _even((bottom - top).round());
-    width = width.clamp(2, _video.width);
-    height = height.clamp(2, _video.height);
-
-    var x = left.round().clamp(0, _video.width - width);
-    var y = top.round().clamp(0, _video.height - height);
-
-    if (handle == _CropHandle.topLeft ||
-        handle == _CropHandle.bottomLeft ||
-        handle == _CropHandle.left) {
-      x = (right.round() - width).clamp(0, _video.width - width);
-    }
-    if (handle == _CropHandle.topLeft ||
-        handle == _CropHandle.topRight ||
-        handle == _CropHandle.top) {
-      y = (bottom.round() - height).clamp(0, _video.height - height);
-    }
-
-    return CropRect(x: x, y: y, width: width, height: height);
-  }
-
-  /// Redimensiona o recorte mantendo a proporção [ratio] fixa: o canto
-  /// oposto ao que foi arrastado fica ancorado, e a escala do arraste em
-  /// ambos os eixos é combinada para decidir o novo tamanho.
-  CropRect _resizeLockedCrop(
-    CropRect crop,
-    _CropHandle handle,
-    double dx,
-    double dy,
-    double ratio,
-  ) {
-    const minSide = 32.0;
-    // As alças de borda (top/bottom/left/right) só existem no modo livre
-    // ("Personalizados"), que nunca chama esta função — os ramos delas
-    // abaixo são inalcançáveis em tempo de execução e só existem para o
-    // switch exaustivo sobre `_CropHandle` compilar; foram agrupados com
-    // o canto/lado correspondente para manter os valores plausíveis.
-    final deltaW = switch (handle) {
-      _CropHandle.topLeft || _CropHandle.bottomLeft || _CropHandle.left => -dx,
-      _CropHandle.topRight ||
-      _CropHandle.bottomRight ||
-      _CropHandle.right => dx,
-      _CropHandle.top || _CropHandle.bottom => 0.0,
-    };
-    final deltaH = switch (handle) {
-      _CropHandle.topLeft || _CropHandle.topRight || _CropHandle.top => -dy,
-      _CropHandle.bottomLeft ||
-      _CropHandle.bottomRight ||
-      _CropHandle.bottom => dy,
-      _CropHandle.left || _CropHandle.right => 0.0,
-    };
-
-    final widthChange = deltaW / crop.width;
-    final heightChange = deltaH / crop.height;
-    final scaleChange = (widthChange + heightChange) / 2;
-
-    var width = crop.width * (1 + scaleChange);
-    var height = width / ratio;
-
-    if (height < minSide) {
-      height = minSide;
-      width = height * ratio;
-    }
-    if (width < minSide) {
-      width = minSide;
-      height = width / ratio;
-    }
-
-    final anchorX = switch (handle) {
-      _CropHandle.topLeft ||
-      _CropHandle.bottomLeft ||
-      _CropHandle.left => (crop.x + crop.width).toDouble(),
-      _CropHandle.topRight ||
-      _CropHandle.bottomRight ||
-      _CropHandle.right ||
-      _CropHandle.top ||
-      _CropHandle.bottom => crop.x.toDouble(),
-    };
-    final anchorY = switch (handle) {
-      _CropHandle.topLeft ||
-      _CropHandle.topRight ||
-      _CropHandle.top => (crop.y + crop.height).toDouble(),
-      _CropHandle.bottomLeft ||
-      _CropHandle.bottomRight ||
-      _CropHandle.bottom ||
-      _CropHandle.left ||
-      _CropHandle.right => crop.y.toDouble(),
-    };
-
-    final maxWidthByX = switch (handle) {
-      _CropHandle.topLeft ||
-      _CropHandle.bottomLeft ||
-      _CropHandle.left => anchorX,
-      _CropHandle.topRight ||
-      _CropHandle.bottomRight ||
-      _CropHandle.right ||
-      _CropHandle.top ||
-      _CropHandle.bottom => _video.width - anchorX,
-    };
-    final maxHeightByY = switch (handle) {
-      _CropHandle.topLeft || _CropHandle.topRight || _CropHandle.top => anchorY,
-      _CropHandle.bottomLeft ||
-      _CropHandle.bottomRight ||
-      _CropHandle.bottom ||
-      _CropHandle.left ||
-      _CropHandle.right => _video.height - anchorY,
-    };
-
-    final maxWidth = maxWidthByX < maxHeightByY * ratio
-        ? maxWidthByX
-        : maxHeightByY * ratio;
-    width = width.clamp(2.0, maxWidth);
-    height = width / ratio;
-
-    var evenWidth = _even(width.round());
-    var evenHeight = _even((evenWidth / ratio).round());
-    if (evenHeight > maxHeightByY) {
-      evenHeight = _even(maxHeightByY.floor());
-      evenWidth = _even((evenHeight * ratio).round());
-    }
-
-    evenWidth = evenWidth.clamp(2, _video.width);
-    evenHeight = evenHeight.clamp(2, _video.height);
-
-    final x = switch (handle) {
-      _CropHandle.topLeft || _CropHandle.bottomLeft || _CropHandle.left =>
-        (anchorX.round() - evenWidth).clamp(0, _video.width - evenWidth),
-      _CropHandle.topRight ||
-      _CropHandle.bottomRight ||
-      _CropHandle.right ||
-      _CropHandle.top ||
-      _CropHandle.bottom => anchorX.round().clamp(0, _video.width - evenWidth),
-    };
-    final y = switch (handle) {
-      _CropHandle.topLeft || _CropHandle.topRight || _CropHandle.top =>
-        (anchorY.round() - evenHeight).clamp(0, _video.height - evenHeight),
-      _CropHandle.bottomLeft ||
-      _CropHandle.bottomRight ||
-      _CropHandle.bottom ||
-      _CropHandle.left ||
-      _CropHandle.right => anchorY.round().clamp(0, _video.height - evenHeight),
-    };
-
-    return CropRect(x: x, y: y, width: evenWidth, height: evenHeight);
   }
 
   /// Barra de progresso do vídeo com o trecho selecionado destacado; toca
@@ -2307,7 +2120,7 @@ class _EditorPageState extends State<EditorPage> {
       }
 
       _settings = _settings.copyWith(
-        crop: CropRect.centered(_video, preset.ratio!),
+        crop: CropRect.centeredIn(_video.width, _video.height, preset.ratio!),
       );
     });
   }
@@ -2496,7 +2309,9 @@ class _EditorPageState extends State<EditorPage> {
     }
 
     _update(
-      _settings.copyWith(crop: CropRect.centered(_video, _aspect.ratio!)),
+      _settings.copyWith(
+        crop: CropRect.centeredIn(_video.width, _video.height, _aspect.ratio!),
+      ),
     );
   }
 
@@ -2911,211 +2726,6 @@ class _EditorPageState extends State<EditorPage> {
     int gcd(int a, int b) => b == 0 ? a : gcd(b, a % b);
     final g = gcd(width, height);
     return '${width ~/ g}:${height ~/ g}';
-  }
-}
-
-/// Desenha, sobre a prévia do vídeo, o véu escurecendo a área fora do
-/// recorte, a borda da janela e as alças arrastáveis (quatro cantos para
-/// redimensionar, mais um botão lateral para mover a janela inteira).
-class _CropOverlay extends StatelessWidget {
-  const _CropOverlay({
-    required this.video,
-    required this.crop,
-    required this.onResize,
-    required this.onMove,
-    required this.freeform,
-  });
-
-  final VideoInfo video;
-  final CropRect? crop;
-  final void Function(_CropHandle handle, Offset delta, Size previewSize)
-  onResize;
-  final void Function(Offset delta, Size previewSize) onMove;
-
-  /// Se true (preset "Personalizados"), também mostra as quatro alças de
-  /// borda (meio de cada lado) para redimensionar um lado por vez.
-  final bool freeform;
-
-  static const _handleBoxSize = 34.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final rect = crop;
-    if (rect == null) return const SizedBox.shrink();
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final previewSize = Size(constraints.maxWidth, constraints.maxHeight);
-        final scaleX = constraints.maxWidth / video.width;
-        final scaleY = constraints.maxHeight / video.height;
-        final left = rect.x * scaleX;
-        final top = rect.y * scaleY;
-        final width = rect.width * scaleX;
-        final height = rect.height * scaleY;
-        const veil = Color(0x8C000000);
-
-        // Mantém a bolinha inteira dentro da prévia, mesmo quando o canto da
-        // janela de recorte encosta na borda do vídeo — senão ela é cortada
-        // pelo clipe arredondado do preview e fica "escondida".
-        double clampLeft(double raw) =>
-            raw.clamp(0.0, previewSize.width - _handleBoxSize);
-        double clampTop(double raw) =>
-            raw.clamp(0.0, previewSize.height - _handleBoxSize);
-
-        // Constrói uma alça arrastável na posição dada (já limitada para
-        // não sair da área visível da prévia). As de canto são bolinhas;
-        // as de borda (meio de cada lado) são retângulos pequenos, para
-        // diferenciar visualmente que só movem um lado por vez.
-        Widget handle(_CropHandle handle, double rawLeft, double rawTop) {
-          final isEdge =
-              handle == _CropHandle.top ||
-              handle == _CropHandle.bottom ||
-              handle == _CropHandle.left ||
-              handle == _CropHandle.right;
-          final isVertical =
-              handle == _CropHandle.left || handle == _CropHandle.right;
-          final markWidth = isEdge ? (isVertical ? 8.0 : 22.0) : 15.0;
-          final markHeight = isEdge ? (isVertical ? 22.0 : 8.0) : 15.0;
-
-          return Positioned(
-            left: clampLeft(rawLeft),
-            top: clampTop(rawTop),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onPanUpdate: (details) =>
-                  onResize(handle, details.delta, previewSize),
-              child: SizedBox(
-                width: _handleBoxSize,
-                height: _handleBoxSize,
-                child: Center(
-                  child: Container(
-                    width: markWidth,
-                    height: markHeight,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: isEdge ? BoxShape.rectangle : BoxShape.circle,
-                      borderRadius: isEdge ? BorderRadius.circular(3) : null,
-                      border: Border.all(color: Colors.black54, width: 1.5),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 4,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-
-        // Botão para mover a janela inteira, ao lado dela — também travado
-        // dentro da área da prévia.
-        final moveLeft = clampLeft(left + width + 10);
-        final moveTop = clampTop(top + height / 2 - _handleBoxSize / 2);
-        final moveButton = Positioned(
-          left: moveLeft,
-          top: moveTop,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onPanUpdate: (details) => onMove(details.delta, previewSize),
-            child: Container(
-              width: _handleBoxSize,
-              height: _handleBoxSize,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 1.5),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black45,
-                    blurRadius: 4,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.open_with_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-            ),
-          ),
-        );
-
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: top,
-              child: const IgnorePointer(child: ColoredBox(color: veil)),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: top + height,
-              bottom: 0,
-              child: const IgnorePointer(child: ColoredBox(color: veil)),
-            ),
-            Positioned(
-              left: 0,
-              width: left,
-              top: top,
-              height: height,
-              child: const IgnorePointer(child: ColoredBox(color: veil)),
-            ),
-            Positioned(
-              left: left + width,
-              right: 0,
-              top: top,
-              height: height,
-              child: const IgnorePointer(child: ColoredBox(color: veil)),
-            ),
-            Positioned(
-              left: left,
-              top: top,
-              width: width,
-              height: height,
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ),
-            handle(_CropHandle.topLeft, left - 17, top - 17),
-            handle(_CropHandle.topRight, left + width - 17, top - 17),
-            handle(_CropHandle.bottomLeft, left - 17, top + height - 17),
-            handle(
-              _CropHandle.bottomRight,
-              left + width - 17,
-              top + height - 17,
-            ),
-            if (freeform) ...[
-              handle(_CropHandle.top, left + width / 2 - 17, top - 17),
-              handle(
-                _CropHandle.bottom,
-                left + width / 2 - 17,
-                top + height - 17,
-              ),
-              handle(_CropHandle.left, left - 17, top + height / 2 - 17),
-              handle(
-                _CropHandle.right,
-                left + width - 17,
-                top + height / 2 - 17,
-              ),
-            ],
-            moveButton,
-          ],
-        );
-      },
-    );
   }
 }
 

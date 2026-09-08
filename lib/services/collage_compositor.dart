@@ -224,6 +224,7 @@ class _TextOverlay extends _Overlay {
         style: TextStyle(
           color: item.color,
           fontSize: fontSize,
+          fontFamily: item.fontFamily,
           fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
         ),
       ),

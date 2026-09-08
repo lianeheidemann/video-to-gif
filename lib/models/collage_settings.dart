@@ -55,13 +55,20 @@ class CollageSettings {
   static const maxBorderThickness = 24.0;
   static const minPhotos = 2;
 
-  /// Presets de proporção comuns em redes sociais, além do slider livre.
+  /// Presets de proporção comuns em redes sociais e impressão, além do
+  /// slider livre.
   static const aspectPresets = <(String label, double ratio)>[
     ('1:1', 1.0),
     ('4:5', 4 / 5),
+    ('5:4', 5 / 4),
+    ('2:3', 2 / 3),
+    ('3:2', 3 / 2),
+    ('3:4', 3 / 4),
+    ('4:3', 4 / 3),
     ('9:16', 9 / 16),
     ('16:9', 16 / 9),
-    ('3:4', 3 / 4),
+    ('2:1', 2.0),
+    ('1:2', 0.5),
   ];
 
   double borderThicknessFor(double canvasWidth) {
@@ -119,6 +126,13 @@ class CollageSettings {
     updated[b] = tmp;
     return copyWith(cells: updated);
   }
+
+  /// Aplica [update] a todas as células de uma vez — usado pelos controles
+  /// de borda em lote ("todas as fotos"), quando não faz sentido mais uma
+  /// foto divergir da outra.
+  CollageSettings updatingAllCells(
+    CollageCellSettings Function(CollageCellSettings cell) update,
+  ) => copyWith(cells: [for (final c in cells) update(c)]);
 
   /// Adiciona um sticker acima de todas as sobreposições existentes.
   CollageSettings addingSticker(CollageSticker sticker) =>

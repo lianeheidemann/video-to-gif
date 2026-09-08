@@ -109,4 +109,10 @@ class CollageLayout {
 
   static const minFreeGridSpan = 1;
   static const maxFreeGridSpan = 4;
+
+  /// Faixa de contagem de fotos para os layouts [CollageLayoutKind.row]/
+  /// [CollageLayoutKind.column] — mesmos limites já usados como padrão ao
+  /// trocar para um desses dois layouts.
+  static const minRowColumnCount = 2;
+  static const maxRowColumnCount = 8;
 }

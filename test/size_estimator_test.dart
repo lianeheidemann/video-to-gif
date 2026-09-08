@@ -84,7 +84,7 @@ void main() {
 
     test('respeita a proporção do recorte, não a do vídeo', () {
       final settings = _base.copyWith(
-        crop: CropRect.centered(_video, 1.0),
+        crop: CropRect.centeredIn(_video.width, _video.height, 1.0),
         targetWidth: 400,
       );
       final (w, h) = settings.outputDimensions(_video);

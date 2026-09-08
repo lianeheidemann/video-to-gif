@@ -72,6 +72,37 @@ void main() {
     });
   });
 
+  group('updatingAllCells', () {
+    test('aplica a mudança em todas as células de uma vez', () {
+      final settings = CollageSettings.forLayout(CollageLayout.row(2), const [
+        _photoA,
+        _photoB,
+      ]);
+      final updated = settings.updatingAllCells(
+        (c) => c.copyWith(borderThicknessAtReference: 12),
+      );
+      expect(updated.cells[0].borderThicknessAtReference, 12);
+      expect(updated.cells[1].borderThicknessAtReference, 12);
+    });
+
+    test('não perde diferenças de foto/enquadramento já existentes', () {
+      final settings =
+          CollageSettings.forLayout(CollageLayout.row(2), const [
+            _photoA,
+            _photoB,
+          ]).replacingCell(
+            0,
+            const CollageCellSettings(photoPath: '/tmp/a.jpg', zoom: 2),
+          );
+      final updated = settings.updatingAllCells(
+        (c) => c.copyWith(cornerRatio: 0.2),
+      );
+      expect(updated.cells[0].zoom, 2.0);
+      expect(updated.cells[0].cornerRatio, 0.2);
+      expect(updated.cells[1].cornerRatio, 0.2);
+    });
+  });
+
   group('stickers/textos e zIndex', () {
     test('nextZIndex sempre fica acima do maior já usado', () {
       final settings = CollageSettings(layout: CollageLayout.row(1));

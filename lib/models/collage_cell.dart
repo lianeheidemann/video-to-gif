@@ -1,60 +1,59 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
-/// Rotação de uma foto dentro de sua célula, sempre em passos de 90° — não
-/// há necessidade de ângulo livre aqui (diferente dos stickers/texto, que
-/// podem girar livremente com dois dedos).
-enum CellRotation {
-  none(0),
-  quarter(90),
-  half(180),
-  threeQuarters(270);
+import 'crop_rect.dart';
 
-  const CellRotation(this.degrees);
+/// Como a foto de uma célula preenche o espaço disponível: [cover] sempre
+/// preenche a célula inteira sem sobra (recortando o excedente, comportamento
+/// padrão e histórico do app); [contain] mostra a foto inteira, sem cortar
+/// nada, deixando o fundo geral da montagem aparecer na sobra — alternado
+/// pelo duplo toque na célula.
+enum CollageCellFitMode { cover, contain }
 
-  final int degrees;
-
-  double get radians => degrees * math.pi / 180;
-
-  /// Equivalente para o parâmetro `quarterTurns` de [RotatedBox], usado na
-  /// prévia ao vivo — [RotatedBox] gira em múltiplos de 90° trocando a
-  /// própria caixa de layout (ao contrário de `Transform.rotate`), o que
-  /// evita ter que compensar manualmente a troca de largura/altura.
-  int get quarterTurns => degrees ~/ 90;
-
-  /// Troca largura/altura ao desenhar: só acontece nos giros de 90°/270°.
-  bool get swapsAxes => this == quarter || this == threeQuarters;
-
-  /// Próximo giro no sentido horário — usado pelo botão "Girar 90°".
-  CellRotation get next => switch (this) {
-    CellRotation.none => CellRotation.quarter,
-    CellRotation.quarter => CellRotation.half,
-    CellRotation.half => CellRotation.threeQuarters,
-    CellRotation.threeQuarters => CellRotation.none,
-  };
+/// Footprint (largura/altura) de um retângulo `w`x`h` depois de rotacionado
+/// por [angle] radianos — o bounding-box axis-aligned clássico de um
+/// retângulo girado. Usado nos dois sentidos:
+///  - em [CollageCellSettings.coverSrcRect]/[paintCollageCell]/[_CellPhoto],
+///    para saber de quanto a foto precisa "sobrar" (antes de girar) para
+///    continuar cobrindo a célula inteira depois de girada — nunca deixa
+///    canto vazio, generaliza a antiga troca de eixos em 90°/270° para
+///    qualquer ângulo (em 0°/180° devolve `(w,h)`; em 90°/270° devolve
+///    `(h,w)`, batendo com o comportamento anterior).
+///  - invertido, para o modo [CollageCellFitMode.contain]: a maior escala que
+///    ainda cabe a foto inteira dentro da célula depois de girada.
+(double, double) rotatedFootprint(double w, double h, double angle) {
+  final cosA = math.cos(angle).abs();
+  final sinA = math.sin(angle).abs();
+  return (w * cosA + h * sinA, w * sinA + h * cosA);
 }
 
 /// Configuração de uma célula da montagem: qual foto ocupa esse espaço, como
-/// ela é enquadrada (deslocamento/zoom em relação ao recorte "cover" que
-/// preenche a célula), sua rotação/espelhamento, o arredondamento do canto
-/// da própria célula e os ajustes de cor aplicados só a ela.
+/// ela é enquadrada (deslocamento/zoom/rotação livre em relação ao recorte
+/// "cover"/"contain" da célula), um recorte manual opcional (ver
+/// [manualCrop]), sua rotação/espelhamento, o arredondamento e a borda
+/// próprios da célula e os ajustes de cor aplicados só a ela.
 ///
 /// [offsetX]/[offsetY] variam sempre em `[-1, 1]` e representam a fração da
-/// folga de recorte disponível no eixo — não pixels fixos —, então
-/// [coverSrcRect] nunca deixa a foto menor que a célula (sem "buracos"),
-/// qualquer que seja o valor dentro desse intervalo.
+/// folga de recorte/deslocamento disponível no eixo — não pixels fixos —,
+/// então [coverSrcRect] nunca deixa a foto menor que a célula em modo
+/// [CollageCellFitMode.cover] (sem "buracos"), qualquer que seja o valor
+/// dentro desse intervalo.
 class CollageCellSettings {
   const CollageCellSettings({
     this.photoPath,
     this.photoWidth = 0,
     this.photoHeight = 0,
+    this.manualCrop,
     this.offsetX = 0.0,
     this.offsetY = 0.0,
     this.zoom = minZoom,
-    this.rotation = CellRotation.none,
+    this.rotation = 0.0,
     this.flipHorizontal = false,
     this.flipVertical = false,
+    this.fitMode = CollageCellFitMode.cover,
     this.cornerRatio = 0.0,
+    this.borderThicknessAtReference = 0.0,
+    this.borderColor = const Color(0xFFFFFFFF),
     this.brightness = 0.0,
     this.contrast = 0.0,
     this.saturation = 0.0,
@@ -65,20 +64,44 @@ class CollageCellSettings {
   final int photoWidth;
   final int photoHeight;
 
+  /// Recorte manual opcional (ver `PhotoCropPage`), em pixels da foto na sua
+  /// orientação nativa — sempre com a mesma proporção da célula (o recorte é
+  /// travado a essa proporção na hora de escolher). Quando presente,
+  /// [coverSrcRect]/[offsetDeltaForDrag] tratam [CropRect.width]/
+  /// [CropRect.height] como as dimensões "efetivas" da foto (em vez de
+  /// [photoWidth]/[photoHeight]) e deslocam o resultado por
+  /// [CropRect.x]/[CropRect.y] — zoom/deslocamento/rotação continuam
+  /// funcionando normalmente, só que dentro dessa sub-região em vez da foto
+  /// inteira.
+  final CropRect? manualCrop;
+
   final double offsetX;
   final double offsetY;
 
-  /// De [minZoom] (recorte "cover" padrão, preenche a célula sem sobra) a
-  /// [maxZoom].
+  /// Em [CollageCellFitMode.cover]: de [minZoom] (recorte padrão, preenche a
+  /// célula sem sobra) a [maxZoom]. Em [CollageCellFitMode.contain]: `1.0` é
+  /// a foto inteira ("ajustar" puro); acima disso amplia, podendo passar da
+  /// célula (cortado pelo próprio arredondamento da célula).
   final double zoom;
 
-  final CellRotation rotation;
+  /// Rotação livre, em radianos — ao contrário das sobreposições
+  /// (stickers/texto), a foto de célula continua presa ("cover"/"contain")
+  /// dentro da própria célula em qualquer ângulo.
+  final double rotation;
   final bool flipHorizontal;
   final bool flipVertical;
+
+  final CollageCellFitMode fitMode;
 
   /// Arredondamento do canto desta célula, como razão do menor lado da
   /// célula — mesma unidade proporcional de [FrameSettings.cornerRatio].
   final double cornerRatio;
+
+  /// Espessura da borda só desta foto (não a da montagem inteira — ver
+  /// [CollageSettings.borderThicknessAtReference] para isso), em pixels numa
+  /// largura de referência de [referenceWidth]px. `0` = sem borda própria.
+  final double borderThicknessAtReference;
+  final Color borderColor;
 
   /// Ajustes de cor, todos em `[-1, 1]` (0 = neutro).
   final double brightness;
@@ -88,52 +111,71 @@ class CollageCellSettings {
   static const minZoom = 1.0;
   static const maxZoom = 4.0;
   static const maxCornerRatio = 0.5;
+  static const maxBorderThickness = 24.0;
+
+  /// Mesmo valor de [CollageSettings.referenceWidth] — duplicado aqui (em
+  /// vez de importado) só para não criar um import circular entre os dois
+  /// arquivos de modelo.
+  static const referenceWidth = 480.0;
 
   bool get hasPhoto => photoPath != null;
 
-  /// Proporção efetiva da foto já considerando a rotação (girada 90°/270°
-  /// troca largura por altura).
-  double get aspectRatio {
-    if (photoWidth <= 0 || photoHeight <= 0) return 1;
-    final w = rotation.swapsAxes ? photoHeight : photoWidth;
-    final h = rotation.swapsAxes ? photoWidth : photoHeight;
-    return w / h;
+  /// Largura/altura "efetivas" da foto para todo o resto desta classe: a
+  /// foto inteira, ou — quando [manualCrop] está definido — só a sub-região
+  /// recortada. Única fonte de verdade para não duplicar o `if (manualCrop
+  /// != null)` em cada método.
+  double get _effectiveWidth => (manualCrop?.width ?? photoWidth).toDouble();
+  double get _effectiveHeight => (manualCrop?.height ?? photoHeight).toDouble();
+  double get _effectiveOriginX => (manualCrop?.x ?? 0).toDouble();
+  double get _effectiveOriginY => (manualCrop?.y ?? 0).toDouble();
+
+  double borderThicknessFor(double cellWidth) {
+    if (cellWidth <= 0) return borderThicknessAtReference;
+    return borderThicknessAtReference * (cellWidth / referenceWidth);
   }
 
   /// Retângulo de origem (em pixels da foto decodificada, na orientação
   /// nativa do arquivo) que cobre inteiramente uma célula de tamanho
   /// [cellSize] — o "cover" do `BoxFit.cover`, ciente de [zoom]/[offsetX]/
-  /// [offsetY] e de [rotation] (que troca a orientação efetiva do destino
-  /// antes do cálculo, já que o desenho gira o canvas depois).
+  /// [offsetY], de [rotation] (livre, qualquer ângulo — [rotatedFootprint]
+  /// calcula de quanto a foto precisa "sobrar" para cobrir a célula mesmo
+  /// depois de girada) e de [manualCrop] (ver [_effectiveWidth] etc.). Só
+  /// faz sentido em [CollageCellFitMode.cover] — em [CollageCellFitMode.
+  /// contain] use [containDisplayRect].
   Rect coverSrcRect(Size cellSize) {
-    if (photoWidth <= 0 || photoHeight <= 0 || cellSize.isEmpty) {
+    final photoW = _effectiveWidth;
+    final photoH = _effectiveHeight;
+    if (photoW <= 0 || photoH <= 0 || cellSize.isEmpty) {
       return Rect.zero;
     }
 
-    final destWidth = rotation.swapsAxes ? cellSize.height : cellSize.width;
-    final destHeight = rotation.swapsAxes ? cellSize.width : cellSize.height;
-    final srcAspect = photoWidth / photoHeight;
+    final (destWidth, destHeight) = rotatedFootprint(
+      cellSize.width,
+      cellSize.height,
+      rotation,
+    );
+    final srcAspect = photoW / photoH;
     final dstAspect = destWidth / destHeight;
 
     double baseWidth, baseHeight;
     if (srcAspect > dstAspect) {
-      baseHeight = photoHeight.toDouble();
+      baseHeight = photoH;
       baseWidth = baseHeight * dstAspect;
     } else {
-      baseWidth = photoWidth.toDouble();
+      baseWidth = photoW;
       baseHeight = baseWidth / dstAspect;
     }
 
     final z = zoom.clamp(minZoom, maxZoom);
-    final cropWidth = (baseWidth / z).clamp(1.0, photoWidth.toDouble());
-    final cropHeight = (baseHeight / z).clamp(1.0, photoHeight.toDouble());
+    final cropWidth = (baseWidth / z).clamp(1.0, photoW);
+    final cropHeight = (baseHeight / z).clamp(1.0, photoH);
 
-    final maxOffsetX = (photoWidth - cropWidth) / 2;
-    final maxOffsetY = (photoHeight - cropHeight) / 2;
+    final maxOffsetX = (photoW - cropWidth) / 2;
+    final maxOffsetY = (photoH - cropHeight) / 2;
     final ox = offsetX.clamp(-1.0, 1.0);
     final oy = offsetY.clamp(-1.0, 1.0);
-    final centerX = photoWidth / 2 + ox * maxOffsetX;
-    final centerY = photoHeight / 2 + oy * maxOffsetY;
+    final centerX = _effectiveOriginX + photoW / 2 + ox * maxOffsetX;
+    final centerY = _effectiveOriginY + photoH / 2 + oy * maxOffsetY;
 
     return Rect.fromCenter(
       center: Offset(centerX, centerY),
@@ -142,39 +184,129 @@ class CollageCellSettings {
     );
   }
 
+  /// Tamanho (em pixels locais, antes da rotação do canvas) no qual a foto
+  /// **inteira** deve ser desenhada, centralizada na célula, para o modo
+  /// [CollageCellFitMode.contain] — o `BoxFit.contain` clássico, generalizado
+  /// para uma célula que pode estar rotacionada: a maior escala tal que a
+  /// foto, depois de girada, ainda cabe inteira dentro de [cellSize] (mesma
+  /// fórmula de [rotatedFootprint], só que invertida: em vez de "de quanto a
+  /// foto precisa sobrar para cobrir", pergunta "qual o maior tamanho que
+  /// ainda cabe sem sobrar"). `zoom == 1` é o "ajustar" puro (foto inteira,
+  /// sem ampliar); `zoom > 1` amplia a partir daí, podendo passar da célula
+  /// (cortado pelo arredondamento da própria célula, igual ao cover).
+  Size containDisplaySize(Size cellSize) {
+    final photoW = _effectiveWidth;
+    final photoH = _effectiveHeight;
+    if (photoW <= 0 || photoH <= 0 || cellSize.isEmpty) return Size.zero;
+
+    final (footprintW, footprintH) = rotatedFootprint(photoW, photoH, rotation);
+    final baseScale = math.min(
+      cellSize.width / footprintW,
+      cellSize.height / footprintH,
+    );
+    final scale = baseScale * zoom.clamp(minZoom, maxZoom);
+    return Size(photoW * scale, photoH * scale);
+  }
+
+  /// Deslocamento (em pixels locais, antes da rotação do canvas) do centro
+  /// da foto em relação ao centro da célula, no modo [CollageCellFitMode.
+  /// contain]. O alcance é baseado no tamanho da CÉLULA (metade da largura/
+  /// altura), não em quanto a foto exibida excede a célula: assim o usuário
+  /// pode mover a foto livremente de uma borda a outra da célula em
+  /// qualquer zoom, inclusive no "ajustar" puro (foto inteira, menor que a
+  /// célula) — antes disso ficava travado centralizado até ampliar, porque
+  /// o alcance antigo zerava exatamente nesse ponto. A sobra vira o fundo
+  /// geral da montagem (já pintado por baixo) e o recorte arredondado da
+  /// própria célula corta visualmente o que passar da borda.
+  Offset containDisplayOffset(Size cellSize) {
+    if (containDisplaySize(cellSize) == Size.zero) return Offset.zero;
+
+    final maxOffsetX = cellSize.width / 2;
+    final maxOffsetY = cellSize.height / 2;
+    final ox = offsetX.clamp(-1.0, 1.0);
+    final oy = offsetY.clamp(-1.0, 1.0);
+    return Offset(ox * maxOffsetX, oy * maxOffsetY);
+  }
+
+  /// Equivalente de [offsetDeltaForDrag] para o modo [CollageCellFitMode.
+  /// contain]: converte um deslocamento em pixels de tela para o incremento
+  /// de [offsetX]/[offsetY], desfazendo a rotação do mesmo jeito. A diferença
+  /// de sinal em relação ao cover é proposital — lá o arrasto move a
+  /// *janela de recorte* (efeito inverso: arrastar para a direita revela
+  /// mais a partir da esquerda, mas com o mesmo resultado visual final de
+  /// "a foto acompanha o dedo"); aqui o arrasto move a própria foto
+  /// desenhada, então o mesmo resultado visual já sai direto, sem inverter.
+  /// Mesmo alcance zoom-independente de [containDisplayOffset] (metade do
+  /// tamanho da célula em cada eixo).
+  Offset containOffsetDeltaForDrag(Offset screenDelta, Size cellSize) {
+    if (containDisplaySize(cellSize) == Size.zero) return Offset.zero;
+
+    final cosA = math.cos(rotation);
+    final sinA = math.sin(rotation);
+    var local = Offset(
+      screenDelta.dx * cosA + screenDelta.dy * sinA,
+      -screenDelta.dx * sinA + screenDelta.dy * cosA,
+    );
+    if (flipHorizontal) local = Offset(-local.dx, local.dy);
+    if (flipVertical) local = Offset(local.dx, -local.dy);
+
+    final maxOffsetX = cellSize.width / 2;
+    final maxOffsetY = cellSize.height / 2;
+    final dx = maxOffsetX > 0 ? local.dx / maxOffsetX : 0.0;
+    final dy = maxOffsetY > 0 ? local.dy / maxOffsetY : 0.0;
+    return Offset(dx, dy);
+  }
+
+  /// Proporção efetiva da foto já considerando a rotação (girada troca
+  /// largura por altura na proporção que [rotatedFootprint] calcular).
+  double get aspectRatio {
+    final w = _effectiveWidth;
+    final h = _effectiveHeight;
+    if (w <= 0 || h <= 0) return 1;
+    final (fw, fh) = rotatedFootprint(w, h, rotation);
+    return fw / fh;
+  }
+
   /// Converte um deslocamento em pixels de tela (ex.: [ScaleUpdateDetails.
   /// focalPointDelta] de um gesto sobre a célula) para o incremento
-  /// correspondente de [offsetX]/[offsetY], levando em conta [zoom] atual e
-  /// a orientação efetiva de [rotation]/[flipHorizontal]/[flipVertical] —
-  /// arrastar sempre desloca a foto na direção intuitiva na tela, mesmo
-  /// girada ou espelhada. Devolve `Offset.zero` quando não há folga naquele
-  /// eixo (ex.: zoom no mínimo).
+  /// correspondente de [offsetX]/[offsetY], levando em conta [zoom] atual, a
+  /// orientação efetiva de [rotation] (ângulo livre — desfeito por uma
+  /// rotação inversa genérica do vetor, não mais um `switch` de 4 casos) e
+  /// de [flipHorizontal]/[flipVertical] — arrastar sempre desloca a foto na
+  /// direção intuitiva na tela, mesmo girada ou espelhada. Só faz sentido em
+  /// [CollageCellFitMode.cover]. Devolve `Offset.zero` quando não há folga
+  /// naquele eixo (ex.: zoom no mínimo).
   Offset offsetDeltaForDrag(Offset screenDelta, Size cellSize) {
     final src = coverSrcRect(cellSize);
     if (src == Rect.zero) return Offset.zero;
 
     // Desfaz primeiro a rotação, depois o espelhamento — ordem inversa de
     // como o desenho aplica as duas (gira o canvas e só então espelha, tanto
-    // aqui quanto em `paintCollageCell`/`RotatedBox`+`Transform` na prévia),
-    // para o arrasto sempre mover a foto na direção em que o dedo se move na
-    // tela, qualquer que seja a orientação atual.
-    var local = switch (rotation) {
-      CellRotation.none => screenDelta,
-      CellRotation.quarter => Offset(screenDelta.dy, -screenDelta.dx),
-      CellRotation.half => Offset(-screenDelta.dx, -screenDelta.dy),
-      CellRotation.threeQuarters => Offset(-screenDelta.dy, screenDelta.dx),
-    };
+    // aqui quanto em `paintCollageCell`/`Transform.rotate` na prévia), para
+    // o arrasto sempre mover a foto na direção em que o dedo se move na
+    // tela, qualquer que seja o ângulo atual. Rotação inversa genérica de um
+    // vetor por `-rotation` (equivalente exato do antigo `switch` de 4 casos
+    // em 0°/90°/180°/270°).
+    final cosA = math.cos(rotation);
+    final sinA = math.sin(rotation);
+    var local = Offset(
+      screenDelta.dx * cosA + screenDelta.dy * sinA,
+      -screenDelta.dx * sinA + screenDelta.dy * cosA,
+    );
     if (flipHorizontal) local = Offset(-local.dx, local.dy);
     if (flipVertical) local = Offset(local.dx, -local.dy);
 
-    final destWidth = rotation.swapsAxes ? cellSize.height : cellSize.width;
-    final destHeight = rotation.swapsAxes ? cellSize.width : cellSize.height;
+    final (destWidth, destHeight) = rotatedFootprint(
+      cellSize.width,
+      cellSize.height,
+      rotation,
+    );
     if (destWidth <= 0 || destHeight <= 0) return Offset.zero;
 
     final scaleX = src.width / destWidth;
     final scaleY = src.height / destHeight;
-    final maxOffsetX = (photoWidth - src.width) / 2;
-    final maxOffsetY = (photoHeight - src.height) / 2;
+    final maxOffsetX = (_effectiveWidth - src.width) / 2;
+    final maxOffsetY = (_effectiveHeight - src.height) / 2;
 
     // Negativo: a janela de recorte se move para o lado OPOSTO ao dedo, que é
     // o que faz a própria foto parecer se mover JUNTO com o dedo (arrastar
@@ -197,13 +329,18 @@ class CollageCellSettings {
     bool clearPhoto = false,
     int? photoWidth,
     int? photoHeight,
+    CropRect? manualCrop,
+    bool clearManualCrop = false,
     double? offsetX,
     double? offsetY,
     double? zoom,
-    CellRotation? rotation,
+    double? rotation,
     bool? flipHorizontal,
     bool? flipVertical,
+    CollageCellFitMode? fitMode,
     double? cornerRatio,
+    double? borderThicknessAtReference,
+    Color? borderColor,
     double? brightness,
     double? contrast,
     double? saturation,
@@ -212,13 +349,18 @@ class CollageCellSettings {
       photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
       photoWidth: photoWidth ?? this.photoWidth,
       photoHeight: photoHeight ?? this.photoHeight,
+      manualCrop: clearManualCrop ? null : (manualCrop ?? this.manualCrop),
       offsetX: offsetX ?? this.offsetX,
       offsetY: offsetY ?? this.offsetY,
       zoom: zoom ?? this.zoom,
       rotation: rotation ?? this.rotation,
       flipHorizontal: flipHorizontal ?? this.flipHorizontal,
       flipVertical: flipVertical ?? this.flipVertical,
+      fitMode: fitMode ?? this.fitMode,
       cornerRatio: cornerRatio ?? this.cornerRatio,
+      borderThicknessAtReference:
+          borderThicknessAtReference ?? this.borderThicknessAtReference,
+      borderColor: borderColor ?? this.borderColor,
       brightness: brightness ?? this.brightness,
       contrast: contrast ?? this.contrast,
       saturation: saturation ?? this.saturation,
@@ -226,14 +368,16 @@ class CollageCellSettings {
   }
 
   /// Reseta enquadramento (deslocamento/zoom/rotação/espelhamento) mantendo
-  /// a foto e os ajustes de cor — usado no duplo toque "recentralizar" e ao
-  /// substituir a foto de uma célula (o enquadramento antigo não faz
-  /// sentido para outra foto, mas a cor escolhida para aquele espaço sim).
+  /// a foto, o recorte manual e os ajustes de cor/borda — usado no menu
+  /// "Recentralizar" e ao substituir a foto de uma célula (o enquadramento
+  /// antigo não faz sentido para outra foto, mas a cor/borda escolhidas para
+  /// aquele espaço sim). [fitMode] também não muda aqui — é um eixo
+  /// independente do enquadramento, controlado só pelo duplo toque.
   CollageCellSettings resetFraming() => copyWith(
     offsetX: 0,
     offsetY: 0,
     zoom: minZoom,
-    rotation: CellRotation.none,
+    rotation: 0.0,
     flipHorizontal: false,
     flipVertical: false,
   );

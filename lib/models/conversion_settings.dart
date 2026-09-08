@@ -1,5 +1,8 @@
+import 'crop_rect.dart';
 import 'frame_settings.dart';
 import 'video_info.dart';
+
+export 'crop_rect.dart' show CropRect;
 
 /// Como o GIF distribui o erro de cor ao reduzir a imagem para 256 cores.
 ///
@@ -75,52 +78,6 @@ enum OutputFormat {
 
   /// Texto curto, usado em mensagens ("GIF salvo...", "WebP pronto").
   final String shortLabel;
-}
-
-/// Recorte em pixels do vídeo já rotacionado (coordenadas de exibição).
-class CropRect {
-  const CropRect({
-    required this.x,
-    required this.y,
-    required this.width,
-    required this.height,
-  });
-
-  final int x;
-  final int y;
-  final int width;
-  final int height;
-
-  double get aspectRatio => height == 0 ? 1 : width / height;
-
-  /// Maior recorte centralizado com a proporção [ratio] que cabe no vídeo.
-  factory CropRect.centered(VideoInfo video, double ratio) {
-    // Tenta usar a largura inteira do vídeo e calcula a altura correspondente;
-    // se não couber, faz o caminho inverso a partir da altura.
-    var w = video.width;
-    var h = (w / ratio).round();
-    if (h > video.height) {
-      h = video.height;
-      w = (h * ratio).round();
-    }
-    // FFmpeg exige dimensões pares para crop/scale.
-    w = w - (w % 2);
-    h = h - (h % 2);
-    return CropRect(
-      x: ((video.width - w) / 2).round(),
-      y: ((video.height - h) / 2).round(),
-      width: w,
-      height: h,
-    );
-  }
-
-  /// Cria uma cópia substituindo apenas os campos informados.
-  CropRect copyWith({int? x, int? y, int? width, int? height}) => CropRect(
-    x: x ?? this.x,
-    y: y ?? this.y,
-    width: width ?? this.width,
-    height: height ?? this.height,
-  );
 }
 
 /// Proporções oferecidas na tela de recorte.
