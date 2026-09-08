@@ -2,7 +2,7 @@
 
 <img width="100" src="assets/icon/icon-v4.png"/>
 
-# Video to GIF & WebP
+# Video to GIF
 
 
 ![Flutter](https://img.shields.io/badge/Flutter-3.44%2B-b79cf2?style=flat-square&logo=flutter&logoColor=white&labelColor=372b4d)
