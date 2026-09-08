@@ -127,6 +127,13 @@ class CollageSettings {
     return copyWith(cells: updated);
   }
 
+  /// Aplica [update] a todas as células de uma vez — usado pelos controles
+  /// de borda em lote ("todas as fotos"), quando não faz sentido mais uma
+  /// foto divergir da outra.
+  CollageSettings updatingAllCells(
+    CollageCellSettings Function(CollageCellSettings cell) update,
+  ) => copyWith(cells: [for (final c in cells) update(c)]);
+
   /// Adiciona um sticker acima de todas as sobreposições existentes.
   CollageSettings addingSticker(CollageSticker sticker) =>
       copyWith(stickers: [...stickers, sticker]);

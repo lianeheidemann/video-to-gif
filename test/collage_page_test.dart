@@ -76,11 +76,11 @@ void main() {
       // Com o texto recém-criado selecionado, a barra de ações da sobreposição
       // aparece logo abaixo da prévia.
       await tester.scrollUntilVisible(
-        find.text('Duplicar'),
+        find.byTooltip('Duplicar'),
         -200,
         scrollable: page,
       );
-      expect(find.text('Duplicar'), findsOneWidget);
+      expect(find.byTooltip('Duplicar'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Desfazer'));
       await tester.pumpAndSettle();
@@ -88,7 +88,7 @@ void main() {
       // O texto deixou de existir: a barra não pode continuar na tela
       // apontando para ele, com todos os botões sem efeito nenhum.
       expect(find.text('oi'), findsNothing);
-      expect(find.text('Duplicar'), findsNothing);
+      expect(find.byTooltip('Duplicar'), findsNothing);
     },
   );
 
@@ -142,7 +142,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Adicionar um sticker já o seleciona — a barra de ações aparece.
-    expect(find.text('Duplicar'), findsOneWidget);
+    expect(find.byTooltip('Duplicar'), findsOneWidget);
   });
 
   testWidgets('opções de fundo não quebram linha dentro do próprio botão', (

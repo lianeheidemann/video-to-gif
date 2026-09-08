@@ -210,15 +210,19 @@ class CollageCellSettings {
 
   /// Deslocamento (em pixels locais, antes da rotação do canvas) do centro
   /// da foto em relação ao centro da célula, no modo [CollageCellFitMode.
-  /// contain] — só tem efeito quando [containDisplaySize] já excede
-  /// [cellSize] em algum eixo (zoom acima do "ajustar" puro); do contrário a
-  /// foto inteira já é visível e não há folga para deslocar.
+  /// contain]. O alcance é baseado no tamanho da CÉLULA (metade da largura/
+  /// altura), não em quanto a foto exibida excede a célula: assim o usuário
+  /// pode mover a foto livremente de uma borda a outra da célula em
+  /// qualquer zoom, inclusive no "ajustar" puro (foto inteira, menor que a
+  /// célula) — antes disso ficava travado centralizado até ampliar, porque
+  /// o alcance antigo zerava exatamente nesse ponto. A sobra vira o fundo
+  /// geral da montagem (já pintado por baixo) e o recorte arredondado da
+  /// própria célula corta visualmente o que passar da borda.
   Offset containDisplayOffset(Size cellSize) {
-    final display = containDisplaySize(cellSize);
-    if (display == Size.zero) return Offset.zero;
+    if (containDisplaySize(cellSize) == Size.zero) return Offset.zero;
 
-    final maxOffsetX = math.max(0.0, (display.width - cellSize.width) / 2);
-    final maxOffsetY = math.max(0.0, (display.height - cellSize.height) / 2);
+    final maxOffsetX = cellSize.width / 2;
+    final maxOffsetY = cellSize.height / 2;
     final ox = offsetX.clamp(-1.0, 1.0);
     final oy = offsetY.clamp(-1.0, 1.0);
     return Offset(ox * maxOffsetX, oy * maxOffsetY);
@@ -232,9 +236,10 @@ class CollageCellSettings {
   /// mais a partir da esquerda, mas com o mesmo resultado visual final de
   /// "a foto acompanha o dedo"); aqui o arrasto move a própria foto
   /// desenhada, então o mesmo resultado visual já sai direto, sem inverter.
+  /// Mesmo alcance zoom-independente de [containDisplayOffset] (metade do
+  /// tamanho da célula em cada eixo).
   Offset containOffsetDeltaForDrag(Offset screenDelta, Size cellSize) {
-    final display = containDisplaySize(cellSize);
-    if (display == Size.zero) return Offset.zero;
+    if (containDisplaySize(cellSize) == Size.zero) return Offset.zero;
 
     final cosA = math.cos(rotation);
     final sinA = math.sin(rotation);
@@ -245,8 +250,8 @@ class CollageCellSettings {
     if (flipHorizontal) local = Offset(-local.dx, local.dy);
     if (flipVertical) local = Offset(local.dx, -local.dy);
 
-    final maxOffsetX = math.max(0.0, (display.width - cellSize.width) / 2);
-    final maxOffsetY = math.max(0.0, (display.height - cellSize.height) / 2);
+    final maxOffsetX = cellSize.width / 2;
+    final maxOffsetY = cellSize.height / 2;
     final dx = maxOffsetX > 0 ? local.dx / maxOffsetX : 0.0;
     final dy = maxOffsetY > 0 ? local.dy / maxOffsetY : 0.0;
     return Offset(dx, dy);

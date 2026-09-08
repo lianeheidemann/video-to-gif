@@ -10,6 +10,7 @@ import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
 import 'package:video_to_gif/models/collage_layout.dart';
 import 'package:video_to_gif/models/collage_settings.dart';
+import 'package:video_to_gif/models/collage_text.dart';
 import 'package:video_to_gif/services/collage_compositor.dart';
 
 /// Grava um PNG sólido de [width]x[height] na cor [color] em [path] — usado
@@ -457,6 +458,51 @@ void main() {
           reason: 'ponto ${point.$1},${point.$2} deveria ser a foto vermelha',
         );
       }
+    },
+  );
+
+  test(
+    'texto com fonte embutida (fontFamily) é desenhado na exportação',
+    () async {
+      // Sem foto/aba de fundo nenhuma: só um texto branco grande sobre fundo
+      // preto, com uma das fontes embutidas — protege a fiação de
+      // `item.fontFamily` até o `TextStyle` de `_TextOverlay.paint` (se o
+      // parâmetro se perdesse no caminho, o texto ainda apareceria, só que
+      // sem essa cobertura não haveria como notar a regressão).
+      final settings =
+          CollageSettings(
+            layout: CollageLayout.row(1),
+            aspectRatio: 1.0,
+            background: const CollageBackground(
+              mode: CollageBackgroundMode.color,
+              color: Color(0xFF000000),
+            ),
+            cells: const [CollageCellSettings()],
+          ).addingText(
+            const CollageTextItem(
+              id: 't1',
+              text: 'AAAA',
+              color: Color(0xFFFFFFFF),
+              fontSizeRatio: 0.4,
+              centerX: 0.5,
+              centerY: 0.5,
+              zIndex: 1,
+              fontFamily: 'Bebas Neue',
+            ),
+          );
+
+      const outputWidth = 200;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      final centerPixel = await _decodePixel(bytes, outputWidth, 100, 100);
+      expect(
+        centerPixel[0],
+        greaterThan(200),
+        reason: 'o texto branco deveria cobrir o centro do canvas',
+      );
     },
   );
 }

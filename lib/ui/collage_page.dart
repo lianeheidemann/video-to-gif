@@ -81,6 +81,11 @@ class _CollagePageState extends State<CollagePage> {
   /// `initiallyExpanded: true` que a seção de layout já tinha antes.
   _CollageTab? _activeTab = _CollageTab.layout;
 
+  /// Alvo dos controles da aba "Borda e cantos": `false` = a montagem
+  /// inteira, `true` = todas as fotos de uma vez. Só estado de UI (qual
+  /// seletor está tocado agora) — não faz parte de [CollageSettings].
+  bool _borderTargetsPhotos = false;
+
   bool _saving = false;
   bool _sharing = false;
 
@@ -488,6 +493,7 @@ class _CollagePageState extends State<CollagePage> {
       maxScale: CollageSticker.maxScale,
       canvasSize: size,
       selected: _selectedOverlayId == sticker.id,
+      interactive: _activeTab == _CollageTab.stickers,
       onSelect: () => setState(() => _selectedOverlayId = sticker.id),
       onGestureStart: _pushUndoCheckpoint,
       onTransformChanged: (cx, cy, scale, rotation) => _update(
@@ -517,6 +523,7 @@ class _CollagePageState extends State<CollagePage> {
       maxScale: CollageTextItem.maxScale,
       canvasSize: size,
       selected: _selectedOverlayId == text.id,
+      interactive: _activeTab == _CollageTab.text,
       onSelect: () => setState(() => _selectedOverlayId = text.id),
       onGestureStart: _pushUndoCheckpoint,
       onTransformChanged: (cx, cy, scale, rotation) => _update(
@@ -562,6 +569,7 @@ class _CollagePageState extends State<CollagePage> {
       style: TextStyle(
         color: item.color,
         fontSize: fontSize,
+        fontFamily: item.fontFamily,
         fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
       ),
     );
@@ -579,30 +587,36 @@ class _CollagePageState extends State<CollagePage> {
         spacing: 4,
         children: [
           if (isText)
-            TextButton.icon(
+            IconButton(
+              tooltip: 'Editar',
               onPressed: () => _editSelectedText(id),
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Editar'),
+              icon: const Icon(Icons.edit_outlined, size: 20),
             ),
-          TextButton.icon(
+          if (isText)
+            IconButton(
+              tooltip: 'Fonte',
+              onPressed: () => _pickTextFont(id),
+              icon: const Icon(Icons.font_download_outlined, size: 20),
+            ),
+          IconButton(
+            tooltip: 'Duplicar',
             onPressed: () => _duplicateSelected(id, isText),
-            icon: const Icon(Icons.copy_outlined, size: 18),
-            label: const Text('Duplicar'),
+            icon: const Icon(Icons.copy_outlined, size: 20),
           ),
-          TextButton.icon(
+          IconButton(
+            tooltip: 'Frente',
             onPressed: () => _bringToFront(id, isText),
-            icon: const Icon(Icons.flip_to_front_outlined, size: 18),
-            label: const Text('Frente'),
+            icon: const Icon(Icons.flip_to_front_outlined, size: 20),
           ),
-          TextButton.icon(
+          IconButton(
+            tooltip: 'Trás',
             onPressed: () => _sendToBack(id, isText),
-            icon: const Icon(Icons.flip_to_back_outlined, size: 18),
-            label: const Text('Trás'),
+            icon: const Icon(Icons.flip_to_back_outlined, size: 20),
           ),
-          TextButton.icon(
+          IconButton(
+            tooltip: 'Remover',
             onPressed: () => _removeSelected(id, isText),
-            icon: const Icon(Icons.delete_outline, size: 18),
-            label: const Text('Remover'),
+            icon: const Icon(Icons.delete_outline, size: 20),
           ),
         ],
       ),
@@ -871,11 +885,14 @@ class _CollagePageState extends State<CollagePage> {
       children: [
         _panelHeader('Proporção', _customAspectLabel()),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 6,
+          runSpacing: 6,
           children: [
             for (final preset in CollageSettings.aspectPresets)
               ChoiceChip(
+                visualDensity: VisualDensity.compact,
+                labelStyle: Theme.of(context).textTheme.bodySmall,
+                labelPadding: const EdgeInsets.symmetric(horizontal: 4),
                 label: Text(preset.$1),
                 selected: (_settings.aspectRatio - preset.$2).abs() < 0.001,
                 onSelected: (_) =>
@@ -892,6 +909,16 @@ class _CollagePageState extends State<CollagePage> {
           onChanged: (v) =>
               _update(_settings.copyWith(aspectRatio: v), pushUndo: false),
         ),
+        const SizedBox(height: 8),
+        _CustomAspectRatioInput(
+          onApply: (ratio) {
+            _pushUndoCheckpoint();
+            _update(
+              _settings.copyWith(aspectRatio: ratio.clamp(0.4, 2.5)),
+              pushUndo: false,
+            );
+          },
+        ),
       ],
     );
   }
@@ -907,67 +934,122 @@ class _CollagePageState extends State<CollagePage> {
     return _settings.aspectRatio.toStringAsFixed(2);
   }
 
+  /// Espessura/arredondamento/cor atuais para o alvo escolhido no seletor
+  /// "Montagem"/"Fotos" — quando o alvo é "Fotos", os 3 controles mexem em
+  /// todas as células de uma vez ([CollageSettings.updatingAllCells]), então
+  /// a primeira célula representa bem todas (não sobra mais nenhum jeito de
+  /// uma foto divergir da outra, já que "Borda da foto" saiu do menu "...").
+  CollageCellSettings? get _firstCell =>
+      _settings.cells.isEmpty ? null : _settings.cells.first;
+
   Widget _borderPanelContent() {
     final theme = Theme.of(context);
+    final targetsPhotos = _borderTargetsPhotos;
+    final firstCell = _firstCell;
+    final thickness = targetsPhotos
+        ? (firstCell?.borderThicknessAtReference ?? 0)
+        : _settings.borderThicknessAtReference;
+    final maxThickness = targetsPhotos
+        ? CollageCellSettings.maxBorderThickness
+        : CollageSettings.maxBorderThickness;
+    final cornerRatio = targetsPhotos
+        ? (firstCell?.cornerRatio ?? 0)
+        : _settings.cornerRatio;
+    final maxCornerRatio = targetsPhotos
+        ? CollageCellSettings.maxCornerRatio
+        : CollageSettings.maxCornerRatio;
+    final borderColor = targetsPhotos
+        ? (firstCell?.borderColor ?? _settings.borderColor)
+        : _settings.borderColor;
+    void applyThickness(double v) {
+      if (targetsPhotos) {
+        _update(
+          _settings.updatingAllCells(
+            (c) => c.copyWith(borderThicknessAtReference: v),
+          ),
+          pushUndo: false,
+        );
+      } else {
+        _update(
+          _settings.copyWith(borderThicknessAtReference: v),
+          pushUndo: false,
+        );
+      }
+    }
+
+    void applyCornerRatio(double v) {
+      if (targetsPhotos) {
+        _update(
+          _settings.updatingAllCells((c) => c.copyWith(cornerRatio: v)),
+          pushUndo: false,
+        );
+      } else {
+        _update(_settings.copyWith(cornerRatio: v), pushUndo: false);
+      }
+    }
+
+    void applyBorderColor(Color color) {
+      if (targetsPhotos) {
+        _update(
+          _settings.updatingAllCells((c) => c.copyWith(borderColor: color)),
+          pushUndo: false,
+        );
+      } else {
+        _update(_settings.copyWith(borderColor: color), pushUndo: false);
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _panelHeader('Borda e cantos'),
-        Text(
-          'Da montagem inteira',
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.primary,
-          ),
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Montagem'),
+              selected: !targetsPhotos,
+              onSelected: (_) => setState(() => _borderTargetsPhotos = false),
+            ),
+            ChoiceChip(
+              label: const Text('Fotos'),
+              selected: targetsPhotos,
+              onSelected: (_) => setState(() => _borderTargetsPhotos = true),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         _sliderRow(
           label: 'Espessura da borda',
-          value: _settings.borderThicknessAtReference,
+          value: thickness,
           min: 0,
-          max: CollageSettings.maxBorderThickness,
-          display: '${_settings.borderThicknessAtReference.round()}px',
-          onChanged: (v) => _update(
-            _settings.copyWith(borderThicknessAtReference: v),
-            pushUndo: false,
-          ),
+          max: maxThickness,
+          display: '${thickness.round()}px',
+          onChanged: applyThickness,
         ),
         const SizedBox(height: 12),
         _sliderRow(
           label: 'Arredondamento dos cantos',
-          value: _settings.cornerRatio,
+          value: cornerRatio,
           min: 0,
-          max: CollageSettings.maxCornerRatio,
-          display:
-              '${(_settings.cornerRatio / CollageSettings.maxCornerRatio * 100).round()}%',
-          onChanged: (v) =>
-              _update(_settings.copyWith(cornerRatio: v), pushUndo: false),
+          max: maxCornerRatio,
+          display: '${(cornerRatio / maxCornerRatio * 100).round()}%',
+          onChanged: applyCornerRatio,
         ),
-        if (_settings.borderThicknessAtReference > 0) ...[
+        if (thickness > 0) ...[
           const SizedBox(height: 4),
           Divider(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
-          _colorRow('Cor da borda', _settings.borderColor, _pickBorderColor),
+          _colorRow(
+            'Cor da borda',
+            borderColor,
+            () => _pickBorderColor(
+              current: borderColor,
+              onSelected: applyBorderColor,
+            ),
+          ),
         ],
-        const SizedBox(height: 20),
-        Divider(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'De cada foto',
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.primary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Toque em "..." numa foto na prévia e escolha "Borda da foto" '
-          'para dar uma moldura só a ela, além da borda da montagem.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
       ],
     );
   }
@@ -1036,7 +1118,13 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
-  void _pickBorderColor() {
+  /// Cor da borda — [current]/[onSelected] deixam esta mesma folha servir a
+  /// borda da montagem inteira ou a borda de todas as fotos de uma vez,
+  /// dependendo do alvo escolhido em [_borderPanelContent].
+  void _pickBorderColor({
+    required Color current,
+    required ValueChanged<Color> onSelected,
+  }) {
     // O checkpoint entra na primeira cor escolhida, não na abertura do painel:
     // abrir e fechar sem escolher nada não pode deixar um passo de desfazer
     // que aparenta não fazer nada.
@@ -1044,13 +1132,13 @@ class _CollagePageState extends State<CollagePage> {
     showCollageColorPickerSheet(
       context: context,
       title: 'Cor da borda',
-      initialColor: _settings.borderColor,
+      initialColor: current,
       onColorSelected: (color) {
         if (!checkpointPushed) {
           checkpointPushed = true;
           _pushUndoCheckpoint();
         }
-        _update(_settings.copyWith(borderColor: color), pushUndo: false);
+        onSelected(color);
       },
       previewImageBuilder: _renderPreviewImage,
     );
@@ -1440,6 +1528,61 @@ class _CollagePageState extends State<CollagePage> {
         builder: (dialogContext) => _TextInputDialog(initial: initial),
       );
 
+  /// Folha com as [bundledCollageFonts] em miniaturas "Aa", cada uma
+  /// renderizada na própria fonte — mesmo padrão visual dos outros sheets
+  /// de escolha (`showModalBottomSheet` + `Wrap`).
+  void _pickTextFont(String id) {
+    final item = _findText(id);
+    if (item == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Fonte',
+                style: Theme.of(sheetContext).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final font in bundledCollageFonts)
+                    _FontThumb(
+                      family: font.$1,
+                      label: font.$2,
+                      selected: item.fontFamily == font.$1,
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        _pushUndoCheckpoint();
+                        _update(
+                          _settings.replacingText(
+                            id,
+                            item.copyWith(
+                              fontFamily: font.$1,
+                              clearFontFamily: font.$1 == null,
+                            ),
+                          ),
+                          pushUndo: false,
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _importTile({required VoidCallback onTap, required String label}) {
     final theme = Theme.of(context);
     return GestureDetector(
@@ -1622,87 +1765,87 @@ class _CollagePageState extends State<CollagePage> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.image_outlined),
-                title: const Text('Substituir foto'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _pickPhotoForCell(index);
-                },
-              ),
-              if (_settings.cells.where((c) => c.hasPhoto).length > 1)
+          // Numa tela baixa (ou com a barra de navegação do sistema
+          // ocupando espaço), a lista de itens pode não caber na altura
+          // disponível — sem isto o `Column` simplesmente estourava por
+          // baixo em vez de rolar (`isScrollControlled: true` deixa a folha
+          // crescer até a tela quase inteira antes disso ser preciso).
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 ListTile(
-                  leading: const Icon(Icons.swap_horiz_rounded),
-                  title: const Text('Trocar com…'),
+                  leading: const Icon(Icons.image_outlined),
+                  title: const Text('Substituir foto'),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    _openSwapPicker(index);
+                    _pickPhotoForCell(index);
                   },
                 ),
-              ListTile(
-                leading: const Icon(Icons.crop_rounded),
-                title: const Text('Recortar'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _openCropTool(index);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.tune_rounded),
-                title: const Text('Ajustar cor'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _openCellColorAdjust(index);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.border_all_rounded),
-                title: const Text('Borda da foto'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _openCellBorderAdjust(index);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.rotate_90_degrees_ccw_rounded),
-                title: const Text('Girar 90°'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _rotateCell(index);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.flip_rounded),
-                title: const Text('Espelhar horizontal'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _flipCell(index, horizontal: true);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.flip_rounded),
-                title: const Text('Espelhar vertical'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _flipCell(index, horizontal: false);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.center_focus_strong_outlined),
-                title: const Text('Recentralizar'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _recenterCell(index);
-                },
-              ),
-            ],
+                if (_settings.cells.where((c) => c.hasPhoto).length > 1)
+                  ListTile(
+                    leading: const Icon(Icons.swap_horiz_rounded),
+                    title: const Text('Trocar com…'),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _openSwapPicker(index);
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.crop_rounded),
+                  title: const Text('Recortar'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _openCropTool(index);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.tune_rounded),
+                  title: const Text('Ajustar cor'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _openCellColorAdjust(index);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.rotate_90_degrees_ccw_rounded),
+                  title: const Text('Girar 90°'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _rotateCell(index);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.flip_rounded),
+                  title: const Text('Espelhar horizontal'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _flipCell(index, horizontal: true);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.flip_rounded),
+                  title: const Text('Espelhar vertical'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _flipCell(index, horizontal: false);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.center_focus_strong_outlined),
+                  title: const Text('Recentralizar'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _recenterCell(index);
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1750,45 +1893,50 @@ class _CollagePageState extends State<CollagePage> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Trocar com qual foto?',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (var i = 0; i < _settings.cells.length; i++)
-                    if (i != index && _settings.cells[i].hasPhoto)
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.of(sheetContext).pop();
-                          _update(_settings.swappingCells(index, i));
-                        },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: SizedBox(
-                            width: 62,
-                            height: 62,
-                            child: Image.file(
-                              File(_settings.cells[i].photoPath!),
-                              fit: BoxFit.cover,
+          // Uma montagem com muitas células (grade livre até 9) pode ter
+          // miniaturas demais para caber na altura da folha sem rolar.
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Trocar com qual foto?',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (var i = 0; i < _settings.cells.length; i++)
+                      if (i != index && _settings.cells[i].hasPhoto)
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(sheetContext).pop();
+                            _update(_settings.swappingCells(index, i));
+                          },
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              width: 62,
+                              height: 62,
+                              child: Image.file(
+                                File(_settings.cells[i].photoPath!),
+                                fit: BoxFit.cover,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1950,89 +2098,6 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
-  /// Borda só desta foto (distinta da borda da montagem inteira, em
-  /// [_borderPanelContent]) — mesmo padrão de [_openCellColorAdjust]: sheet
-  /// com seu próprio `StatefulBuilder` para o slider atualizar ao vivo sem
-  /// fechar a folha.
-  void _openCellBorderAdjust(int index) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (sheetContext, sheetSetState) {
-            final cell = _settings.cells[index];
-            return SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Borda da foto',
-                      style: Theme.of(sheetContext).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    _sliderRow(
-                      label: 'Espessura',
-                      value: cell.borderThicknessAtReference,
-                      min: 0,
-                      max: CollageCellSettings.maxBorderThickness,
-                      display: '${cell.borderThicknessAtReference.round()}px',
-                      onChanged: (v) {
-                        _update(
-                          _settings.replacingCell(
-                            index,
-                            cell.copyWith(borderThicknessAtReference: v),
-                          ),
-                          pushUndo: false,
-                        );
-                        sheetSetState(() {});
-                      },
-                    ),
-                    if (cell.borderThicknessAtReference > 0) ...[
-                      const SizedBox(height: 4),
-                      _colorRow(
-                        'Cor da borda',
-                        cell.borderColor,
-                        () => _pickCellBorderColor(index, sheetSetState),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _pickCellBorderColor(int index, StateSetter sheetSetState) {
-    var checkpointPushed = false;
-    showCollageColorPickerSheet(
-      context: context,
-      title: 'Cor da borda',
-      initialColor: _settings.cells[index].borderColor,
-      onColorSelected: (color) {
-        if (!checkpointPushed) {
-          checkpointPushed = true;
-          _pushUndoCheckpoint();
-        }
-        final current = _settings.cells[index];
-        _update(
-          _settings.replacingCell(index, current.copyWith(borderColor: color)),
-          pushUndo: false,
-        );
-        sheetSetState(() {});
-      },
-      previewImageBuilder: _renderPreviewImage,
-    );
-  }
-
   // ---------------------------------------------------------------------
   // Ações
   // ---------------------------------------------------------------------
@@ -2140,6 +2205,134 @@ class _TextInputDialogState extends State<_TextInputDialog> {
           child: const Text('OK'),
         ),
       ],
+    );
+  }
+}
+
+/// Campo para digitar uma proporção W:H exata, além dos chips de preset e do
+/// slider livre já existentes na aba "Proporção". Os dois `TextEditingController`
+/// têm ciclo de vida próprio (criar/liberar), por isso este pequeno
+/// `StatefulWidget` privado — mesmo padrão de [_TextInputDialog] — em vez de
+/// controllers soltos em `_CollagePageState`, que é rebuilda a cada
+/// `setState` da tela inteira e não é a dona natural desse estado.
+class _CustomAspectRatioInput extends StatefulWidget {
+  const _CustomAspectRatioInput({required this.onApply});
+
+  final ValueChanged<double> onApply;
+
+  @override
+  State<_CustomAspectRatioInput> createState() =>
+      _CustomAspectRatioInputState();
+}
+
+class _CustomAspectRatioInputState extends State<_CustomAspectRatioInput> {
+  final _widthController = TextEditingController();
+  final _heightController = TextEditingController();
+
+  @override
+  void dispose() {
+    _widthController.dispose();
+    _heightController.dispose();
+    super.dispose();
+  }
+
+  void _apply() {
+    final w = double.tryParse(_widthController.text.replaceAll(',', '.'));
+    final h = double.tryParse(_heightController.text.replaceAll(',', '.'));
+    if (w == null || h == null || w <= 0 || h <= 0) return;
+    widget.onApply(w / h);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _widthController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Largura',
+              isDense: true,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text('：', style: theme.textTheme.titleMedium),
+        ),
+        Expanded(
+          child: TextField(
+            controller: _heightController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Altura',
+              isDense: true,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton.filled(
+          tooltip: 'Aplicar proporção',
+          onPressed: _apply,
+          icon: const Icon(Icons.check_rounded),
+        ),
+      ],
+    );
+  }
+}
+
+/// Miniatura "Aa" de uma fonte, renderizada na própria [family] — mesma
+/// forma de miniatura em grade usada por [_bundledStickerThumb].
+class _FontThumb extends StatelessWidget {
+  const _FontThumb({
+    required this.family,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String? family;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 84,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outlineVariant,
+            width: selected ? 2 : 1,
+          ),
+          color: selected
+              ? theme.colorScheme.primary.withValues(alpha: 0.08)
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Aa', style: TextStyle(fontFamily: family, fontSize: 22)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

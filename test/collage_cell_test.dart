@@ -288,6 +288,38 @@ void main() {
       const cell = CollageCellSettings(fitMode: CollageCellFitMode.contain);
       expect(cell.containDisplaySize(const Size(100, 100)), Size.zero);
     });
+
+    test('containDisplayOffset move a foto mesmo no zoom mínimo, baseado no '
+        'tamanho da célula', () {
+      const cell = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 500,
+        fitMode: CollageCellFitMode.contain,
+        offsetX: 1.0,
+        offsetY: -1.0,
+      );
+      // zoom == minZoom (o padrão): antes desta mudança o alcance zerava
+      // exatamente aqui, travando a foto centralizada até ampliar.
+      expect(cell.zoom, CollageCellSettings.minZoom);
+      final offset = cell.containDisplayOffset(const Size(200, 200));
+      expect(offset.dx, closeTo(100, 0.01));
+      expect(offset.dy, closeTo(-100, 0.01));
+    });
+
+    test('containOffsetDeltaForDrag converte arrasto em incremento mesmo no '
+        'zoom mínimo', () {
+      const cell = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 500,
+        fitMode: CollageCellFitMode.contain,
+      );
+      final delta = cell.containOffsetDeltaForDrag(
+        const Offset(20, 0),
+        const Size(200, 200),
+      );
+      expect(delta.dx, closeTo(0.2, 0.001));
+      expect(delta.dy, 0);
+    });
   });
 
   group('borda por foto', () {
