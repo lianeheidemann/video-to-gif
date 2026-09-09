@@ -1,5 +1,6 @@
 import 'dart:ui' show Color;
 
+import 'color_adjustments.dart';
 import 'image_frame.dart';
 
 /// Estilo de moldura desenhado ao redor do GIF. Cada estilo é só um atalho
@@ -100,6 +101,7 @@ class FrameSettings {
     this.imageFrame,
     this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
     this.contentZoom = defaultContentZoom,
+    this.adjustments = ColorAdjustments.neutral,
   });
 
   final FrameStyle style;
@@ -142,6 +144,15 @@ class FrameSettings {
   /// de imagem e [contentFit] é [ContentFitMode.expand]; nos demais modos, a
   /// prévia e a exportação usam [defaultContentZoom].
   final double contentZoom;
+
+  /// Ajustes de cor da foto — brilho, contraste, saturação e companhia.
+  /// Valem só para a foto: a arte da moldura, o fundo e a cor da borda são
+  /// desenhados fora do filtro (ver `photo_frame_compositor.dart`).
+  ///
+  /// Só a tela de moldura de foto usa este campo; na edição de GIF o mesmo
+  /// ajuste mora em `ConversionSettings`, porque lá quem aplica é o FFmpeg e
+  /// não o Canvas.
+  final ColorAdjustments adjustments;
 
   /// Zoom que realmente deve ser aplicado pela prévia e pela exportação.
   /// Manter o valor escolhido em [contentZoom] permite recuperá-lo quando o
@@ -206,6 +217,7 @@ class FrameSettings {
     bool clearImageFrame = false,
     ImageFrameResolutionMode? frameResolutionMode,
     double? contentZoom,
+    ColorAdjustments? adjustments,
   }) {
     return FrameSettings(
       style: style ?? this.style,
@@ -219,6 +231,7 @@ class FrameSettings {
       imageFrame: clearImageFrame ? null : (imageFrame ?? this.imageFrame),
       frameResolutionMode: frameResolutionMode ?? this.frameResolutionMode,
       contentZoom: contentZoom ?? this.contentZoom,
+      adjustments: adjustments ?? this.adjustments,
     );
   }
 }

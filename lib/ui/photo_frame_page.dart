@@ -7,12 +7,15 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/collage_color_adjustment.dart';
+import '../models/color_adjustments.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
 import '../models/photo_info.dart';
 import '../services/imported_frame_store.dart';
 import '../services/output_service.dart';
 import '../services/photo_frame_compositor.dart';
+import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/editor_tabs_footer.dart';
 import 'widgets/frame_painter.dart';
@@ -78,6 +81,15 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   }
 
   double get _photoAspectRatio => widget.photo.aspectRatio;
+
+  /// A foto da prévia, já com o ajuste de cor por cima — o mesmo filtro que
+  /// `photo_frame_compositor` aplica na exportação, para a tela mostrar o
+  /// que vai sair. A moldura e o fundo ficam de fora, como lá.
+  Widget _photoPreview(BoxFit fit) {
+    final photo = Image.file(File(widget.photo.path), fit: fit);
+    if (!_frame.adjustments.hasAdjustments) return photo;
+    return ColorFiltered(colorFilter: _frame.adjustments.filter, child: photo);
+  }
 
   void _updateFrame(FrameSettings frame, {bool pushUndo = true}) {
     if (pushUndo) {
@@ -202,6 +214,13 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         builder: (_) => _contentFitSection(),
       ),
     EditorSection(
+      icon: Icons.tune_rounded,
+      title: 'Ajustar cor',
+      label: 'Cor',
+      value: _frame.adjustments.hasAdjustments ? 'Ajustada' : 'Original',
+      builder: (_) => _colorAdjustSection(),
+    ),
+    EditorSection(
       icon: Icons.wallpaper_rounded,
       title: 'Fundo',
       value: _frame.transparentBackground ? 'Transparente' : 'Cor',
@@ -305,7 +324,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Image.file(File(widget.photo.path), fit: BoxFit.cover),
+      child: _photoPreview(BoxFit.cover),
     );
   }
 
@@ -323,7 +342,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           padding: EdgeInsets.all(thickness),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(innerRadius),
-            child: Image.file(File(widget.photo.path), fit: BoxFit.cover),
+            child: _photoPreview(BoxFit.cover),
           ),
         );
 
@@ -376,8 +395,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   }
 
   Widget _imageFrameContentPreview(ContentFitMode fit) {
-    Widget photo(BoxFit boxFit) =>
-        Image.file(File(widget.photo.path), fit: boxFit);
+    Widget photo(BoxFit boxFit) => _photoPreview(boxFit);
 
     if (fit != ContentFitMode.expand) {
       return ColoredBox(
@@ -1082,6 +1100,29 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   // ---------------------------------------------------------------------
   // "Fundo transparente"
   // ---------------------------------------------------------------------
+
+  /// Ajuste de cor da foto: o mesmo painel da montagem e da edição de GIF,
+  /// aqui gravando em [FrameSettings.adjustments] — assim o desfazer/refazer
+  /// da tela já cobre o ajuste, como cobre os outros controles.
+  Widget _colorAdjustSection() {
+    final adjustments = _frame.adjustments;
+    return ColorAdjustPanel(
+      hasAdjustments: adjustments.hasAdjustments,
+      valueOf: (adjustment) => adjustment.valueIn(adjustments),
+      onChangeStart: _pushUndoCheckpoint,
+      onChanged: (adjustment, value) => _updateFrame(
+        _frame.copyWith(adjustments: adjustment.applyIn(adjustments, value)),
+        pushUndo: false,
+      ),
+      onReset: () {
+        _pushUndoCheckpoint();
+        _updateFrame(
+          _frame.copyWith(adjustments: ColorAdjustments.neutral),
+          pushUndo: false,
+        );
+      },
+    );
+  }
 
   Widget _backgroundSection() {
     final frame = _frame;
