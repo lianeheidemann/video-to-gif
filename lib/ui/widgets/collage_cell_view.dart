@@ -252,12 +252,19 @@ class _CollageCellViewState extends State<CollageCellView> {
               ),
             ),
           ),
-          // Centralizado no canto do retângulo (metade do botão para dentro,
-          // metade para fora), como uma alça de redimensionar.
+          // Pousado sobre o canto do retângulo, poucos pixels para fora dele
+          // — não pode ir tão longe quanto o centro geométrico do canto
+          // (offset -15 = metade do botão de 30px): o hit-test do Flutter só
+          // enxerga toques dentro do próprio tamanho do Stack (o
+          // `clipBehavior: Clip.none` acima só afeta pintura, nunca
+          // hit-test), então um botão centralizado exatamente na quina tem
+          // seu centro geométrico bem na borda excludente do retângulo e
+          // nunca é tocável. -6 deixa o centro do botão com folga (~21px)
+          // dentro da célula, mantendo a metade dele visível para fora.
           if (cell.hasPhoto)
             Positioned(
-              right: -15,
-              top: -15,
+              right: -6,
+              top: -6,
               child: _MenuButton(onTap: widget.onMenu),
             ),
         ],

@@ -82,7 +82,10 @@ void main() {
 
       expect(find.text('3.0 MB'), findsOneWidget);
       expect(find.text('Leve'), findsWidgets);
-      expect(find.text(_summary), findsOneWidget);
+      // O painel compacto junta "Faixa provável/medida" e o resumo num só
+      // Text, então o resumo aparece como pedaço de uma string maior — não
+      // dá mais para casar por igualdade exata.
+      expect(find.textContaining(_summary), findsOneWidget);
     });
 
     testWidgets('classifica um arquivo grande como pesado', (tester) async {

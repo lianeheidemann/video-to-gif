@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart' show Size;
+import 'package:flutter/material.dart' show Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_to_gif/models/collage_layout.dart';
 

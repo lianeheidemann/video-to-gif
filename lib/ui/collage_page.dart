@@ -935,8 +935,8 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
 
   /// Valor mostrado/arrastado pelo slider conforme [_marginTarget]: "Tudo"
-  /// não tem uma proporção própria — mostra a média das duas, e ao arrastar
-  /// iguala as duas a esse valor.
+  /// não tem uma proporção própria — mostra a média das duas, e ao
+  /// arrastar iguala as duas a esse valor.
   double get _marginSliderValue => switch (_marginTarget) {
     _MarginTarget.both =>
       (_settings.outerMarginRatio + _settings.innerMarginRatio) / 2,

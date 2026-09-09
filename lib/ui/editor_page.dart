@@ -61,9 +61,9 @@ class _EditorPageState extends State<EditorPage> {
   final _imageFrameAnchorKey = GlobalKey();
   final _previewAreaKey = GlobalKey();
 
-  /// Ancorada no `RepaintBoundary` em volta da prévia — [_renderPreviewImage]
-  /// usa isso para rasterizar exatamente o que está na tela para o
-  /// conta-gotas do seletor de cor.
+  /// Ancorada no `RepaintBoundary` em volta da prévia —
+  /// [_renderPreviewImage] usa isso para rasterizar exatamente o que está
+  /// na tela para o conta-gotas do seletor de cor.
   final _colorPreviewKey = GlobalKey();
   List<ImageFrameAsset> _importedImageFrames = [];
 
@@ -307,7 +307,7 @@ class _EditorPageState extends State<EditorPage> {
     // a janela; em qualquer outra aba a prévia já mostra o corte aplicado
     // (ver _previewArea), como o resultado final vai sair.
     final isCropTabActive =
-        active != null && sections[active!].barLabel == 'Janela';
+        active != null && sections[active].barLabel == 'Janela';
 
     return Scaffold(
       appBar: AppBar(
@@ -500,12 +500,12 @@ class _EditorPageState extends State<EditorPage> {
     });
   }
 
-  /// A prévia da aba atual. Com a aba "Janela" aberta mostra o vídeo inteiro
-  /// e as alças de recorte (é lá que a janela é ajustada); em qualquer outra
-  /// aba, sem moldura, mostra o vídeo já cortado — o que a pessoa vê ali é o
-  /// que vai sair no GIF, não a área extra que só interessa durante o
-  /// recorte em si. Com moldura, quem decide isso é [_framedPreview] (que já
-  /// corta antes de encaixar no quadro escolhido).
+  /// A prévia da aba atual. Com a aba "Janela" aberta mostra o vídeo
+  /// inteiro e as alças de recorte (é lá que a janela é ajustada); em
+  /// qualquer outra aba, sem moldura, mostra o vídeo já cortado — o que a
+  /// pessoa vê ali é o que vai sair no GIF, não a área extra que só
+  /// interessa durante o recorte em si. Com moldura, quem decide isso é
+  /// [_framedPreview] (que já corta antes de encaixar no quadro escolhido).
   ///
   /// A [AnimatedSize] existe porque trocar de moldura (ou entre "Moldura" e
   /// "Moldura de imagem") quase sempre muda a proporção da prévia — cada

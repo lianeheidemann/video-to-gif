@@ -140,7 +140,8 @@ void main() {
     await tester.tap(find.text('Stickers'));
     await tester.pumpAndSettle();
 
-    // A pasta "Reações" (aberta por padrão) já mostra seus stickers embutidos.
+    // A pasta "Reações" (aberta por padrão) já mostra seus stickers
+    // embutidos.
     expect(find.byType(SvgPicture), findsWidgets);
 
     await tester.tap(find.byType(SvgPicture).first);
@@ -182,8 +183,9 @@ void main() {
       }
       expect(find.text('Importar'), findsNothing);
 
-      // "Reações" (padrão) mostra 2 stickers (Joinha, Sorriso) — os ícones
-      // não têm rótulo visível, então a checagem é pela contagem de SVGs.
+      // "Reações" (padrão) mostra 2 stickers (Joinha, Sorriso) — os
+      // ícones não têm rótulo visível, então a checagem é pela contagem
+      // de SVGs.
       expect(find.byType(SvgPicture), findsNWidgets(2));
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Símbolos'));
