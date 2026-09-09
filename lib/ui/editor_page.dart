@@ -2638,5 +2638,3 @@ class _EditorPageState extends State<EditorPage> {
   }
 }
 
-/// Folha inferior explicativa: lista os fatores que mais pesam no tamanho
-/// do GIF, aberta pelo botão de ajuda na barra superior do editor.
