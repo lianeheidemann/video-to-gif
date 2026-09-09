@@ -128,7 +128,7 @@ class _HomePageState extends State<HomePage> {
   /// (`FilePicker.pickFiles` com seleção múltipla, ao contrário de
   /// `_pickPhoto`'s `pickFile` singular) e navega para [CollagePage], onde o
   /// usuário monta a colagem. Exige pelo menos duas fotos — uma única foto já
-  /// tem sua própria tela dedicada em "Colocar moldura em uma foto".
+  /// tem sua própria tela dedicada em "Colocar moldura".
   Future<void> _pickPhotosForCollage() async {
     setState(() {
       _loading = true;
@@ -297,13 +297,13 @@ class _HomePageState extends State<HomePage> {
                 OutlinedButton.icon(
                   onPressed: _loading ? null : _pickPhoto,
                   icon: const Icon(Icons.photo_filter_outlined),
-                  label: const Text('Colocar moldura em uma foto'),
+                  label: const Text('Colocar moldura'),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _loading ? null : _pickPhotosForCollage,
                   icon: const Icon(Icons.dashboard_customize_outlined),
-                  label: const Text('Montagem de fotos'),
+                  label: const Text('Montagem'),
                 ),
                 const SizedBox(height: 28),
                 const _StepsCard(),
