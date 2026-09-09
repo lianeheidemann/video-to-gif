@@ -705,6 +705,43 @@ void main() {
   });
 
   testWidgets(
+    'criar uma pasta rola a fileira até ela, sem precisar rolar na mão',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Stickers'));
+      await tester.pumpAndSettle();
+
+      final page = find.byType(Scrollable).first;
+
+      // Cria várias pastas: com só uma, a fileira inteira já cabe na tela e
+      // o teste não provaria nada — a pasta nova precisa nascer longe do
+      // que já está visível para a rolagem automática ter algo a fazer.
+      for (var i = 0; i < 6; i++) {
+        await tester.scrollUntilVisible(
+          find.widgetWithText(FolderTab, 'Nova pasta'),
+          200,
+          scrollable: page,
+        );
+        await tester.tap(find.widgetWithText(FolderTab, 'Nova pasta'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'Pasta $i');
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+      }
+
+      // Sem rolar a fileira de pastas na mão: a última criada precisa já
+      // estar visível, porque criar uma pasta rola até ela sozinho.
+      expect(find.widgetWithText(FolderTab, 'Pasta 5'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'modos de fundo ficam dentro da caixa do alvo, com os dois alvos',
     (tester) async {
       tester.view.physicalSize = const Size(900, 2400);

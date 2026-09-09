@@ -113,6 +113,11 @@ class FolderTab extends StatelessWidget {
     final foreground = selected
         ? theme.colorScheme.onPrimaryContainer
         : theme.colorScheme.onSurfaceVariant;
+    // Rede de segurança para uma pasta antiga persistida com nome vazio —
+    // `StickerFolderStore.create` já não deixa isso acontecer de novo, mas
+    // sem isto uma entrada assim continuaria aparecendo como um vão sem
+    // texto para sempre.
+    final displayLabel = label.trim().isEmpty ? 'Pasta sem nome' : label;
     return Material(
       color: selected
           ? theme.colorScheme.primaryContainer
@@ -141,7 +146,7 @@ class FolderTab extends StatelessWidget {
                 const SizedBox(width: 5),
               ],
               Text(
-                label,
+                displayLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelMedium?.copyWith(

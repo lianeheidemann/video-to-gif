@@ -146,6 +146,11 @@ class _CollagePageState extends State<CollagePage> {
   static const _folderStore = StickerFolderStore();
   static const _fontStore = ImportedFontStore();
 
+  /// Da fileira de pastas da aba "Stickers" — usado só para rolar até o
+  /// fim ao criar uma pasta nova, que nasce perto de "Nova pasta", no fim
+  /// da lista (ver [_createStickerFolder]).
+  final _folderScrollController = ScrollController();
+
   /// Stickers prontos, embutidos no app (`assets/sticker/`), agrupados por
   /// pasta temática na seção "Stickers" — ver [_StickerFolder].
   static const _stickerFolderReactions = <(String path, String label)>[
@@ -379,6 +384,7 @@ class _CollagePageState extends State<CollagePage> {
     _textController.dispose();
     _textFocus.dispose();
     _exportProgress.dispose();
+    _folderScrollController.dispose();
     super.dispose();
   }
 
@@ -2263,6 +2269,7 @@ class _CollagePageState extends State<CollagePage> {
         SizedBox(
           height: 44,
           child: ListView.separated(
+            controller: _folderScrollController,
             scrollDirection: Axis.horizontal,
             // +1 pelo botão de criar pasta, sempre no fim da linha.
             itemCount: _StickerFolder.values.length + _customFolders.length + 1,
@@ -2371,6 +2378,17 @@ class _CollagePageState extends State<CollagePage> {
     setState(() {
       _customFolders = [..._customFolders, folder];
       _stickerFolderId = folder.id;
+    });
+    // A pasta nova nasce perto do fim da fileira (antes só de "Nova
+    // pasta"), fora da parte já visível se houver muitas pastas — sem
+    // rolar até lá, ela ficava fora da vista logo depois de criada.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_folderScrollController.hasClients) return;
+      _folderScrollController.animateTo(
+        _folderScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
     });
   }
 
