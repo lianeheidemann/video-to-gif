@@ -659,7 +659,7 @@ class _CollagePageState extends State<CollagePage> {
         setState(() => _panelCollapsed = velocity > 0);
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Container(
           width: 36,
           height: 4,
@@ -710,7 +710,7 @@ class _CollagePageState extends State<CollagePage> {
   Widget _footerTabs() {
     final theme = Theme.of(context);
     return Container(
-      height: 76,
+      height: 60,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -741,11 +741,11 @@ class _CollagePageState extends State<CollagePage> {
         _panelCollapsed = false;
       }),
       child: SizedBox(
-        width: 68,
+        width: 60,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(_tabIcon(tab), color: color),
+            Icon(_tabIcon(tab), size: 20, color: color),
             const SizedBox(height: 4),
             Text(
               _tabLabel(tab),
@@ -2002,8 +2002,8 @@ class _CollagePageState extends State<CollagePage> {
               // dentro do próprio botão — chip quebra para a linha de baixo
               // inteiro, nunca no meio de uma palavra.
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   for (final entry in const [
                     (
@@ -2023,8 +2023,10 @@ class _CollagePageState extends State<CollagePage> {
                     ),
                   ])
                     ChoiceChip(
-                      avatar: Icon(entry.$3, size: 18),
+                      avatar: Icon(entry.$3, size: 15),
                       label: Text(entry.$2),
+                      visualDensity: VisualDensity.compact,
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
                       selected: background.mode == entry.$1,
                       onSelected: (_) =>
                           _applyBackground(background.copyWith(mode: entry.$1)),
