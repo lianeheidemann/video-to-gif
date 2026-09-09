@@ -15,12 +15,16 @@ String _encode({
   required String filePath,
   required bool isVector,
   required double aspect,
+  String? folderId,
 }) => jsonEncode({
   'id': id,
   'label': label,
   'filePath': filePath,
   'isVector': isVector,
   'aspect': aspect,
+  // Omitido quando nulo para reproduzir também as entradas antigas, gravadas
+  // antes de existirem pastas.
+  if (folderId != null) 'folderId': folderId,
 });
 
 void main() {
@@ -123,4 +127,64 @@ void main() {
       expect(await backgroundStore.loadAll(), isEmpty);
     },
   );
+
+  test('entrada antiga, sem folderId, cai na pasta "Importados"', () async {
+    final file = File('${tempDir.path}/antigo.png');
+    await file.writeAsBytes([0]);
+
+    SharedPreferences.setMockInitialValues({
+      'importedStickers': [
+        _encode(
+          id: 'a',
+          label: 'Antigo',
+          filePath: file.path,
+          isVector: false,
+          aspect: 1.0,
+        ),
+      ],
+    });
+
+    const store = ImportedAssetStore(ImportedAssetKind.sticker);
+    final assets = await store.loadAll();
+
+    expect(assets.single.folderId, isNull);
+  });
+
+  test('moveFolderToRoot esvazia a pasta sem apagar os arquivos', () async {
+    final inFolder = File('${tempDir.path}/na_pasta.png');
+    final elsewhere = File('${tempDir.path}/outra_pasta.png');
+    await inFolder.writeAsBytes([0]);
+    await elsewhere.writeAsBytes([0]);
+
+    SharedPreferences.setMockInitialValues({
+      'importedStickers': [
+        _encode(
+          id: 'a',
+          label: 'Na pasta',
+          filePath: inFolder.path,
+          isVector: false,
+          aspect: 1.0,
+          folderId: 'f_1',
+        ),
+        _encode(
+          id: 'b',
+          label: 'Em outra',
+          filePath: elsewhere.path,
+          isVector: false,
+          aspect: 1.0,
+          folderId: 'f_2',
+        ),
+      ],
+    });
+
+    const store = ImportedAssetStore(ImportedAssetKind.sticker);
+    await store.moveFolderToRoot('f_1');
+
+    final assets = await store.loadAll();
+    expect(assets.firstWhere((a) => a.id == 'a').folderId, isNull);
+    // A outra pasta fica intacta, e nenhum arquivo é removido: apagar a pasta
+    // não pode levar junto o que o usuário importou.
+    expect(assets.firstWhere((a) => a.id == 'b').folderId, 'f_2');
+    expect(await inFolder.exists(), isTrue);
+  });
 }

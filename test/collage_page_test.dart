@@ -12,6 +12,7 @@ import 'package:video_to_gif/models/photo_info.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
 import 'package:video_to_gif/ui/widgets/collage_overlay_view.dart';
+import 'package:video_to_gif/ui/widgets/folder_tab.dart';
 import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
@@ -180,7 +181,7 @@ void main() {
 
       // As 4 pastas existem, e "Importar" só aparece dentro de "Importados".
       for (final label in ['Reações', 'Símbolos', 'Efeitos', 'Importados']) {
-        expect(find.widgetWithText(ChoiceChip, label), findsOneWidget);
+        expect(find.widgetWithText(FolderTab, label), findsOneWidget);
       }
       expect(find.text('Importar'), findsNothing);
 
@@ -189,15 +190,15 @@ void main() {
       // de SVGs.
       expect(find.byType(SvgPicture), findsNWidgets(2));
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Símbolos'));
+      await tester.tap(find.widgetWithText(FolderTab, 'Símbolos'));
       await tester.pumpAndSettle();
       expect(find.byType(SvgPicture), findsNWidgets(2));
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Efeitos'));
+      await tester.tap(find.widgetWithText(FolderTab, 'Efeitos'));
       await tester.pumpAndSettle();
       expect(find.byType(SvgPicture), findsNWidgets(1));
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Importados'));
+      await tester.tap(find.widgetWithText(FolderTab, 'Importados'));
       await tester.pumpAndSettle();
       expect(find.text('Importar'), findsOneWidget);
       // Sem nada importado ainda, só o tile "Importar" aparece — nenhum SVG
@@ -564,4 +565,45 @@ void main() {
       );
     },
   );
+
+  testWidgets('pasta criada pelo usuário aparece na barra e pode ser apagada', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    // O botão do fim da linha pede o nome e já abre a pasta nova.
+    await tester.tap(find.widgetWithText(FolderTab, 'Nova pasta'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Xícaras');
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(FolderTab, 'Xícaras'), findsOneWidget);
+    // Pasta criada começa vazia: só o tile de importar.
+    expect(find.text('Importar'), findsOneWidget);
+
+    // Segurar abre o menu com renomear/apagar — só as criadas têm esse gesto.
+    await tester.longPress(find.widgetWithText(FolderTab, 'Xícaras'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apagar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Apagar'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(FolderTab, 'Xícaras'), findsNothing);
+    // Sem a pasta aberta, a barra cai em "Importados" em vez de ficar sem
+    // nenhuma pasta marcada.
+    final imported = tester.widget<FolderTab>(
+      find.widgetWithText(FolderTab, 'Importados'),
+    );
+    expect(imported.selected, isTrue);
+  });
 }

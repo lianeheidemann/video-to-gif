@@ -23,12 +23,14 @@ import '../services/collage_compositor.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/imported_asset_store.dart';
 import '../services/output_service.dart';
+import '../services/sticker_folder_store.dart';
 import 'photo_crop_page.dart';
 import 'widgets/collage_cell_view.dart';
 import 'widgets/collage_overlay_view.dart';
 import 'widgets/collage_painter.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
+import 'widgets/folder_tab.dart';
 
 /// Abas fixas no rodapé da tela de montagem — cada uma abre um painel com o
 /// conteúdo daquela seção logo acima da barra de abas, substituindo a antiga
@@ -47,6 +49,12 @@ enum _MarginTarget { both, outer, inner }
 enum _StickerFolder { reactions, symbols, effects, imported }
 
 extension on _StickerFolder {
+  /// Id da pasta embutida na barra — o próprio nome do enum. As pastas
+  /// criadas pelo usuário usam ids com prefixo `f_` (ver
+  /// `StickerFolderStore.create`), então os dois conjuntos convivem na mesma
+  /// barra sem risco de colisão.
+  String get id => name;
+
   String get label => switch (this) {
     _StickerFolder.reactions => 'Reações',
     _StickerFolder.symbols => 'Símbolos',
@@ -78,6 +86,7 @@ class _CollagePageState extends State<CollagePage> {
   static const _backgroundStore = ImportedAssetStore(
     ImportedAssetKind.backgroundImage,
   );
+  static const _folderStore = StickerFolderStore();
 
   /// Stickers prontos, embutidos no app (`assets/sticker/`), agrupados por
   /// pasta temática na seção "Stickers" — ver [_StickerFolder].
@@ -136,8 +145,13 @@ class _CollagePageState extends State<CollagePage> {
   /// [_MarginTarget].
   _MarginTarget _marginTarget = _MarginTarget.both;
 
-  /// Pasta aberta na aba "Stickers" — ver [_StickerFolder].
-  _StickerFolder _stickerFolder = _StickerFolder.reactions;
+  /// Pasta aberta na aba "Stickers": id de uma embutida ([_StickerFolder.id])
+  /// ou de uma criada pelo usuário ([StickerFolder.id]).
+  String _stickerFolderId = _StickerFolder.reactions.id;
+
+  /// Pastas criadas pelo usuário, carregadas junto com os stickers
+  /// importados — ver [StickerFolderStore].
+  List<StickerFolder> _customFolders = [];
 
   bool _saving = false;
   bool _sharing = false;
@@ -179,11 +193,24 @@ class _CollagePageState extends State<CollagePage> {
   Future<void> _loadImportedAssets() async {
     final stickers = await _stickerStore.loadAll();
     final backgrounds = await _backgroundStore.loadAll();
+    final folders = await _folderStore.loadAll();
     if (!mounted) return;
     setState(() {
       _importedStickers = stickers;
       _importedBackgrounds = backgrounds;
+      _customFolders = folders;
+      _dropStickerFolderIfGone();
     });
+  }
+
+  /// Volta para "Importados" quando a pasta aberta não existe mais — só
+  /// acontece se ela for apagada, mas deixa a barra sempre com alguma pasta
+  /// marcada em vez de nenhuma.
+  void _dropStickerFolderIfGone() {
+    final exists =
+        _StickerFolder.values.any((f) => f.id == _stickerFolderId) ||
+        _customFolders.any((f) => f.id == _stickerFolderId);
+    if (!exists) _stickerFolderId = _StickerFolder.imported.id;
   }
 
   // ---------------------------------------------------------------------
@@ -345,9 +372,44 @@ class _CollagePageState extends State<CollagePage> {
             ),
           ),
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          child: _panelContentFor(tab),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _panelDragHandle(),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                child: _panelContentFor(tab),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Alça no topo do painel: além de marcar onde ele começa, fecha o painel
+  /// ao ser tocada ou puxada para baixo — uma alça que não faz nada seria só
+  /// enfeite prometendo um gesto que não existe.
+  Widget _panelDragHandle() {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _activeTab = null),
+      onVerticalDragEnd: (details) {
+        if (details.primaryVelocity != null && details.primaryVelocity! > 0) {
+          setState(() => _activeTab = null);
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Container(
+          width: 36,
+          height: 4,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.outlineVariant,
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
       ),
     );
@@ -1542,42 +1604,96 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Stickers" / "Texto"
   // ---------------------------------------------------------------------
 
+  /// Pasta embutida aberta agora, ou `null` quando a aberta é uma criada
+  /// pelo usuário.
+  _StickerFolder? get _openBundledFolder {
+    for (final folder in _StickerFolder.values) {
+      if (folder.id == _stickerFolderId) return folder;
+    }
+    return null;
+  }
+
+  /// Stickers importados que moram na pasta aberta: os sem pasta ficam em
+  /// "Importados", o resto em cada pasta criada pelo usuário.
+  List<ImportedAsset> get _stickersInOpenFolder {
+    final bundled = _openBundledFolder;
+    if (bundled != null && bundled != _StickerFolder.imported) return const [];
+    final folderId = bundled == null ? _stickerFolderId : null;
+    return _importedStickers.where((a) => a.folderId == folderId).toList();
+  }
+
   Widget _stickersPanelContent() {
-    final folder = _stickerFolder;
-    final isImportedFolder = folder == _StickerFolder.imported;
-    final bundled = _bundledStickersFor(folder);
+    final bundledFolder = _openBundledFolder;
+    // Pastas embutidas temáticas mostram os stickers do app; "Importados" e
+    // as pastas criadas mostram os importados daquela pasta, com o tile de
+    // importar no fim.
+    final bundledStickers = bundledFolder == null
+        ? const <(String path, String label)>[]
+        : _bundledStickersFor(bundledFolder);
+    final showsImports =
+        bundledFolder == null || bundledFolder == _StickerFolder.imported;
+    final imported = _stickersInOpenFolder;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _panelHeader('Stickers'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final option in _StickerFolder.values)
-              ChoiceChip(
-                label: Text(option.label),
-                selected: folder == option,
-                onSelected: (_) => setState(() => _stickerFolder = option),
-              ),
-          ],
+        SizedBox(
+          height: 62,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            // +1 pelo botão de criar pasta, sempre no fim da linha.
+            itemCount: _StickerFolder.values.length + _customFolders.length + 1,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              if (index < _StickerFolder.values.length) {
+                final folder = _StickerFolder.values[index];
+                return FolderTab(
+                  label: folder.label,
+                  selected: folder.id == _stickerFolderId,
+                  onTap: () => setState(() => _stickerFolderId = folder.id),
+                );
+              }
+              final customIndex = index - _StickerFolder.values.length;
+              if (customIndex < _customFolders.length) {
+                final folder = _customFolders[customIndex];
+                return FolderTab(
+                  label: folder.name,
+                  selected: folder.id == _stickerFolderId,
+                  onTap: () => setState(() => _stickerFolderId = folder.id),
+                  onLongPress: () => _openFolderMenu(folder),
+                );
+              }
+              return FolderTab(
+                label: 'Nova pasta',
+                selected: false,
+                icon: Icons.create_new_folder_outlined,
+                onTap: _createStickerFolder,
+              );
+            },
+          ),
         ),
         const SizedBox(height: 10),
         SizedBox(
           height: 70,
-          child: isImportedFolder
+          child: showsImports
               ? ListView.separated(
                   scrollDirection: Axis.horizontal,
-                  itemCount: _importedStickers.length + 1,
+                  itemCount: imported.length + 1,
                   separatorBuilder: (_, _) => const SizedBox(width: 10),
                   itemBuilder: (context, index) {
-                    if (index == _importedStickers.length) {
+                    if (index == imported.length) {
                       return _importTile(
-                        onTap: _importSticker,
+                        // Importar de dentro de uma pasta criada já põe o
+                        // sticker nela; em "Importados" a pasta é nula.
+                        onTap: () => _importSticker(
+                          folderId: bundledFolder == null
+                              ? _stickerFolderId
+                              : null,
+                        ),
                         label: 'Importar',
                       );
                     }
-                    final asset = _importedStickers[index];
+                    final asset = imported[index];
                     return GestureDetector(
                       onTap: () => _addStickerFromAsset(asset),
                       onLongPress: () => _confirmRemoveSticker(asset),
@@ -1587,10 +1703,10 @@ class _CollagePageState extends State<CollagePage> {
                 )
               : ListView.separated(
                   scrollDirection: Axis.horizontal,
-                  itemCount: bundled.length,
+                  itemCount: bundledStickers.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 10),
                   itemBuilder: (context, index) {
-                    final sticker = bundled[index];
+                    final sticker = bundledStickers[index];
                     return GestureDetector(
                       onTap: () => _addBundledSticker(sticker),
                       child: _bundledStickerThumb(sticker),
@@ -1600,6 +1716,125 @@ class _CollagePageState extends State<CollagePage> {
         ),
       ],
     );
+  }
+
+  Future<void> _createStickerFolder() async {
+    final name = await _promptTextInput(
+      initial: '',
+      title: 'Nova pasta',
+      maxLines: 1,
+    );
+    if (name == null || name.trim().isEmpty) return;
+    final folder = await _folderStore.create(name);
+    if (!mounted) return;
+    setState(() {
+      _customFolders = [..._customFolders, folder];
+      _stickerFolderId = folder.id;
+    });
+  }
+
+  /// Menu de segurar uma pasta criada — as embutidas não passam
+  /// `onLongPress`, então não chegam aqui.
+  void _openFolderMenu(StickerFolder folder) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Renomear'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _renameStickerFolder(folder);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Apagar'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _confirmRemoveStickerFolder(folder);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _renameStickerFolder(StickerFolder folder) async {
+    final name = await _promptTextInput(
+      initial: folder.name,
+      title: 'Renomear pasta',
+      maxLines: 1,
+    );
+    if (name == null || name.trim().isEmpty) return;
+    await _folderStore.rename(folder.id, name);
+    if (!mounted) return;
+    setState(() {
+      _customFolders = [
+        for (final f in _customFolders)
+          f.id == folder.id
+              ? StickerFolder(id: f.id, name: name.trim())
+              : f,
+      ];
+    });
+  }
+
+  /// Apagar a pasta não apaga o que o usuário importou para ela: os stickers
+  /// voltam para "Importados" (`moveFolderToRoot`), e o diálogo diz isso
+  /// antes de confirmar.
+  Future<void> _confirmRemoveStickerFolder(StickerFolder folder) async {
+    final inFolder = _importedStickers
+        .where((a) => a.folderId == folder.id)
+        .length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Apagar pasta?'),
+        content: Text(
+          inFolder == 0
+              ? '"${folder.name}" vai ser apagada.'
+              : '"${folder.name}" vai ser apagada. '
+                    '${inFolder == 1 ? 'O sticker que está' : 'Os $inFolder stickers que estão'} '
+                    'nela ${inFolder == 1 ? 'volta' : 'voltam'} para "Importados".',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Apagar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _stickerStore.moveFolderToRoot(folder.id);
+    await _folderStore.remove(folder.id);
+    if (!mounted) return;
+    setState(() {
+      _customFolders = _customFolders.where((f) => f.id != folder.id).toList();
+      _importedStickers = [
+        for (final asset in _importedStickers)
+          asset.folderId == folder.id
+              ? ImportedAsset(
+                  id: asset.id,
+                  label: asset.label,
+                  filePath: asset.filePath,
+                  isVector: asset.isVector,
+                  nativeAspectRatio: asset.nativeAspectRatio,
+                )
+              : asset,
+      ];
+      _dropStickerFolderIfGone();
+    });
   }
 
   Widget _bundledStickerThumb((String path, String label) sticker) {
@@ -1633,9 +1868,9 @@ class _CollagePageState extends State<CollagePage> {
     setState(() => _selectedOverlayId = item.id);
   }
 
-  Future<void> _importSticker() async {
+  Future<void> _importSticker({String? folderId}) async {
     try {
-      final asset = await _stickerStore.import();
+      final asset = await _stickerStore.import(folderId: folderId);
       if (!mounted) return;
       setState(() => _importedStickers = [..._importedStickers, asset]);
       _addStickerFromAsset(asset);
@@ -1847,11 +2082,15 @@ class _CollagePageState extends State<CollagePage> {
     _update(_settings.replacingText(id, item.copyWith(text: text.trim())));
   }
 
-  Future<String?> _promptTextInput({required String initial}) =>
-      showDialog<String>(
-        context: context,
-        builder: (dialogContext) => _TextInputDialog(initial: initial),
-      );
+  Future<String?> _promptTextInput({
+    required String initial,
+    String title = 'Texto',
+    int maxLines = 3,
+  }) => showDialog<String>(
+    context: context,
+    builder: (dialogContext) =>
+        _TextInputDialog(initial: initial, title: title, maxLines: maxLines),
+  );
 
   /// Folha com as [bundledCollageFonts] em miniaturas "Aa", cada uma
   /// renderizada na própria fonte — mesmo padrão visual dos outros sheets
@@ -2750,9 +2989,18 @@ class _CollagePageState extends State<CollagePage> {
 /// `showDialog` retornava — ainda durante a animação de saída, com o campo
 /// montado e usando um controller já descartado.
 class _TextInputDialog extends StatefulWidget {
-  const _TextInputDialog({required this.initial});
+  const _TextInputDialog({
+    required this.initial,
+    this.title = 'Texto',
+    this.maxLines = 3,
+  });
 
   final String initial;
+
+  /// Título do diálogo — o mesmo campo serve para escrever um texto da
+  /// montagem e para nomear/renomear uma pasta de stickers.
+  final String title;
+  final int maxLines;
 
   @override
   State<_TextInputDialog> createState() => _TextInputDialogState();
@@ -2772,8 +3020,12 @@ class _TextInputDialogState extends State<_TextInputDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Texto'),
-      content: TextField(controller: _controller, autofocus: true, maxLines: 3),
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLines: widget.maxLines,
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),

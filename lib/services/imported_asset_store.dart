@@ -48,6 +48,7 @@ class ImportedAsset {
     required this.filePath,
     required this.isVector,
     required this.nativeAspectRatio,
+    this.folderId,
   });
 
   final String id;
@@ -55,6 +56,11 @@ class ImportedAsset {
   final String filePath;
   final bool isVector;
   final double nativeAspectRatio;
+
+  /// Pasta criada pelo usuário em que este sticker está (ver
+  /// `StickerFolderStore`); `null` = a pasta "Importados", que é também onde
+  /// caem as entradas antigas, gravadas antes de existirem pastas.
+  final String? folderId;
 }
 
 /// Importa e persiste stickers/imagens de fundo escolhidos pelo usuário no
@@ -67,7 +73,9 @@ class ImportedAssetStore {
 
   final ImportedAssetKind kind;
 
-  Future<ImportedAsset> import() async {
+  /// [folderId] é a pasta de destino do sticker importado — `null` (o
+  /// padrão, e o único caso das imagens de fundo) põe em "Importados".
+  Future<ImportedAsset> import({String? folderId}) async {
     final picked = await FilePicker.pickFile(
       type: kind.allowsSvg ? FileType.custom : FileType.image,
       allowedExtensions: kind.allowsSvg
@@ -108,6 +116,7 @@ class ImportedAssetStore {
       filePath: destPath,
       isVector: isVector,
       nativeAspectRatio: aspectRatio,
+      folderId: folderId,
     );
 
     await _persistAppend(asset);
@@ -143,6 +152,36 @@ class ImportedAssetStore {
     await prefs.setStringList(kind._prefsKey, kept);
   }
 
+  /// Tira todos os assets de [folderId] da pasta, devolvendo-os a
+  /// "Importados" — o que acontece quando a pasta é apagada: some a pasta,
+  /// não os stickers que o usuário importou para ela.
+  Future<void> moveFolderToRoot(String folderId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(kind._prefsKey) ?? const [];
+    final updated = <String>[];
+    for (final entry in raw) {
+      final asset = _decode(entry);
+      if (asset == null) {
+        updated.add(entry);
+        continue;
+      }
+      updated.add(
+        asset.folderId == folderId
+            ? _encode(
+                ImportedAsset(
+                  id: asset.id,
+                  label: asset.label,
+                  filePath: asset.filePath,
+                  isVector: asset.isVector,
+                  nativeAspectRatio: asset.nativeAspectRatio,
+                ),
+              )
+            : entry,
+      );
+    }
+    await prefs.setStringList(kind._prefsKey, updated);
+  }
+
   Future<void> _persistAppend(ImportedAsset asset) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(kind._prefsKey) ?? const [];
@@ -155,6 +194,7 @@ class ImportedAssetStore {
     'filePath': asset.filePath,
     'isVector': asset.isVector,
     'aspect': asset.nativeAspectRatio,
+    'folderId': asset.folderId,
   });
 
   ImportedAsset? _decode(String entry) {
@@ -166,6 +206,7 @@ class ImportedAssetStore {
         filePath: map['filePath'] as String,
         isVector: map['isVector'] as bool,
         nativeAspectRatio: (map['aspect'] as num).toDouble(),
+        folderId: map['folderId'] as String?,
       );
     } catch (_) {
       return null;
