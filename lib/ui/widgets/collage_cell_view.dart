@@ -259,8 +259,8 @@ class _CollageCellViewState extends State<CollageCellView> {
           // `clipBehavior: Clip.none` acima só afeta pintura, nunca
           // hit-test), então um botão centralizado exatamente na quina tem
           // seu centro geométrico bem na borda excludente do retângulo e
-          // nunca é tocável. -6 deixa o centro do botão com folga (~21px)
-          // dentro da célula, mantendo a metade dele visível para fora.
+          // nunca é tocável. Com -6, um botão de ~30px fica ~24px dentro da
+          // célula (centro ~9px dentro), deixando ~6px visíveis para fora.
           if (cell.hasPhoto)
             Positioned(
               right: -6,
