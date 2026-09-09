@@ -63,154 +63,84 @@ because it depends on how much the scene moves. The usual workflow is
 convert, see it came out too big, adjust and convert again — several minutes
 per attempt.
 
-This app flips that around:
-
-1. **Instant estimate** while you adjust the controls, without converting
-   anything. Before any measurement the number comes from a guess based on
-   the file's bitrate, and the displayed range is deliberately wide (±40% to
-   ±55%).
-2. **"Measure" button**, which converts two clips of up to one second each
-   with the chosen settings and uses their real size to calibrate the
-   calculation — from then on the displayed range narrows to ±15%. The model
-   separates the cost of the first frame (a full image) from the cost of the
-   following ones (just the rectangle that changed), which is what lets it
-   measure 1 second and predict 40 without inflating the number for a static
-   scene.
-3. **Destination traffic light**: shows whether the GIF fits within
-   WhatsApp's, X/Twitter's and Discord's limits. If it doesn't fit, one tap
-   adjusts the settings so it does.
+This app estimates the size **while you adjust the controls**, without
+converting anything. The **Measure** button converts two clips of up to one
+second with the chosen settings and uses their real size to calibrate the
+calculation, narrowing the displayed range from ±40–55% to ±15%. A
+**destination traffic light** shows whether the GIF fits within WhatsApp's,
+X/Twitter's and Discord's limits, and one tap adjusts the settings so it
+does.
 
 > [!WARNING]
-> **The estimate is still being refined.** The pre-measurement guess (step 1)
-> is the least accurate part of the model — it's based on bitrate alone, which
-> is why its range is intentionally shown as wide (±40–55%). Tapping
-> **Measure** narrows this to ±15%, but a few content types (e.g. moving
-> gradients) can still fall outside that range. See
-> [Measured accuracy](docs/en/HOW_THE_ESTIMATE_WORKS.md#measured-accuracy) for
-> current numbers and known gaps.
-
-How this works under the hood is documented in
-[`docs/en/HOW_THE_ESTIMATE_WORKS.md`](docs/en/HOW_THE_ESTIMATE_WORKS.md).
+> **The estimate is still being refined.** Before measuring it relies on
+> bitrate alone, and a few content types (e.g. moving gradients) can fall
+> outside the range even after. How the model works, and how accurate it
+> actually is, are documented in
+> [`docs/en/HOW_THE_ESTIMATE_WORKS.md`](docs/en/HOW_THE_ESTIMATE_WORKS.md).
 
 ## Features
 
 ### Everywhere
 
 The three editors share the same shell: a **bottom tab bar** where each tab
-opens its own panel over the preview, small **save / share / convert** icons
-in the top-right corner, and **undo / redo**. Continuous controls (sliders,
-drags) collapse into a single undo step instead of thirty.
+opens its own panel over the preview, **save / share / convert** icons in the
+top-right corner, and **undo / redo**. Each panel is capped in height and
+scrolls inside itself, and the handle at the top **collapses it out of the
+way** without dropping the selection — a sticker or a text box stays
+draggable in the preview while its controls are hidden.
 
-Each panel is capped in height and scrolls inside itself, so a long section
-never pushes the preview off screen. The handle at the top of the panel
-**collapses it down to that handle, and pulls it back up** — collapsed is not
-closed: the tab stays active, so a sticker or a text box keeps its selection
-and stays draggable in the preview while its controls are out of the way.
-
-All three also share the same **color adjustment** panel — eight controls as
-circular buttons over an intensity ruler: brightness, exposure, contrast,
-highlights, shadows, saturation, hue and temperature. One color matrix drives
-the live preview everywhere; on the video editor the export reproduces that
-same matrix through FFmpeg (`eq` for the tone part, `colorchannelmixer` for
-the channel-mixing part), so what you see is what gets encoded.
+They also share the same **color adjustment** panel: brightness, exposure,
+contrast, highlights, shadows, saturation, hue and temperature. One color
+matrix drives both the live preview and the export (through FFmpeg's `eq` and
+`colorchannelmixer` on video), so what you see is what gets encoded.
 
 ### Video → GIF / WebP
 
-- **Video preview** with play/pause and a timeline marking the selected
-  clip
-- **Duration trim** — drag the selector's handles to choose the clip
-- **Crop aspect ratio** — Original, 1:1, 4:5, 9:16, 16:9 and Custom, with
-  resizing via the four corner handles directly on the preview and bars to
-  reposition the crop
-- **Speed** — 0.25x (slow motion) to 2x
-- **Resolution** — from 160 px to 800 px wide, only offering options that
-  don't upscale the original video
-- **Frame rate** — 5, 8, 10, 12, 15, 20 or 24
-- **Output format** — GIF or animated WebP. GIF gets a 256-color palette
-  (dithering + palette strategy below) and the size estimate/destination
-  traffic light; WebP skips the palette and encodes real full-color +
-  transparency directly through `libwebp`, with its own quality slider
-  (50–95)
-- **Color quality** (GIF) — palette of 64, 128 or 256 colors, five
-  dithering levels and three palette strategies
-- **Color adjustment** — the shared eight-control panel, applied to the
-  video content only (never to the frame or the background)
-- **Looping** — infinite loop or play once
-- **Size** — the estimate, the confidence range and the destination traffic
-  light live in their own tab, next to the "Measure" button
-- **Two-pass conversion for GIF** (`palettegen` + `paletteuse`), which is
-  what separates a good-looking GIF from a "washed out" one; WebP instead
-  goes straight through `libwebp` in a single pass, no palette involved
-- **Progress with cancellation**
-- **Save to gallery and share**, with the final screen showing how far off
-  the prediction was from the generated file (GIF) or the final size and
-  settings used (WebP)
+- **Preview** with a timeline, **duration trim** and **crop** — Original,
+  1:1, 4:5, 9:16, 16:9 or custom, resized directly on the preview
+- **Speed** 0.25x–2x, **resolution** 160–800 px, **frame rate** 5–24 fps,
+  infinite loop or play once
+- **Output format** — GIF, with a 256-color palette and two-pass conversion
+  (`palettegen` + `paletteuse`), or animated WebP, with full color,
+  transparency and its own quality slider
+- **Color quality** (GIF) — 64, 128 or 256 colors, five dithering levels and
+  three palette strategies
+- **Size tab** — the estimate, its confidence range and the destination
+  traffic light, next to the "Measure" button
+- **Progress with cancellation**, then save to the gallery or share
 
 ### Frames (video and single photo)
 
-- **Procedural border** — thin, medium or thick, with custom color and
-  corner rounding
-- **Image frame** — bundled phone-mockup SVGs, or your own image imported
-  with an automatically-detected transparent window
-- **Content fit** — auto, fill, fit, or expand with zoom, for when the
-  content doesn't match the frame's aspect ratio
-- **Color adjustment** (single photo) — the shared eight-control panel,
-  applied to the photo only: the frame artwork, its color and the background
-  stay untouched
-- **Background** — transparent (real alpha on WebP and PNG, a single
-  reserved color on GIF) or a solid color
+- **Procedural border** — thin, medium or thick, with color and corner
+  rounding
+- **Image frame** — bundled phone mockups, or your own image with an
+  automatically-detected transparent window
+- **Content fit** — auto, fill, fit or expand with zoom
+- **Background** — transparent (real alpha on WebP and PNG, a reserved color
+  on GIF) or a solid color
 
 ### Photo collage
 
-- **Layouts** — row, column, 2x2, 2x3, 3x3 or a free grid where you pick the
-  number of rows and columns
-- **Aspect ratio** — ready ratios plus an `x:y` chip that reveals width and
-  height fields for a custom one
-- **Margin** — outer, between photos, and an "all" row that moves both at
-  once; the three sit one under the other with their own sliders and a
-  single button that zeroes everything
-- **Border** — thickness proportional to the cell (so it looks the same at
-  any export resolution), color and corner rounding, set for the whole
-  montage or per photo
-- **Background** — transparent by default, a solid color (swatches, HSV
-  wheel or an eyedropper on the preview itself) or an imported image, chosen
-  **separately for the montage and for the photos inside the cells**
-- **Per photo**, from the cell's `⋯` menu: replace, swap with another cell,
-  crop, adjust color, rotate 90°, flip horizontally or vertically, recenter
-- **Crop** — free by default, with ready ratios (1:1, 4:5, 5:4, 3:4, 4:3,
-  9:16, 16:9, the cell's own) and a custom one you type in. An approved crop
-  comes back fitted and upright inside its cell, never stretched
-- **Color adjustment** — the shared eight-control panel, either from the
-  cell's `⋯` menu for a single photo or from its own tab, which adjusts
-  **every photo at once**. Either way it touches the photos only: background,
-  borders, stickers and text stay as they are
-- **Double tap** on a photo centers it upright inside the cell; a second tap
-  expands it to fill the cell, still upright
-- **Stickers** — bundled SVGs or your own imported SVG/image, organized in
-  folders: the bundled themes (Reactions, Symbols, Effects and **GitHub**,
-  the last one with 38 marks), "Black" and "Imported", plus folders you
-  create yourself (long-press to rename or delete; deleting a folder returns
-  its stickers to "Imported"). Every folder except the bundled themes also
-  takes imports, and each row shows bundled art and imported stickers
-  together. Dragged, scaled and rotated freely, with their own stacking
-  order
-- **Text** — written straight in the panel (no dialog), with color, an
-  optional background box, one of the bundled fonts or **a .ttf/.otf you
-  import yourself**
-- **Rotate handle** on the selected sticker or text — pinch-to-rotate needs
-  both fingers inside the box, which almost never happens on a wide, short
-  text box
-- **Selection follows the tab** — the frame, the handles and the action bar
-  only show while the tab that owns the item ("Stickers"/"Text") is open
-- **Animated export** — when any photo in the montage is an animated
-  GIF/WebP, saving and sharing offer **PNG, GIF or WebP**, plus a choice of
-  matching the **longest** or the **shortest** animation. Photos that finish
-  early hold their last frame instead of disappearing. The animated export
-  shows a **progress dialog with cancel**, covering both phases (drawing the
-  frames and encoding them)
-- **Export resolution follows the layout** — the width is derived from how
-  much of the montage each cell occupies, so a photo in a quarter-width cell
-  keeps its own resolution instead of being shrunk to fit the largest photo
+- **Layouts** — row, column, 2x2, 2x3, 3x3 or a free grid with the number of
+  rows and columns you pick
+- **Aspect ratio**, **margins** (outer, between photos or both at once) and
+  **borders**, for the whole montage or per photo
+- **Background** — transparent, a solid color (swatches, HSV wheel or an
+  eyedropper on the preview) or an imported image, chosen separately for the
+  montage and for the photos inside the cells
+- **Per photo**, from the cell's `⋯` menu — replace, swap, crop, rotate 90°,
+  flip, recenter; double tap centers the photo, a second tap fills the cell
+- **Color adjustment** for one photo from that menu, or for **every photo at
+  once** from its own tab; either way background, borders, stickers and text
+  stay as they are
+- **Stickers** — bundled SVGs (Reactions, Symbols, Effects and GitHub) or
+  your own, organized in folders you can create, rename and delete
+- **Text** — written straight in the panel, with color, an optional
+  background box and bundled or imported `.ttf`/`.otf` fonts
+- **Rotate handle** on the selected sticker or text
+- **Animated export** — when any photo is an animated GIF/WebP, the whole
+  montage exports as PNG, GIF or WebP, matching the longest or the shortest
+  animation, with a progress dialog and cancel
 
 ## How to run it
 
@@ -254,66 +184,16 @@ one.
 
 ```
 lib/
-├── main.dart                         # entry point
-├── licenses.dart                     # FFmpeg license notice (LGPL)
-├── theme.dart                        # Material 3 theme and verdict colors
-├── theme_controller.dart             # light/dark mode, persisted
-├── models/
-│   ├── video_info.dart               # metadata read via FFprobe
-│   ├── photo_info.dart               # path and native size of a picked photo
-│   ├── conversion_settings.dart      # everything the user controls
-│   ├── size_estimate.dart            # estimate result and classification
-│   ├── crop_rect.dart                # normalized crop, shared by the crop tools
-│   ├── frame_settings.dart           # procedural frame style/geometry
-│   ├── image_frame.dart              # image-frame assets and bundled library
-│   ├── collage_layout.dart           # cell grid and cell rectangles
-│   ├── collage_settings.dart         # the whole montage: cells, style, overlays
-│   ├── collage_cell.dart             # per-photo framing, border and color matrix
-│   ├── collage_background.dart       # transparent / color / image background
-│   ├── collage_color_adjustment.dart # the eight color controls
-│   ├── collage_sticker.dart          # sticker placement and source
-│   ├── collage_text.dart             # text, font and background box
-│   └── collage_export.dart           # PNG/GIF/WebP + longest/shortest duration
-├── services/
-│   ├── size_estimator.dart           # the size-prediction model (pure Dart)
-│   ├── ffmpeg_service.dart           # reading, measuring and converting
-│   ├── output_service.dart           # gallery and sharing
-│   ├── imported_frame_store.dart     # import/persist user image frames
-│   ├── imported_asset_store.dart     # import/persist stickers and backgrounds
-│   ├── photo_frame_compositor.dart   # renders the framed single photo
-│   ├── collage_compositor.dart       # renders one montage frame off-screen
-│   └── collage_animation.dart        # timeline + PNG sequence for animated export
-└── ui/
-    ├── home_page.dart                # video, single photo or collage
-    ├── editor_page.dart              # video controls + preview, tabbed footer
-    ├── photo_frame_page.dart         # frame on a single photo
-    ├── collage_page.dart             # the collage editor
-    ├── photo_crop_page.dart          # free/preset/custom crop for a cell
-    ├── converting_page.dart          # progress and cancellation
-    ├── result_page.dart              # finished GIF, save and share
-    └── widgets/
-        ├── labeled_section.dart      # expandable card and option chips
-        ├── editor_tabs_footer.dart   # the bottom tab bar shared by the editors
-        ├── size_panel.dart           # size and compatibility panel (GIF)
-        ├── webp_convert_panel.dart   # convert panel shown for WebP
-        ├── cropped_view.dart         # crop preview for the frame tab
-        ├── crop_overlay.dart         # draggable crop handles
-        ├── frame_painter.dart        # draws procedural/image frame geometry
-        ├── collage_painter.dart      # single source of montage drawing
-        ├── collage_cell_view.dart    # a cell in the live preview
-        ├── collage_overlay_view.dart # stickers and text in the live preview
-        ├── color_adjust_controls.dart# circular buttons + intensity ruler
-        └── color_picker_sheet.dart   # swatches, HSV wheel and eyedropper
+├── models/     # settings, layouts and the value objects the editors share
+├── services/   # size estimation, FFmpeg, compositing and the import stores
+└── ui/         # the three editors, the crop screen and the shared widgets
 
-test/                                 # 207 tests, see "Quality" below
-
-tool/
-├── gerar_icones.py                   # generates the app icon and adaptive icon
-└── medir_precisao.py                 # measures the model's real error against FFmpeg
+test/           # 235 tests, see "Quality" below
+tool/           # icon generation and the accuracy measurement script
 
 .github/workflows/
-├── ci.yml                            # formatting, analysis, tests and debug APK
-└── release.yml                       # publishes the APKs to a Release
+├── ci.yml      # formatting, analysis, tests and a debug APK
+└── release.yml # publishes the APKs to a Release
 ```
 
 `size_estimator.dart` is pure Dart, with no dependency on Flutter or
@@ -323,31 +203,24 @@ call into it, so the two can never drift apart.
 
 ## Quality
 
-There are **207 automated tests**:
-
-| Area | Tests | What they cover |
-|---|---|---|
-| Estimation model | 37 | Output dimensions, frame count, monotonicity, calibration, automatic adjustment to a target, classification — plus 7 comparing the prediction against **files FFmpeg actually generated** |
-| Size panel and WebP panel | 13 | The panel, the traffic light and the convert panel shown for WebP |
-| Frames and video geometry | 41 | Canvas geometry, output-format defaults, crop preview, crop handles, frame drawing/masking and the frame picker UI |
-| WebP export path | 6 | The FFmpeg argument builders for the no-palette/single-pass path, including that they never reintroduce GIF-only tricks like `reserve_transparent` or `-gifflags` |
-| Collage | 110 | Cell framing and color matrices, layout geometry, shared cell style, text and its background box, compositing against golden pixels, the color picker sheet, the imported-asset store, the crop screen, the editor itself, the animation timeline (including that a short photo freezes on its last frame) and the GIF/WebP sequence arguments |
+**235 automated tests** cover the estimation model (including 7 that compare
+the prediction against files FFmpeg actually generated), the size and WebP
+panels, frame and crop geometry, the WebP export arguments, and the
+collage — cell framing and color matrices, layout, compositing against golden
+pixels, the animation timeline and the editor itself.
 
 The measurement group deserves a special mention: `tool/medir_precisao.py`
 produces five synthetic videos ranging from a static title card to
-incompressible noise, converts each one and records the sizes; the test
-feeds the model those measurements and checks the error. Once calibrated,
-the prediction lands within **±1% for three of the five cases and −7% for
-the fourth**. The fifth is a 39 KB GIF, a scale where missing by 17 KB
-already means −44% — for that one the test checks absolute error, not
-relative. The full table, including the two cases that still miss and why,
-is in
+incompressible noise, converts each one and records the sizes; the test feeds
+the model those measurements and checks the error. Once calibrated, the
+prediction lands within **±1% for three of the five cases and −7% for the
+fourth**. The full table, including the cases that still miss and why, is in
 [`docs/en/HOW_THE_ESTIMATE_WORKS.md`](docs/en/HOW_THE_ESTIMATE_WORKS.md).
 
-The workflow in `.github/workflows/ci.yml` runs, on every push, `dart
-format`, `flutter analyze`, `flutter test` and a debug APK build — the
-latter catches Gradle errors, manifest-merging issues and packaging
-problems with FFmpeg's native libraries.
+The workflow in `.github/workflows/ci.yml` runs `dart format`, `flutter
+analyze`, `flutter test` and a debug APK build on every push — the latter
+catches Gradle errors, manifest-merging issues and packaging problems with
+FFmpeg's native libraries.
 
 ## Download the APK
 
