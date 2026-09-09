@@ -21,3 +21,8 @@ const defaultBackgroundColor = Color(0xFFC9A8FF);
 /// Roxo médio: escuro o bastante para a moldura se separar do fundo lilás
 /// sem virar preto.
 const defaultFrameColor = Color(0xFF8370B0);
+
+/// Roxo escuro, para o texto da montagem — mesmo espírito das duas acima,
+/// só que aqui não há "ligar/desligar": todo texto novo já nasce com esta
+/// cor (ver [CollageTextItem]).
+const defaultTextColor = Color(0xFF544181);

@@ -1,5 +1,7 @@
 import 'dart:ui' show Color;
 
+import 'default_colors.dart';
+
 /// Uma caixa de texto sobreposta à montagem — mesma forma de posicionamento/
 /// escala/rotação/z-order de [CollageSticker] (ver `collage_sticker.dart`),
 /// para as duas entrarem na mesma lista ordenada de sobreposições ao
@@ -8,7 +10,7 @@ class CollageTextItem {
   const CollageTextItem({
     required this.id,
     required this.text,
-    this.color = const Color(0xFFFFFFFF),
+    this.color = defaultTextColor,
     this.backgroundColor,
     this.backgroundCornerRatio = defaultBackgroundCornerRatio,
     this.fontSizeRatio = defaultFontSizeRatio,

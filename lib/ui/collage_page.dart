@@ -17,6 +17,7 @@ import '../models/collage_settings.dart';
 import '../models/collage_sticker.dart';
 import '../models/collage_text.dart';
 import '../models/crop_rect.dart';
+import '../models/default_colors.dart';
 import '../models/photo_info.dart';
 import '../services/collage_animation.dart';
 import '../services/collage_compositor.dart';
@@ -2298,6 +2299,25 @@ class _CollagePageState extends State<CollagePage> {
             ),
             const SizedBox(height: 4),
             _sliderRow(
+              label: 'Opacidade do fundo',
+              value: selected.backgroundColor!.a,
+              min: 0,
+              max: 1,
+              display: '${(selected.backgroundColor!.a * 100).round()}%',
+              onChanged: (v) => _update(
+                _settings.replacingText(
+                  selected.id,
+                  selected.copyWith(
+                    backgroundColor: selected.backgroundColor!.withValues(
+                      alpha: v,
+                    ),
+                  ),
+                ),
+                pushUndo: false,
+              ),
+            ),
+            const SizedBox(height: 4),
+            _sliderRow(
               label: 'Arredondamento do fundo',
               value: selected.backgroundCornerRatio,
               min: 0,
@@ -2326,8 +2346,7 @@ class _CollagePageState extends State<CollagePage> {
         id,
         on
             ? item.copyWith(
-                backgroundColor:
-                    item.backgroundColor ?? const Color(0xFF000000),
+                backgroundColor: item.backgroundColor ?? defaultBackgroundColor,
               )
             : item.copyWith(clearBackgroundColor: true),
       ),
@@ -2344,7 +2363,7 @@ class _CollagePageState extends State<CollagePage> {
   void _pickTextBackgroundColor(String id) => _pickOverlayTextColor(
     id: id,
     title: 'Cor do fundo do texto',
-    current: (item) => item.backgroundColor ?? const Color(0xFF000000),
+    current: (item) => item.backgroundColor ?? defaultBackgroundColor,
     apply: (item, color) => item.copyWith(backgroundColor: color),
   );
 
