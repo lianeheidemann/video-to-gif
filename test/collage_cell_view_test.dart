@@ -284,4 +284,54 @@ void main() {
     expect(changes, greaterThan(1));
     expect(gestureStarts, 1);
   });
+
+  testWidgets(
+    'com interactive: false, arrastar não move a foto nem abre o menu',
+    (tester) async {
+      // Mesmo cenário de "arrastar uma foto com folga empilha um passo só"
+      // (que sem essa trava move a foto), agora com a aba "Stickers"/"Texto"
+      // simulada como aberta: nem o arrasto nem o botão "..." devem
+      // responder.
+      var changes = 0;
+      var menus = 0;
+      final cell = CollageCellSettings(
+        photoPath: photoPath,
+        photoWidth: 100,
+        photoHeight: 100,
+        zoom: 2,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox.fromSize(
+                size: cellSize,
+                child: CollageCellView(
+                  cell: cell,
+                  cellSize: cellSize,
+                  interactive: false,
+                  onChanged: (_) => changes++,
+                  onMenu: () => menus++,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final center = tester.getCenter(find.byType(CollageCellView));
+      final gesture = await tester.startGesture(center);
+      for (var i = 0; i < 4; i++) {
+        await gesture.moveBy(const Offset(12, 0));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(changes, 0);
+
+      await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+      await tester.pumpAndSettle();
+      expect(menus, 0);
+    },
+  );
 }

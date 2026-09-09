@@ -22,6 +22,7 @@ class CollageCellView extends StatefulWidget {
     required this.onChanged,
     required this.onMenu,
     this.onGestureStart,
+    this.interactive = true,
   });
 
   final CollageCellSettings cell;
@@ -34,6 +35,15 @@ class CollageCellView extends StatefulWidget {
   /// histórico de desfazer, sem empilhar de novo a cada quadro do arrasto e
   /// sem empilhar nada quando o gesto termina sem mexer em nada.
   final VoidCallback? onGestureStart;
+
+  /// Quando `false`, a foto continua visível mas para de responder a
+  /// toque/arrasto/pinça/duplo toque e o botão "..." some do alcance de
+  /// toque — mesmo tratamento que [CollageOverlayView.interactive] dá a
+  /// stickers/texto. Usado para só permitir mover/recortar a foto de uma
+  /// célula enquanto nenhuma das abas "Stickers"/"Texto" estiver aberta,
+  /// evitando que um arrasto pensado para um sticker ou texto acabe
+  /// reposicionando a foto por baixo.
+  final bool interactive;
 
   @override
   State<CollageCellView> createState() => _CollageCellViewState();
@@ -171,62 +181,86 @@ class _CollageCellViewState extends State<CollageCellView> {
     // `decoration.padding`), então a faixa continua reservada sem um
     // `padding` explícito — que agora somaria duas vezes.
     final hasBorder = cell.hasPhoto && borderThickness > 0;
-    return Container(
-      decoration: BoxDecoration(
-        border: hasBorder
-            ? Border.all(color: cell.borderColor, width: borderThickness)
-            : null,
-        borderRadius: BorderRadius.circular(outerRadius),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(innerRadius),
-        // O [Listener] registra onde o dedo tocou antes de a arena decidir de
-        // quem é o gesto — [_onScaleStart] usa isso para não perder o começo
-        // do arrasto (ver [_onScaleUpdate]).
-        child: Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: _onPointerDown,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onScaleStart: cell.hasPhoto ? _onScaleStart : null,
-            onScaleUpdate: cell.hasPhoto ? _onScaleUpdate : null,
-            onDoubleTap: cell.hasPhoto ? _toggleFitMode : null,
-            onTap: cell.hasPhoto ? null : widget.onMenu,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // O placeholder cinza só aparece em células vazias ou em modo
-                // "cover" (onde a foto sempre preenche 100% da célula, então é
-                // inofensivo tê-lo por baixo). Em modo "contain" com foto, ele
-                // TEM que sumir: a sobra ao redor da foto precisa mostrar o
-                // fundo real da montagem (pintado por baixo, no mesmo Stack de
-                // `_preview()`), não um cinza que a exportação não reproduz.
-                if (!cell.hasPhoto || cell.fitMode == CollageCellFitMode.cover)
-                  ColoredBox(color: theme.colorScheme.surfaceContainerHigh),
-                // Fundo próprio da foto, por baixo dela e por cima do
-                // placeholder — mesma camada que `paintCollageCell` pinta na
-                // área de conteúdo da célula antes da foto.
-                _cellBackground(cell.background),
-                if (cell.hasPhoto)
-                  _CellPhoto(cell: cell, cellSize: contentSize)
-                else
-                  Center(
-                    child: Icon(
-                      Icons.add_photo_alternate_outlined,
-                      color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                      size: 28,
-                    ),
+    return IgnorePointer(
+      // Mesmo tratamento que CollageOverlayView.interactive dá a
+      // stickers/texto: com a aba "Stickers" ou "Texto" aberta, um gesto
+      // sobre a foto (ou o botão "...") não deve mexer nela.
+      ignoring: !widget.interactive,
+      child: Stack(
+        // O botão "..." fica fora deste Stack clip-none, pousado sobre o
+        // canto do retângulo em vez de encolhido dentro dele — por isso não
+        // pode morar no Stack recortado pelo ClipRRect abaixo, ou o recorte
+        // cortaria a metade dele que sai para fora da célula.
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              border: hasBorder
+                  ? Border.all(color: cell.borderColor, width: borderThickness)
+                  : null,
+              borderRadius: BorderRadius.circular(outerRadius),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(innerRadius),
+              // O [Listener] registra onde o dedo tocou antes de a arena
+              // decidir de quem é o gesto — [_onScaleStart] usa isso para
+              // não perder o começo do arrasto (ver [_onScaleUpdate]).
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: _onPointerDown,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onScaleStart: cell.hasPhoto ? _onScaleStart : null,
+                  onScaleUpdate: cell.hasPhoto ? _onScaleUpdate : null,
+                  onDoubleTap: cell.hasPhoto ? _toggleFitMode : null,
+                  onTap: cell.hasPhoto ? null : widget.onMenu,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // O placeholder cinza só aparece em células vazias ou
+                      // em modo "cover" (onde a foto sempre preenche 100% da
+                      // célula, então é inofensivo tê-lo por baixo). Em modo
+                      // "contain" com foto, ele TEM que sumir: a sobra ao
+                      // redor da foto precisa mostrar o fundo real da
+                      // montagem (pintado por baixo, no mesmo Stack de
+                      // `_preview()`), não um cinza que a exportação não
+                      // reproduz.
+                      if (!cell.hasPhoto ||
+                          cell.fitMode == CollageCellFitMode.cover)
+                        ColoredBox(
+                          color: theme.colorScheme.surfaceContainerHigh,
+                        ),
+                      // Fundo próprio da foto, por baixo dela e por cima do
+                      // placeholder — mesma camada que `paintCollageCell`
+                      // pinta na área de conteúdo da célula antes da foto.
+                      _cellBackground(cell.background),
+                      if (cell.hasPhoto)
+                        _CellPhoto(cell: cell, cellSize: contentSize)
+                      else
+                        Center(
+                          child: Icon(
+                            Icons.add_photo_alternate_outlined,
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.6,
+                            ),
+                            size: 28,
+                          ),
+                        ),
+                    ],
                   ),
-                if (cell.hasPhoto)
-                  Positioned(
-                    right: 4,
-                    top: 4,
-                    child: _MenuButton(onTap: widget.onMenu),
-                  ),
-              ],
+                ),
+              ),
             ),
           ),
-        ),
+          // Centralizado no canto do retângulo (metade do botão para dentro,
+          // metade para fora), como uma alça de redimensionar.
+          if (cell.hasPhoto)
+            Positioned(
+              right: -15,
+              top: -15,
+              child: _MenuButton(onTap: widget.onMenu),
+            ),
+        ],
       ),
     );
   }

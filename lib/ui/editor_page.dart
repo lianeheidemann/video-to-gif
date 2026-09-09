@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:video_player/video_player.dart';
 
@@ -14,6 +16,7 @@ import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
 import '../theme_controller.dart';
 import 'converting_page.dart';
+import 'widgets/color_picker_sheet.dart';
 import 'widgets/crop_overlay.dart';
 import 'widgets/cropped_view.dart';
 import 'widgets/editor_tabs_footer.dart';
@@ -57,6 +60,11 @@ class _EditorPageState extends State<EditorPage> {
   final _frameStyleAnchorKey = GlobalKey();
   final _imageFrameAnchorKey = GlobalKey();
   final _previewAreaKey = GlobalKey();
+
+  /// Ancorada no `RepaintBoundary` em volta da prévia — [_renderPreviewImage]
+  /// usa isso para rasterizar exatamente o que está na tela para o
+  /// conta-gotas do seletor de cor.
+  final _colorPreviewKey = GlobalKey();
   List<ImageFrameAsset> _importedImageFrames = [];
 
   late ConversionSettings _settings = widget.initialSettings;
@@ -259,6 +267,16 @@ class _EditorPageState extends State<EditorPage> {
         EditorSection.fromLabeled(_webpQualitySection(), label: 'Qualidade')
       else
         EditorSection.fromLabeled(_colorSection(), label: 'Cores'),
+      EditorSection.fromLabeled(_frameStyleSection(), label: 'Moldura'),
+      EditorSection.fromLabeled(_imageFrameSection(), label: 'Imagem'),
+      EditorSection(
+        icon: Icons.wallpaper_rounded,
+        title: 'Fundo',
+        value: _settings.frame.transparentBackground ? 'Transparente' : 'Cor',
+        builder: (_) => _backgroundSection(),
+      ),
+      // Última aba da barra: fecha a edição com o resultado (tamanho
+      // estimado) depois de todos os ajustes, formato/moldura incluídos.
       EditorSection(
         icon: Icons.data_usage_rounded,
         title: 'Estimativa de tamanho',
@@ -267,7 +285,6 @@ class _EditorPageState extends State<EditorPage> {
         builder: (_) => isWebp
             ? WebpConvertPanel(
                 summary: '$baseSummary · qualidade ${_settings.webpQuality}',
-                onConvert: _openingConversion ? () {} : _convert,
               )
             : SizePanel(
                 estimate: _estimate,
@@ -275,16 +292,7 @@ class _EditorPageState extends State<EditorPage> {
                 summary: '$baseSummary · ${_settings.colors} cores',
                 measuring: _measuring,
                 onMeasure: _measure,
-                onConvert: _openingConversion ? () {} : _convert,
               ),
-      ),
-      EditorSection.fromLabeled(_frameStyleSection(), label: 'Moldura'),
-      EditorSection.fromLabeled(_imageFrameSection(), label: 'Imagem'),
-      EditorSection(
-        icon: Icons.wallpaper_rounded,
-        title: 'Fundo',
-        value: _settings.frame.transparentBackground ? 'Transparente' : 'Cor',
-        builder: (_) => _backgroundSection(),
       ),
     ];
   }
@@ -295,6 +303,11 @@ class _EditorPageState extends State<EditorPage> {
     final active = _activeSection != null && _activeSection! < sections.length
         ? _activeSection
         : null;
+    // As alças de recorte só fazem sentido enquanto a pessoa está ajustando
+    // a janela; em qualquer outra aba a prévia já mostra o corte aplicado
+    // (ver _previewArea), como o resultado final vai sair.
+    final isCropTabActive =
+        active != null && sections[active!].barLabel == 'Janela';
 
     return Scaffold(
       appBar: AppBar(
@@ -313,7 +326,7 @@ class _EditorPageState extends State<EditorPage> {
           IconButton(
             tooltip: 'Converter em ${_settings.format.shortLabel}',
             onPressed: _openingConversion ? null : _convert,
-            icon: const Icon(Icons.swap_horiz_rounded),
+            icon: const Icon(Icons.download_rounded),
           ),
           // Tema e ajuda saíram para o menu: com desfazer/refazer/converter
           // fixos, quatro ícones soltos não cabem numa tela estreita.
@@ -351,7 +364,12 @@ class _EditorPageState extends State<EditorPage> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                child: Center(child: _previewArea()),
+                child: Center(
+                  child: RepaintBoundary(
+                    key: _colorPreviewKey,
+                    child: _previewArea(showCropHandles: isCropTabActive),
+                  ),
+                ),
               ),
             ),
             EditorTabsFooter(
@@ -482,10 +500,12 @@ class _EditorPageState extends State<EditorPage> {
     });
   }
 
-  /// A prévia da aba atual. "Ajustar" mostra o vídeo inteiro com as alças de
-  /// recorte (é lá que o tamanho do GIF é definido); "Frame" mostra o vídeo
-  /// já cortado dentro da moldura escolhida, sem nenhum controle de recorte
-  /// — o que a pessoa vê ali é o que vai sair no GIF.
+  /// A prévia da aba atual. Com a aba "Janela" aberta mostra o vídeo inteiro
+  /// e as alças de recorte (é lá que a janela é ajustada); em qualquer outra
+  /// aba, sem moldura, mostra o vídeo já cortado — o que a pessoa vê ali é o
+  /// que vai sair no GIF, não a área extra que só interessa durante o
+  /// recorte em si. Com moldura, quem decide isso é [_framedPreview] (que já
+  /// corta antes de encaixar no quadro escolhido).
   ///
   /// A [AnimatedSize] existe porque trocar de moldura (ou entre "Moldura" e
   /// "Moldura de imagem") quase sempre muda a proporção da prévia — cada
@@ -495,16 +515,22 @@ class _EditorPageState extends State<EditorPage> {
   /// de pronto, aparecia como uma tremida. Com a mudança de tamanho gradual,
   /// a correção acompanha quadro a quadro e nunca precisa de um salto
   /// grande.
-  Widget _previewArea() {
+  Widget _previewArea({required bool showCropHandles}) {
     // Com uma barra de abas só, a prévia mostra a moldura sempre que houver
     // uma (antes isso dependia de estar na aba "Frame"), e a linha do tempo
     // fica sempre à mão — é o controle de duração.
     final hasFrame =
         _settings.frame.hasImageFrame ||
         _settings.frame.style != FrameStyle.none;
+    // _framedPreview() já devolve o preview envolvido por _timelined() (é o
+    // que garante a linha do tempo abaixo da moldura, não atrás dela) —
+    // chamar _timelined() de novo aqui duplicava a barra "Atual Xs" quando
+    // havia moldura.
     final preview = hasFrame
-        ? _timelined(_framedPreview())
-        : _timelined(_preview());
+        ? _framedPreview()
+        : _timelined(
+            showCropHandles ? _preview() : _croppedPreview(rounded: true),
+          );
     return AnimatedSize(
       duration: _previewTransitionDuration,
       curve: Curves.easeOutCubic,
@@ -1164,18 +1190,6 @@ class _EditorPageState extends State<EditorPage> {
     });
   }
 
-  /// Paleta compartilhada pelos seletores de cor da moldura e do fundo.
-  static const _colorSwatches = <Color>[
-    Color(0xFFC9A8FF),
-    Colors.white,
-    Colors.black,
-    Color(0xFFE57373),
-    Color(0xFF58C78C),
-    Color(0xFFB8B36A),
-    Color(0xFF64B5F6),
-    Color(0xFFE6A15D),
-  ];
-
   Widget _frameColorRow() => _colorPickerRow(
     label: 'Cor da moldura',
     color: _settings.frame.color,
@@ -1226,101 +1240,63 @@ class _EditorPageState extends State<EditorPage> {
   void _pickFrameColor() => _pickColor(
     title: 'Cor da moldura',
     selectedColor: _settings.frame.color,
-    onSelected: (color) => _updateFrame(_settings.frame.copyWith(color: color)),
+    onSelected: (color) => _updateFrame(
+      _settings.frame.copyWith(color: color),
+      pushUndo: false,
+    ),
   );
 
   void _pickBackgroundColor() => _pickColor(
     title: 'Cor do fundo',
     selectedColor: _settings.frame.backgroundColor,
-    onSelected: (color) =>
-        _updateFrame(_settings.frame.copyWith(backgroundColor: color)),
+    onSelected: (color) => _updateFrame(
+      _settings.frame.copyWith(backgroundColor: color),
+      pushUndo: false,
+    ),
   );
 
-  /// Abre a folha inferior com a mesma grade para qualquer seletor de cor.
+  /// Mesma folha de cor da Montagem (swatches + conta-gotas na prévia atual
+  /// + roda HSV completa) para os dois seletores de cor do editor — antes
+  /// esta tela tinha sua própria folha, só com swatches fixos.
+  ///
+  /// O checkpoint de desfazer entra na primeira cor escolhida, não na
+  /// abertura do painel nem em cada mexida da roda HSV/conta-gotas — mesmo
+  /// cuidado que `CollagePage._pickBorderColor` já tinha: sem isso, arrastar
+  /// pela roda de cor empilharia um passo de desfazer por quadro.
   void _pickColor({
     required String title,
     required Color selectedColor,
     required ValueChanged<Color> onSelected,
   }) {
-    showModalBottomSheet<void>(
+    var checkpointPushed = false;
+    showCollageColorPickerSheet(
       context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final theme = Theme.of(sheetContext);
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: [
-                    for (final color in _colorSwatches)
-                      _colorSwatchButton(
-                        color,
-                        selected: color == selectedColor,
-                        onTap: () {
-                          onSelected(color);
-                          Navigator.of(sheetContext).pop();
-                        },
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
+      title: title,
+      initialColor: selectedColor,
+      onColorSelected: (color) {
+        if (!checkpointPushed) {
+          checkpointPushed = true;
+          _pushUndoCheckpoint();
+        }
+        onSelected(color);
       },
+      previewImageBuilder: _renderPreviewImage,
     );
   }
 
-  Widget _colorSwatchButton(
-    Color color, {
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant,
-            width: selected ? 3 : 1.5,
-          ),
-        ),
-        child: selected
-            ? Icon(
-                Icons.check_rounded,
-                size: 18,
-                color: _contrastingIconColor(color),
-              )
-            : null,
-      ),
+  /// Rasteriza a prévia atual (já cortada/na moldura, o que estiver na tela)
+  /// para o conta-gotas da folha de cor poder amostrar um pixel dela — mesma
+  /// técnica de `CollagePage._renderPreviewImage`, mas capturando o que já
+  /// está desenhado na tela em vez de recompor do zero.
+  Future<ui.Image> _renderPreviewImage() async {
+    final renderObject = _colorPreviewKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderRepaintBoundary) {
+      throw StateError('Prévia indisponível para o conta-gotas.');
+    }
+    return renderObject.toImage(
+      pixelRatio: MediaQuery.of(context).devicePixelRatio,
     );
   }
-
-  /// Preto ou branco, o que tiver mais contraste sobre [background] — usado
-  /// no ícone de check sobre os círculos de cor.
-  Color _contrastingIconColor(Color background) =>
-      background.computeLuminance() > 0.5 ? Colors.black : Colors.white;
 
   Widget _frameThicknessRow() {
     final theme = Theme.of(context);

@@ -36,7 +36,11 @@ class CollageGeometry {
       (size.height - thickness * 2).clamp(0.0, size.height),
     );
     final rects = settings.layout
-        .cellRectsFor(contentRect.size, settings.marginRatio)
+        .cellRectsFor(
+          contentRect.size,
+          outerMarginRatio: settings.outerMarginRatio,
+          innerMarginRatio: settings.innerMarginRatio,
+        )
         .map((r) => r.shift(contentRect.topLeft))
         .toList();
     return CollageGeometry(

@@ -140,7 +140,7 @@ void main() {
     await tester.tap(find.text('Stickers'));
     await tester.pumpAndSettle();
 
-    // Os 5 stickers embutidos aparecem antes do tile "Importar".
+    // A pasta "Reações" (aberta por padrão) já mostra seus stickers embutidos.
     expect(find.byType(SvgPicture), findsWidgets);
 
     await tester.tap(find.byType(SvgPicture).first);
@@ -149,6 +149,59 @@ void main() {
     // Adicionar um sticker já o seleciona — a barra de ações aparece.
     expect(find.byTooltip('Duplicar'), findsOneWidget);
   });
+
+  testWidgets(
+    'stickers embutidos ficam em pastas temáticas, e "Importar" só na pasta '
+    '"Importados"',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      final page = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(
+        find.text('Stickers'),
+        200,
+        scrollable: page,
+      );
+      await tester.tap(find.text('Stickers'));
+      await tester.pumpAndSettle();
+
+      // Sem a dica de texto antiga — as pastas substituem essa explicação.
+      expect(
+        find.text('Toque para adicionar um sticker à montagem.'),
+        findsNothing,
+      );
+
+      // As 4 pastas existem, e "Importar" só aparece dentro de "Importados".
+      for (final label in ['Reações', 'Símbolos', 'Efeitos', 'Importados']) {
+        expect(find.widgetWithText(ChoiceChip, label), findsOneWidget);
+      }
+      expect(find.text('Importar'), findsNothing);
+
+      // "Reações" (padrão) mostra 2 stickers (Joinha, Sorriso) — os ícones
+      // não têm rótulo visível, então a checagem é pela contagem de SVGs.
+      expect(find.byType(SvgPicture), findsNWidgets(2));
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Símbolos'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SvgPicture), findsNWidgets(2));
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Efeitos'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SvgPicture), findsNWidgets(1));
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Importados'));
+      await tester.pumpAndSettle();
+      expect(find.text('Importar'), findsOneWidget);
+      // Sem nada importado ainda, só o tile "Importar" aparece — nenhum SVG
+      // embutido vaza para essa pasta.
+      expect(find.byType(SvgPicture), findsNothing);
+    },
+  );
 
   testWidgets('opções de fundo não quebram linha dentro do próprio botão', (
     tester,
@@ -248,6 +301,62 @@ void main() {
     expect(find.text('Brilho'), findsWidgets);
   });
 
+  testWidgets(
+    'duplo toque num ícone de "Ajustar cor" zera só aquele ajuste',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byIcon(Icons.more_horiz_rounded).first),
+      );
+      await tester.pump(const Duration(milliseconds: 60));
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Ajustar cor'));
+      await tester.pumpAndSettle();
+
+      // Uma vez selecionado, "Contraste" também aparece como título acima da
+      // régua — o finder precisa mirar só no ícone da fileira, não em
+      // qualquer texto "Contraste" na tela.
+      final contrasteIcon = find.descendant(
+        of: find.byType(ColorAdjustButton),
+        matching: find.text('Contraste'),
+      );
+
+      // Seleciona "Contraste" e arrasta a régua para um valor não-zero.
+      await tester.tap(contrasteIcon);
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(IntensityRuler), const Offset(-80, 0));
+      await tester.pumpAndSettle();
+
+      final beforeReset = tester
+          .widgetList<CollageCellView>(find.byType(CollageCellView))
+          .first
+          .cell;
+      expect(beforeReset.contrast, isNot(0));
+
+      // Duplo toque no ícone "Contraste" zera só esse ajuste.
+      await tester.tap(contrasteIcon);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tap(contrasteIcon);
+      await tester.pumpAndSettle();
+
+      final afterReset = tester
+          .widgetList<CollageCellView>(find.byType(CollageCellView))
+          .first
+          .cell;
+      expect(afterReset.contrast, 0);
+      expect(find.text('0'), findsOneWidget);
+    },
+  );
+
   testWidgets('texto ganha fundo, cor e arredondamento pelo painel', (
     tester,
   ) async {
@@ -338,4 +447,75 @@ void main() {
     );
     expect(transparentChip.selected, isTrue);
   });
+
+  testWidgets(
+    'aba "Margem" ajusta margem externa e entre fotos de forma independente',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Margem').last);
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(ChoiceChip, 'Tudo'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Externa'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Entre fotos'), findsOneWidget);
+
+      // As duas margens começam iguais, então "Externa" e "Entre fotos"
+      // mostram o mesmo valor inicial que "Tudo".
+      final initial = tester.widget<Slider>(find.byType(Slider)).value;
+
+      // Mexe só na margem externa.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Slider), const Offset(-120, 0));
+      await tester.pumpAndSettle();
+      final outerAfter = tester.widget<Slider>(find.byType(Slider)).value;
+      expect(outerAfter, isNot(closeTo(initial, 0.001)));
+
+      // "Entre fotos" continua no valor original — não foi mexida.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Entre fotos'));
+      await tester.pumpAndSettle();
+      final innerStill = tester.widget<Slider>(find.byType(Slider)).value;
+      expect(innerStill, closeTo(initial, 0.001));
+
+      // Mexe só na margem entre fotos agora.
+      await tester.drag(find.byType(Slider), const Offset(120, 0));
+      await tester.pumpAndSettle();
+      final innerAfter = tester.widget<Slider>(find.byType(Slider)).value;
+      expect(innerAfter, isNot(closeTo(initial, 0.001)));
+
+      // "Externa" continua no valor que ficou antes, intacta pela mexida
+      // acima.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
+      await tester.pumpAndSettle();
+      final outerStill = tester.widget<Slider>(find.byType(Slider)).value;
+      expect(outerStill, closeTo(outerAfter, 0.001));
+
+      // "Tudo" iguala as duas ao valor arrastado.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Tudo'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Slider), const Offset(60, 0));
+      await tester.pumpAndSettle();
+      final bothValue = tester.widget<Slider>(find.byType(Slider)).value;
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Slider>(find.byType(Slider)).value,
+        closeTo(bothValue, 0.001),
+      );
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Entre fotos'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<Slider>(find.byType(Slider)).value,
+        closeTo(bothValue, 0.001),
+      );
+    },
+  );
 }

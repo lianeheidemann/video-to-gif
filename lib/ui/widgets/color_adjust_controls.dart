@@ -13,6 +13,7 @@ class ColorAdjustButton extends StatelessWidget {
     required this.selected,
     required this.value,
     required this.onTap,
+    this.onDoubleTap,
   });
 
   final CollageColorAdjustment adjustment;
@@ -20,12 +21,17 @@ class ColorAdjustButton extends StatelessWidget {
   final double value;
   final VoidCallback onTap;
 
+  /// Duplo toque zera este ajuste específico — mesmo atalho que a régua de
+  /// intensidade já oferece, só que sem precisar selecionar o ajuste antes.
+  final VoidCallback? onDoubleTap;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final touched = value != 0;
     return InkWell(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
         width: 76,

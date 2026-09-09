@@ -4,9 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
-/// Swatches rápidos oferecidos antes da roda HSV completa — mesmas cores de
-/// `PhotoFramePage`'s `_colorSwatches`, para as duas telas ficarem
-/// consistentes.
+/// Swatches rápidos oferecidos antes da roda HSV completa — os mesmos em
+/// toda tela que escolhe cor (Montagem, Editar e Moldura em foto), para o
+/// app inteiro ficar consistente.
 const collageColorSwatches = <Color>[
   Color(0xFFFFFFFF),
   Color(0xFF000000),
@@ -18,12 +18,12 @@ const collageColorSwatches = <Color>[
   Color(0xFFE6A15D),
 ];
 
-/// Abre um bottom sheet para escolher a cor de fundo da montagem: swatches
+/// Abre o bottom sheet de escolha de cor usado em todo o app: swatches
 /// rápidos, roda HSV completa ([ColorPicker], pacote `flutter_colorpicker`) e
 /// um conta-gotas que amostra um pixel da prévia atual — [previewImageBuilder]
-/// rasteriza a montagem inteira (ver `composeCollage`) para o usuário poder
-/// escolher uma cor de qualquer foto/sticker visível, não só de uma paleta
-/// fixa.
+/// rasteriza o que estiver na tela (a montagem inteira, o vídeo/GIF ou a foto
+/// com moldura, dependendo de quem chama) para o usuário poder escolher uma
+/// cor de qualquer parte visível da prévia, não só de uma paleta fixa.
 Future<void> showCollageColorPickerSheet({
   required BuildContext context,
   required String title,

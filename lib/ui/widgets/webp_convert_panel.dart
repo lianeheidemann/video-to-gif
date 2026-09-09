@@ -5,17 +5,12 @@ import 'package:flutter/material.dart';
 /// de tamanho em `size_estimator.dart` é específico da paleta/LZW do GIF e
 /// não se aplica ao encoder `libwebp` (cor cheia, sem paleta). Em vez de
 /// mostrar um número que seria só um palpite do modelo errado, o painel
-/// avisa que a estimativa não está disponível e vai direto ao botão de
-/// converter.
+/// avisa que a estimativa não está disponível. Converter é feito pelo botão
+/// de download na AppBar — este painel não duplica mais essa ação.
 class WebpConvertPanel extends StatelessWidget {
-  const WebpConvertPanel({
-    super.key,
-    required this.summary,
-    required this.onConvert,
-  });
+  const WebpConvertPanel({super.key, required this.summary});
 
   final String summary;
-  final VoidCallback onConvert;
 
   @override
   Widget build(BuildContext context) {
@@ -85,13 +80,6 @@ class WebpConvertPanel extends StatelessWidget {
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 18),
-        FilledButton.icon(
-          onPressed: onConvert,
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(60)),
-          icon: const Icon(Icons.swap_horiz_rounded),
-          label: const Text('Converter em WebP'),
         ),
       ],
     );
