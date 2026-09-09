@@ -239,6 +239,24 @@ class _CollagePageState extends State<CollagePage> {
     }
   }
 
+  /// Id da sobreposição cuja seleção está *visível* agora: a moldura, a alça
+  /// de redimensionar e a barra de ações só aparecem enquanto a aba dona do
+  /// item estiver aberta ("Stickers" para sticker, "Texto" para texto) — as
+  /// mesmas abas em que `CollageOverlayView.interactive` já deixa mexer nele.
+  /// Fora delas os controles não fazem nada, e a moldura em volta de um texto
+  /// enquanto se ajusta o fundo da montagem só polui a prévia.
+  /// [_selectedOverlayId] continua guardado ao trocar de aba, então voltando
+  /// para ela a moldura reaparece no mesmo item.
+  String? get _activeSelectionId {
+    final id = _selectedOverlayId;
+    if (id == null) return null;
+    return switch (_activeTab) {
+      _CollageTab.stickers => _findSticker(id) == null ? null : id,
+      _CollageTab.text => _findText(id) == null ? null : id,
+      _ => null,
+    };
+  }
+
   void _message(String text) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -554,7 +572,7 @@ class _CollagePageState extends State<CollagePage> {
       minScale: CollageSticker.minScale,
       maxScale: CollageSticker.maxScale,
       canvasSize: size,
-      selected: _selectedOverlayId == sticker.id,
+      selected: _activeSelectionId == sticker.id,
       interactive: _activeTab == _CollageTab.stickers,
       onSelect: () => setState(() => _selectedOverlayId = sticker.id),
       onGestureStart: _pushUndoCheckpoint,
@@ -584,7 +602,7 @@ class _CollagePageState extends State<CollagePage> {
       minScale: CollageTextItem.minScale,
       maxScale: CollageTextItem.maxScale,
       canvasSize: size,
-      selected: _selectedOverlayId == text.id,
+      selected: _activeSelectionId == text.id,
       interactive: _activeTab == _CollageTab.text,
       onSelect: () => setState(() => _selectedOverlayId = text.id),
       onGestureStart: _pushUndoCheckpoint,
@@ -651,11 +669,9 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Widget? _selectionToolbar() {
-    final id = _selectedOverlayId;
+    final id = _activeSelectionId;
     if (id == null) return null;
-    final text = _findText(id);
-    if (text == null && _findSticker(id) == null) return null;
-    final isText = text != null;
+    final isText = _findText(id) != null;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Wrap(

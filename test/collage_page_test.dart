@@ -11,6 +11,7 @@ import 'package:video_to_gif/models/collage_color_adjustment.dart';
 import 'package:video_to_gif/models/photo_info.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
+import 'package:video_to_gif/ui/widgets/collage_overlay_view.dart';
 import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
@@ -512,6 +513,54 @@ void main() {
       expect(
         tester.widget<Slider>(find.byType(Slider)).value,
         closeTo(bothValue, 0.001),
+      );
+    },
+  );
+
+  testWidgets(
+    'a seleção de um texto só aparece com a aba "Texto" aberta',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      // Cria um texto pela aba "Texto" — ele já nasce selecionado.
+      await tester.tap(find.text('Texto'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Adicionar texto'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'oi');
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Duplicar'), findsOneWidget);
+
+      // Com outra aba aberta, o texto continua na prévia mas sem nenhum
+      // controle de seleção: nem a barra de ações, nem a moldura roxa da
+      // CollageOverlayView (que fora da aba dona não responde a gesto).
+      await tester.tap(find.text('Fundo'));
+      await tester.pumpAndSettle();
+      expect(find.text('oi'), findsOneWidget);
+      expect(find.byTooltip('Duplicar'), findsNothing);
+      expect(
+        tester
+            .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
+            .every((overlay) => !overlay.selected),
+        isTrue,
+      );
+
+      // Voltando para "Texto", a seleção guardada reaparece no mesmo texto —
+      // trocar de aba esconde, não solta a seleção.
+      await tester.tap(find.text('Texto'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Duplicar'), findsOneWidget);
+      expect(
+        tester
+            .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
+            .where((overlay) => overlay.selected),
+        hasLength(1),
       );
     },
   );

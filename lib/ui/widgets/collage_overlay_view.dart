@@ -43,11 +43,12 @@ class CollageOverlayView extends StatefulWidget {
   final Size canvasSize;
   final bool selected;
 
-  /// Quando `false`, o conteúdo continua visível (com a moldura de seleção,
-  /// se já estava selecionado) mas para de responder a toque/arrasto/pinça
-  /// e à alça de redimensionar — usado para só permitir mover/girar/
-  /// redimensionar um sticker ou texto enquanto a aba correspondente
-  /// ("Stickers"/"Texto") estiver aberta no rodapé.
+  /// Quando `false`, o conteúdo continua visível mas para de responder a
+  /// toque/arrasto/pinça e à alça de redimensionar — usado para só permitir
+  /// mover/girar/redimensionar um sticker ou texto enquanto a aba
+  /// correspondente ("Stickers"/"Texto") estiver aberta no rodapé. A tela
+  /// dona também deixa de passar [selected] nesse caso, para a moldura não
+  /// ficar na prévia sem servir para nada.
   final bool interactive;
   final VoidCallback onSelect;
   final void Function(
