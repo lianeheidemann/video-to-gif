@@ -449,7 +449,7 @@ void main() {
   });
 
   testWidgets(
-    'aba "Margem" ajusta margem externa e entre fotos de forma independente',
+    'aba "Margem" mostra as três de uma vez e ajusta cada uma sozinha',
     (tester) async {
       tester.view.physicalSize = const Size(900, 2400);
       tester.view.devicePixelRatio = 1;
@@ -461,61 +461,37 @@ void main() {
       await tester.tap(find.text('Margem').last);
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(ChoiceChip, 'Tudo'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Externa'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Entre fotos'), findsOneWidget);
+      // Uma linha por margem, todas na tela ao mesmo tempo: "Tudo",
+      // "Externa" e "Entre fotos", nessa ordem.
+      final sliders = find.byType(Slider);
+      expect(sliders, findsNWidgets(3));
+      for (final label in ['Tudo', 'Externa', 'Entre fotos']) {
+        expect(find.byTooltip(label), findsOneWidget);
+      }
 
-      // As duas margens começam iguais, então "Externa" e "Entre fotos"
-      // mostram o mesmo valor inicial que "Tudo".
-      final initial = tester.widget<Slider>(find.byType(Slider)).value;
+      double sliderValue(int index) =>
+          tester.widget<Slider>(sliders.at(index)).value;
 
-      // Mexe só na margem externa.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
-      await tester.pumpAndSettle();
-      await tester.drag(find.byType(Slider), const Offset(-120, 0));
-      await tester.pumpAndSettle();
-      final outerAfter = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(outerAfter, isNot(closeTo(initial, 0.001)));
+      final initialOuter = sliderValue(1);
 
-      // "Entre fotos" continua no valor original — não foi mexida.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Entre fotos'));
+      // Mexer na linha "Entre fotos" não move a externa.
+      await tester.drag(sliders.at(2), const Offset(120, 0));
       await tester.pumpAndSettle();
-      final innerStill = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(innerStill, closeTo(initial, 0.001));
-
-      // Mexe só na margem entre fotos agora.
-      await tester.drag(find.byType(Slider), const Offset(120, 0));
-      await tester.pumpAndSettle();
-      final innerAfter = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(innerAfter, isNot(closeTo(initial, 0.001)));
-
-      // "Externa" continua no valor que ficou antes, intacta pela mexida
-      // acima.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
-      await tester.pumpAndSettle();
-      final outerStill = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(outerStill, closeTo(outerAfter, 0.001));
+      expect(sliderValue(2), isNot(closeTo(initialOuter, 0.001)));
+      expect(sliderValue(1), closeTo(initialOuter, 0.001));
 
       // "Tudo" iguala as duas ao valor arrastado.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Tudo'));
+      await tester.drag(sliders.at(0), const Offset(60, 0));
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(Slider), const Offset(60, 0));
-      await tester.pumpAndSettle();
-      final bothValue = tester.widget<Slider>(find.byType(Slider)).value;
+      expect(sliderValue(1), closeTo(sliderValue(0), 0.001));
+      expect(sliderValue(2), closeTo(sliderValue(0), 0.001));
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
+      // O botão da direita zera tudo de uma vez.
+      await tester.tap(find.byTooltip('Zerar margens'));
       await tester.pumpAndSettle();
-      expect(
-        tester.widget<Slider>(find.byType(Slider)).value,
-        closeTo(bothValue, 0.001),
-      );
-
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Entre fotos'));
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<Slider>(find.byType(Slider)).value,
-        closeTo(bothValue, 0.001),
-      );
+      expect(sliderValue(0), 0);
+      expect(sliderValue(1), 0);
+      expect(sliderValue(2), 0);
     },
   );
 

@@ -49,12 +49,6 @@ enum _CollageTab {
   text,
 }
 
-/// Qual margem o slider da aba "Margem" está controlando: [both] mexe nas
-/// duas proporcionalmente ao mesmo tempo (o controle original, antes da
-/// única opção que existia), [outer] só na moldura externa (da borda da
-/// montagem até as fotos) e [inner] só no espaço entre as fotos.
-enum _MarginTarget { both, outer, inner }
-
 /// Pastas da seção "Stickers": três temáticas com os stickers embutidos do
 /// app, mais uma para os stickers importados pelo usuário (que tem também o
 /// botão "Importar").
@@ -158,10 +152,6 @@ class _CollagePageState extends State<CollagePage> {
   /// Mesmo papel de [_borderTargetsPhotos], para a aba "Fundo": `false` = o
   /// fundo da montagem inteira, `true` = o fundo de dentro de cada foto.
   bool _backgroundTargetsPhotos = false;
-
-  /// Mesmo papel de [_borderTargetsPhotos], para a aba "Margem" — ver
-  /// [_MarginTarget].
-  _MarginTarget _marginTarget = _MarginTarget.both;
 
   /// `true` quando o chip "x:y" da aba "Proporção" está escolhido — é ele que
   /// mostra os campos de largura e altura. Fica ligado sozinho quando a
@@ -1077,71 +1067,115 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Margem" / "Proporção" / "Borda e cantos"
   // ---------------------------------------------------------------------
 
-  /// Valor mostrado/arrastado pelo slider conforme [_marginTarget]: "Tudo"
-  /// não tem uma proporção própria — mostra a média das duas, e ao
-  /// arrastar iguala as duas a esse valor.
-  double get _marginSliderValue => switch (_marginTarget) {
-    _MarginTarget.both =>
-      (_settings.outerMarginRatio + _settings.innerMarginRatio) / 2,
-    _MarginTarget.outer => _settings.outerMarginRatio,
-    _MarginTarget.inner => _settings.innerMarginRatio,
-  };
-
-  void _applyMargin(double v) {
-    switch (_marginTarget) {
-      case _MarginTarget.both:
-        _update(
-          _settings.copyWith(outerMarginRatio: v, innerMarginRatio: v),
-          pushUndo: false,
-        );
-      case _MarginTarget.outer:
-        _update(_settings.copyWith(outerMarginRatio: v), pushUndo: false);
-      case _MarginTarget.inner:
-        _update(_settings.copyWith(innerMarginRatio: v), pushUndo: false);
-    }
-  }
-
   Widget _marginPanelContent() {
-    final value = _marginSliderValue.clamp(
-      CollageSettings.minMarginRatio,
-      CollageSettings.maxMarginRatio,
-    );
-    final percent = (value / CollageSettings.maxMarginRatio * 100).round();
+    final outer = _settings.outerMarginRatio;
+    final inner = _settings.innerMarginRatio;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Margem', '$percent%'),
-        Wrap(
-          spacing: 8,
+        _panelHeader('Margem'),
+        // As três de uma vez, uma embaixo da outra: antes eram chips que
+        // trocavam qual delas o único slider controlava, então ver a margem
+        // externa e a de entre fotos ao mesmo tempo era impossível.
+        Row(
           children: [
-            ChoiceChip(
-              label: const Text('Tudo'),
-              selected: _marginTarget == _MarginTarget.both,
-              onSelected: (_) =>
-                  setState(() => _marginTarget = _MarginTarget.both),
+            Expanded(
+              child: Column(
+                children: [
+                  _marginRow(
+                    icon: Icons.border_all_rounded,
+                    label: 'Tudo',
+                    // "Tudo" não tem valor próprio: mostra a média das duas e,
+                    // ao arrastar, iguala as duas ao valor escolhido.
+                    value: (outer + inner) / 2,
+                    onChanged: (v) => _update(
+                      _settings.copyWith(
+                        outerMarginRatio: v,
+                        innerMarginRatio: v,
+                      ),
+                      pushUndo: false,
+                    ),
+                  ),
+                  _marginRow(
+                    icon: Icons.border_outer_rounded,
+                    label: 'Externa',
+                    value: outer,
+                    onChanged: (v) => _update(
+                      _settings.copyWith(outerMarginRatio: v),
+                      pushUndo: false,
+                    ),
+                  ),
+                  _marginRow(
+                    icon: Icons.border_inner_rounded,
+                    label: 'Entre fotos',
+                    value: inner,
+                    onChanged: (v) => _update(
+                      _settings.copyWith(innerMarginRatio: v),
+                      pushUndo: false,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            ChoiceChip(
-              label: const Text('Externa'),
-              selected: _marginTarget == _MarginTarget.outer,
-              onSelected: (_) =>
-                  setState(() => _marginTarget = _MarginTarget.outer),
-            ),
-            ChoiceChip(
-              label: const Text('Entre fotos'),
-              selected: _marginTarget == _MarginTarget.inner,
-              onSelected: (_) =>
-                  setState(() => _marginTarget = _MarginTarget.inner),
+            IconButton(
+              tooltip: 'Zerar margens',
+              onPressed: outer == 0 && inner == 0
+                  ? null
+                  : () => _update(
+                      _settings.copyWith(
+                        outerMarginRatio: 0,
+                        innerMarginRatio: 0,
+                      ),
+                    ),
+              icon: const Icon(Icons.refresh_rounded),
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        Slider(
-          min: CollageSettings.minMarginRatio,
-          max: CollageSettings.maxMarginRatio,
-          value: value,
-          label: '$percent%',
-          onChangeStart: (_) => _pushUndoCheckpoint(),
-          onChanged: _applyMargin,
+      ],
+    );
+  }
+
+  /// Uma linha da aba "Margem": ícone, slider e o valor em porcentagem. O
+  /// nome fica no tooltip do ícone — escrito por extenso, as três linhas não
+  /// caberiam sem espremer o slider.
+  Widget _marginRow({
+    required IconData icon,
+    required String label,
+    required double value,
+    required ValueChanged<double> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final clamped = value.clamp(
+      CollageSettings.minMarginRatio,
+      CollageSettings.maxMarginRatio,
+    );
+    final percent = (clamped / CollageSettings.maxMarginRatio * 100).round();
+    return Row(
+      children: [
+        Tooltip(
+          message: label,
+          child: Icon(icon, color: theme.colorScheme.onSurfaceVariant),
+        ),
+        Expanded(
+          child: Slider(
+            min: CollageSettings.minMarginRatio,
+            max: CollageSettings.maxMarginRatio,
+            value: clamped,
+            label: '$percent%',
+            onChangeStart: (_) => _pushUndoCheckpoint(),
+            onChanged: onChanged,
+          ),
+        ),
+        SizedBox(
+          width: 44,
+          child: Text(
+            '$percent%',
+            textAlign: TextAlign.end,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.primary,
+            ),
+          ),
         ),
       ],
     );
