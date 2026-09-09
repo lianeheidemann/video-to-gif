@@ -1,3 +1,6 @@
+// `ValueListenable` vem de foundation: material reexporta o
+// ValueListenableBuilder, mas não o tipo em si.
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 /// Estado do pop-up de exportação: quanto já foi feito e se o cancelamento
