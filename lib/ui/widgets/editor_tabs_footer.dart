@@ -54,7 +54,7 @@ class EditorTabsFooter extends StatelessWidget {
     required this.sections,
     required this.activeIndex,
     required this.onSelected,
-    this.maxPanelHeight = 300,
+    this.maxPanelHeight = 200,
   });
 
   final List<EditorSection> sections;
@@ -62,6 +62,13 @@ class EditorTabsFooter extends StatelessWidget {
   /// `null` = nenhuma aba aberta (só a barra).
   final int? activeIndex;
   final ValueChanged<int?> onSelected;
+
+  /// Teto do painel. Baixo de propósito: o painel já rola sozinho, então o
+  /// que passa daqui continua acessível arrastando — e a prévia, que é o que
+  /// a pessoa está olhando enquanto mexe nos controles, fica com o resto da
+  /// tela. Com 200, "Resolução" mostra as duas primeiras linhas de chips (a
+  /// terceira aparece pela metade, indicando que há mais) e "Qualidade das
+  /// cores" mostra as três opções de paleta.
   final double maxPanelHeight;
 
   @override

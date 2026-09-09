@@ -383,6 +383,10 @@ void main() {
     expect(find.text('Fundo do texto'), findsOneWidget);
     expect(find.text('Arredondamento do fundo'), findsNothing);
 
+    // O painel tem teto de altura e rola por dentro: o interruptor pode
+    // estar abaixo do corte.
+    await tester.ensureVisible(find.byType(Switch));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
 

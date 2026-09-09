@@ -412,10 +412,10 @@ class _CollagePageState extends State<CollagePage> {
       duration: const Duration(milliseconds: 180),
       alignment: Alignment.bottomCenter,
       child: Container(
-        // 300 de conteúdo + a alça e o respiro da caixa de sub-opções que
-        // entraram depois — sem isso, painéis cheios (Fundo com "Cor"
-        // escolhida) passavam a rolar mais cedo do que rolavam antes.
-        constraints: const BoxConstraints(maxHeight: 330),
+        // Mesmo teto do rodapé das outras telas (ver
+        // `EditorTabsFooter.maxPanelHeight`): o painel cobre a prévia, e o
+        // que passar daqui continua acessível pela rolagem que ele já tem.
+        constraints: const BoxConstraints(maxHeight: 200),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerLow,
           border: Border(
