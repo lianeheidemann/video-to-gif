@@ -48,7 +48,9 @@ class TargetSubPanel extends StatelessWidget {
           children: [
             for (var i = 0; i < options.length; i++)
               Padding(
-                padding: EdgeInsets.only(right: i == options.length - 1 ? 0 : 8),
+                padding: EdgeInsets.only(
+                  right: i == options.length - 1 ? 0 : 8,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [

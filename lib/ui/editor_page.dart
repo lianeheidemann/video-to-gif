@@ -785,9 +785,7 @@ class _EditorPageState extends State<EditorPage> {
       valueOf: (adjustment) => adjustment.valueIn(adjustments),
       onChangeStart: _pushUndoCheckpoint,
       onChanged: (adjustment, value) => _update(
-        _settings.copyWith(
-          adjustments: adjustment.applyIn(adjustments, value),
-        ),
+        _settings.copyWith(adjustments: adjustment.applyIn(adjustments, value)),
         pushUndo: false,
       ),
       onReset: () {
@@ -2680,4 +2678,3 @@ class _EditorPageState extends State<EditorPage> {
     return '${width ~/ g}:${height ~/ g}';
   }
 }
-

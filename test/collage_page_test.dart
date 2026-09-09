@@ -517,52 +517,51 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a seleção de um texto só aparece com a aba "Texto" aberta',
-    (tester) async {
-      tester.view.physicalSize = const Size(900, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+  testWidgets('a seleção de um texto só aparece com a aba "Texto" aberta', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
 
-      // Cria um texto pela aba "Texto" — ele já nasce selecionado.
-      await tester.tap(find.text('Texto'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'oi');
-      await tester.pump();
-      await tester.tap(find.byTooltip('Adicionar texto'));
-      await tester.pumpAndSettle();
-      expect(find.byTooltip('Duplicar'), findsOneWidget);
+    // Cria um texto pela aba "Texto" — ele já nasce selecionado.
+    await tester.tap(find.text('Texto'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'oi');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Adicionar texto'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Duplicar'), findsOneWidget);
 
-      // Com outra aba aberta, o texto continua na prévia mas sem nenhum
-      // controle de seleção: nem a barra de ações, nem a moldura roxa da
-      // CollageOverlayView (que fora da aba dona não responde a gesto).
-      await tester.tap(find.text('Fundo'));
-      await tester.pumpAndSettle();
-      expect(find.text('oi'), findsOneWidget);
-      expect(find.byTooltip('Duplicar'), findsNothing);
-      expect(
-        tester
-            .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
-            .every((overlay) => !overlay.selected),
-        isTrue,
-      );
+    // Com outra aba aberta, o texto continua na prévia mas sem nenhum
+    // controle de seleção: nem a barra de ações, nem a moldura roxa da
+    // CollageOverlayView (que fora da aba dona não responde a gesto).
+    await tester.tap(find.text('Fundo'));
+    await tester.pumpAndSettle();
+    expect(find.text('oi'), findsOneWidget);
+    expect(find.byTooltip('Duplicar'), findsNothing);
+    expect(
+      tester
+          .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
+          .every((overlay) => !overlay.selected),
+      isTrue,
+    );
 
-      // Voltando para "Texto", a seleção guardada reaparece no mesmo texto —
-      // trocar de aba esconde, não solta a seleção.
-      await tester.tap(find.text('Texto'));
-      await tester.pumpAndSettle();
-      expect(find.byTooltip('Duplicar'), findsOneWidget);
-      expect(
-        tester
-            .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
-            .where((overlay) => overlay.selected),
-        hasLength(1),
-      );
-    },
-  );
+    // Voltando para "Texto", a seleção guardada reaparece no mesmo texto —
+    // trocar de aba esconde, não solta a seleção.
+    await tester.tap(find.text('Texto'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Duplicar'), findsOneWidget);
+    expect(
+      tester
+          .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
+          .where((overlay) => overlay.selected),
+      hasLength(1),
+    );
+  });
 
   testWidgets('pasta criada pelo usuário aparece na barra e pode ser apagada', (
     tester,
@@ -638,7 +637,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        tester.widget<TargetSubPanel>(find.byType(TargetSubPanel)).selectedIndex,
+        tester
+            .widget<TargetSubPanel>(find.byType(TargetSubPanel))
+            .selectedIndex,
         1,
       );
       // Trocar de alvo mantém os três modos na caixa — muda o que eles
@@ -652,7 +653,6 @@ void main() {
       );
     },
   );
-\n
   testWidgets('lápis edita o texto no próprio painel, sem abrir diálogo', (
     tester,
   ) async {

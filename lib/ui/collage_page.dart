@@ -1529,9 +1529,8 @@ class _CollagePageState extends State<CollagePage> {
                       avatar: Icon(entry.$3, size: 18),
                       label: Text(entry.$2),
                       selected: background.mode == entry.$1,
-                      onSelected: (_) => _applyBackground(
-                        background.copyWith(mode: entry.$1),
-                      ),
+                      onSelected: (_) =>
+                          _applyBackground(background.copyWith(mode: entry.$1)),
                     ),
                 ],
               ),
@@ -1912,9 +1911,7 @@ class _CollagePageState extends State<CollagePage> {
     setState(() {
       _customFolders = [
         for (final f in _customFolders)
-          f.id == folder.id
-              ? StickerFolder(id: f.id, name: name.trim())
-              : f,
+          f.id == folder.id ? StickerFolder(id: f.id, name: name.trim()) : f,
       ];
     });
   }

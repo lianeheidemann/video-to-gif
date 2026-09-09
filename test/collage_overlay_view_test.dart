@@ -195,7 +195,6 @@ void main() {
       expect(lastScale, greaterThan(1.0));
     },
   );
-\n
   testWidgets(
     'alça de girar só aparece quando selecionado, e arrastá-la gira o '
     'conteúdo',
