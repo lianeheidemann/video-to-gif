@@ -22,6 +22,7 @@ import '../services/collage_animation.dart';
 import '../services/collage_compositor.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/imported_asset_store.dart';
+import '../services/imported_font_store.dart';
 import '../services/output_service.dart';
 import '../services/sticker_folder_store.dart';
 import 'photo_crop_page.dart';
@@ -88,6 +89,7 @@ class _CollagePageState extends State<CollagePage> {
     ImportedAssetKind.backgroundImage,
   );
   static const _folderStore = StickerFolderStore();
+  static const _fontStore = ImportedFontStore();
 
   /// Stickers prontos, embutidos no app (`assets/sticker/`), agrupados por
   /// pasta temática na seção "Stickers" — ver [_StickerFolder].
@@ -122,6 +124,11 @@ class _CollagePageState extends State<CollagePage> {
 
   List<ImportedAsset> _importedStickers = [];
   List<ImportedAsset> _importedBackgrounds = [];
+
+  /// Fontes próprias do usuário, já registradas no engine por
+  /// [ImportedFontStore.loadAll] — entram na folha de fontes ao lado das
+  /// embutidas.
+  List<ImportedFont> _importedFonts = [];
 
   final List<CollageSettings> _undoStack = [];
   final List<CollageSettings> _redoStack = [];
@@ -218,11 +225,13 @@ class _CollagePageState extends State<CollagePage> {
     final stickers = await _stickerStore.loadAll();
     final backgrounds = await _backgroundStore.loadAll();
     final folders = await _folderStore.loadAll();
+    final fonts = await _fontStore.loadAll();
     if (!mounted) return;
     setState(() {
       _importedStickers = stickers;
       _importedBackgrounds = backgrounds;
       _customFolders = folders;
+      _importedFonts = fonts;
       _dropStickerFolderIfGone();
     });
   }
@@ -2285,19 +2294,35 @@ class _CollagePageState extends State<CollagePage> {
                       selected: item.fontFamily == font.$1,
                       onTap: () {
                         Navigator.of(sheetContext).pop();
-                        _pushUndoCheckpoint();
-                        _update(
-                          _settings.replacingText(
-                            id,
-                            item.copyWith(
-                              fontFamily: font.$1,
-                              clearFontFamily: font.$1 == null,
-                            ),
-                          ),
-                          pushUndo: false,
-                        );
+                        _applyTextFont(id, font.$1);
                       },
                     ),
+                  // As importadas ficam na mesma grade das embutidas —
+                  // segurar remove.
+                  for (final font in _importedFonts)
+                    _FontThumb(
+                      family: font.family,
+                      label: font.label,
+                      selected: item.fontFamily == font.family,
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        _applyTextFont(id, font.family);
+                      },
+                      onLongPress: () {
+                        Navigator.of(sheetContext).pop();
+                        _confirmRemoveFont(font);
+                      },
+                    ),
+                  _FontThumb(
+                    family: null,
+                    label: 'Importar',
+                    selected: false,
+                    icon: Icons.font_download_outlined,
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _importFont(id);
+                    },
+                  ),
                 ],
               ),
             ],
@@ -2343,6 +2368,79 @@ class _CollagePageState extends State<CollagePage> {
         ),
       ),
     );
+  }
+
+  void _applyTextFont(String id, String? family) {
+    final item = _findText(id);
+    if (item == null) return;
+    _pushUndoCheckpoint();
+    _update(
+      _settings.replacingText(
+        id,
+        item.copyWith(fontFamily: family, clearFontFamily: family == null),
+      ),
+      pushUndo: false,
+    );
+  }
+
+  /// Importar uma fonte já a aplica no texto que abriu a folha — mesmo
+  /// caminho de "importar e usar" dos stickers.
+  Future<void> _importFont(String textId) async {
+    try {
+      final font = await _fontStore.import();
+      if (!mounted) return;
+      setState(() => _importedFonts = [..._importedFonts, font]);
+      _applyTextFont(textId, font.family);
+    } on ImportedFontException catch (e) {
+      _message(e.message);
+    }
+  }
+
+  /// Remover a fonte devolve os textos que a usavam para a fonte padrão — a
+  /// família deixa de existir na próxima abertura do app, e um texto
+  /// apontando para ela ficaria com uma fonte que não é a escolhida nem a
+  /// mostrada agora.
+  Future<void> _confirmRemoveFont(ImportedFont font) async {
+    final inUse = _settings.texts
+        .where((t) => t.fontFamily == font.family)
+        .toList();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remover fonte?'),
+        content: Text(
+          inUse.isEmpty
+              ? '"${font.label}" vai sair da lista de fontes.'
+              : '"${font.label}" vai sair da lista de fontes, e '
+                    '${inUse.length == 1 ? 'o texto que a usa volta' : 'os ${inUse.length} textos que a usam voltam'} '
+                    'para a fonte padrão.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _fontStore.remove(font.id);
+    if (!mounted) return;
+    setState(() {
+      _importedFonts = _importedFonts.where((f) => f.id != font.id).toList();
+    });
+    var updated = _settings;
+    for (final text in inUse) {
+      updated = updated.replacingText(
+        text.id,
+        text.copyWith(clearFontFamily: true),
+      );
+    }
+    if (!identical(updated, _settings)) _update(updated);
   }
 
   Widget _assetThumb(ImportedAsset asset, {required bool selected}) {
@@ -2796,12 +2894,9 @@ class _CollagePageState extends State<CollagePage> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Text(
-                      current.label,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    // Sem repetir o nome do ajuste aqui: o ícone escolhido
+                    // logo acima já fica roxo e com o rótulo em destaque, e
+                    // a régua mostra só o valor.
                     IntensityRuler(
                       value: current.valueOf(cell),
                       onChangeStart: _pushUndoCheckpoint,
@@ -3284,6 +3379,8 @@ class _FontThumb extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.onLongPress,
+    this.icon,
   });
 
   final String? family;
@@ -3291,11 +3388,19 @@ class _FontThumb extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// Segurar remove — só as fontes importadas passam algo aqui.
+  final VoidCallback? onLongPress;
+
+  /// No lugar do "Aa": usado pelo tile de importar, que não tem fonte para
+  /// mostrar ainda.
+  final IconData? icon;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: 84,
@@ -3315,7 +3420,10 @@ class _FontThumb extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Aa', style: TextStyle(fontFamily: family, fontSize: 22)),
+            if (icon != null)
+              Icon(icon, size: 22, color: theme.colorScheme.primary)
+            else
+              Text('Aa', style: TextStyle(fontFamily: family, fontSize: 22)),
             const SizedBox(height: 4),
             Text(
               label,
