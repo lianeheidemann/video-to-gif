@@ -300,48 +300,10 @@ class _HomePageState extends State<HomePage> {
                   label: const Text('Montagem de fotos'),
                 ),
                 const SizedBox(height: 28),
-                const _SupportedFormatsCard(),
-                const SizedBox(height: 16),
                 const _StepsCard(),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Lista os formatos de vídeo aceitos pelo seletor de arquivos.
-class _SupportedFormatsCard extends StatelessWidget {
-  const _SupportedFormatsCard();
-
-  static const _formats = ['MP4', 'MOV', 'AVI', 'MKV', 'WEBM', '3GP'];
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        child: Column(
-          children: [
-            Text(
-              'Formatos suportados',
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _formats.join('  ·  '),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
         ),
       ),
     );
