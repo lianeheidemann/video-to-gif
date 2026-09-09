@@ -74,8 +74,10 @@ class CollageLayout {
           canvasSize.width,
         );
     final availableHeight =
-        (canvasSize.height - outerMargin * 2 - innerMargin * (rowsN - 1))
-            .clamp(0.0, canvasSize.height);
+        (canvasSize.height - outerMargin * 2 - innerMargin * (rowsN - 1)).clamp(
+          0.0,
+          canvasSize.height,
+        );
     final cellWidth = availableWidth / cols;
     final cellHeight = availableHeight / rowsN;
 

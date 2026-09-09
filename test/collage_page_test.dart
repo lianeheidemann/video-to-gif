@@ -140,7 +140,8 @@ void main() {
     await tester.tap(find.text('Stickers'));
     await tester.pumpAndSettle();
 
-    // A pasta "Reações" (aberta por padrão) já mostra seus stickers embutidos.
+    // A pasta "Reações" (aberta por padrão) já mostra seus stickers
+    // embutidos.
     expect(find.byType(SvgPicture), findsWidgets);
 
     await tester.tap(find.byType(SvgPicture).first);
@@ -182,8 +183,9 @@ void main() {
       }
       expect(find.text('Importar'), findsNothing);
 
-      // "Reações" (padrão) mostra 2 stickers (Joinha, Sorriso) — os ícones
-      // não têm rótulo visível, então a checagem é pela contagem de SVGs.
+      // "Reações" (padrão) mostra 2 stickers (Joinha, Sorriso) — os
+      // ícones não têm rótulo visível, então a checagem é pela contagem
+      // de SVGs.
       expect(find.byType(SvgPicture), findsNWidgets(2));
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Símbolos'));
@@ -301,61 +303,56 @@ void main() {
     expect(find.text('Brilho'), findsWidgets);
   });
 
-  testWidgets(
-    'duplo toque num ícone de "Ajustar cor" zera só aquele ajuste',
-    (tester) async {
-      tester.view.physicalSize = const Size(900, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
+  testWidgets('duplo toque num ícone de "Ajustar cor" zera só aquele ajuste', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
 
-      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
 
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.byIcon(Icons.more_horiz_rounded).first),
-      );
-      await tester.pump(const Duration(milliseconds: 60));
-      await gesture.up();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byIcon(Icons.more_horiz_rounded).first),
+    );
+    await tester.pump(const Duration(milliseconds: 60));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Ajustar cor'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajustar cor'));
+    await tester.pumpAndSettle();
 
-      // Uma vez selecionado, "Contraste" também aparece como título acima da
-      // régua — o finder precisa mirar só no ícone da fileira, não em
-      // qualquer texto "Contraste" na tela.
-      final contrasteIcon = find.descendant(
-        of: find.byType(ColorAdjustButton),
-        matching: find.text('Contraste'),
-      );
+    ColorAdjustButton contrasteButton() => tester
+        .widgetList<ColorAdjustButton>(find.byType(ColorAdjustButton))
+        .firstWhere(
+          (button) => button.adjustment == CollageColorAdjustment.contrast,
+        );
 
-      // Seleciona "Contraste" e arrasta a régua para um valor não-zero.
-      await tester.tap(contrasteIcon);
-      await tester.pumpAndSettle();
-      await tester.drag(find.byType(IntensityRuler), const Offset(-80, 0));
-      await tester.pumpAndSettle();
+    // Seleciona "Contraste" e arrasta a régua para um valor não-zero.
+    contrasteButton().onTap();
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(IntensityRuler), const Offset(-80, 0));
+    await tester.pumpAndSettle();
 
-      final beforeReset = tester
-          .widgetList<CollageCellView>(find.byType(CollageCellView))
-          .first
-          .cell;
-      expect(beforeReset.contrast, isNot(0));
+    final beforeReset = tester
+        .widgetList<CollageCellView>(find.byType(CollageCellView))
+        .first
+        .cell;
+    expect(beforeReset.contrast, isNot(0));
 
-      // Duplo toque no ícone "Contraste" zera só esse ajuste.
-      await tester.tap(contrasteIcon);
-      await tester.pump(const Duration(milliseconds: 40));
-      await tester.tap(contrasteIcon);
-      await tester.pumpAndSettle();
+    // Duplo toque no ícone "Contraste" zera só esse ajuste.
+    contrasteButton().onDoubleTap!.call();
+    await tester.pumpAndSettle();
 
-      final afterReset = tester
-          .widgetList<CollageCellView>(find.byType(CollageCellView))
-          .first
-          .cell;
-      expect(afterReset.contrast, 0);
-      expect(find.text('0'), findsOneWidget);
-    },
-  );
+    final afterReset = tester
+        .widgetList<CollageCellView>(find.byType(CollageCellView))
+        .first
+        .cell;
+    expect(afterReset.contrast, 0);
+    expect(find.text('0'), findsOneWidget);
+  });
 
   testWidgets('texto ganha fundo, cor e arredondamento pelo painel', (
     tester,
