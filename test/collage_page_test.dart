@@ -558,7 +558,15 @@ void main() {
     await tester.tap(find.text('Stickers'));
     await tester.pumpAndSettle();
 
-    // O botão do fim da linha pede o nome e já abre a pasta nova.
+    // A barra de pastas rola: "Nova pasta" fica no fim dela.
+    final folderBar = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FolderTab, 'Nova pasta'),
+      200,
+      scrollable: folderBar,
+    );
+    await tester.ensureVisible(find.widgetWithText(FolderTab, 'Nova pasta'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FolderTab, 'Nova pasta'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Xícaras');
@@ -570,6 +578,11 @@ void main() {
     expect(find.text('Importar'), findsOneWidget);
 
     // Segurar abre o menu com renomear/apagar — só as criadas têm esse gesto.
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FolderTab, 'Xícaras'),
+      200,
+      scrollable: folderBar,
+    );
     await tester.longPress(find.widgetWithText(FolderTab, 'Xícaras'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Apagar'));
@@ -670,5 +683,90 @@ void main() {
 
     expect(find.text('tchau'), findsOneWidget);
     expect(find.text('oi'), findsNothing);
+  });
+
+  testWidgets('recolher o painel mantém o sticker selecionado e manipulável', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(SvgPicture).first);
+    await tester.pumpAndSettle();
+
+    // Com a aba aberta, o sticker está selecionado e responde a gesto.
+    CollageOverlayView overlay() =>
+        tester.widget<CollageOverlayView>(find.byType(CollageOverlayView));
+    expect(overlay().selected, isTrue);
+    expect(overlay().interactive, isTrue);
+    expect(find.widgetWithText(FolderTab, 'Reações'), findsOneWidget);
+
+    // Puxar a alça para baixo encolhe o painel: os controles somem...
+    await tester.drag(find.byType(SvgPicture).last, const Offset(0, 200));
+    await tester.pumpAndSettle();
+    await tester.fling(
+      find.byKey(const ValueKey('collagePanelHandle')),
+      const Offset(0, 60),
+      800,
+    );
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FolderTab, 'Reações'), findsNothing);
+
+    // ...mas a aba continua sendo a aba aberta, então o sticker segue
+    // selecionado e movimentável — é o ponto do gesto.
+    expect(overlay().selected, isTrue);
+    expect(overlay().interactive, isTrue);
+
+    // Puxar de volta para cima traz os controles.
+    await tester.fling(
+      find.byKey(const ValueKey('collagePanelHandle')),
+      const Offset(0, -60),
+      800,
+    );
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FolderTab, 'Reações'), findsOneWidget);
+  });
+
+  testWidgets('pastas "GitHub" e "Black" existem e recebem importados', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    for (final label in ['GitHub', 'Black']) {
+      final folder = find.widgetWithText(FolderTab, label);
+      expect(folder, findsOneWidget);
+      await tester.scrollUntilVisible(
+        folder,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.ensureVisible(folder);
+      await tester.pumpAndSettle();
+      await tester.tap(folder);
+      await tester.pumpAndSettle();
+      if (label == 'GitHub') {
+        // Já vem com a arte embutida na fileira (o tile "Importar" fica no
+        // fim dela, fora da tela — a lista é preguiçosa).
+        expect(find.byType(SvgPicture), findsWidgets);
+      } else {
+        // Ainda sem arte: só o tile de importar.
+        expect(find.text('Importar'), findsOneWidget);
+        expect(find.byType(SvgPicture), findsNothing);
+      }
+    }
   });
 }

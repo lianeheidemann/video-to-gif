@@ -80,18 +80,19 @@ void main() {
         )
         .bottom;
 
-    // As duas primeiras linhas cabem: 160 px (primeira linha) e 480 px
-    // (segunda) aparecem inteiros...
-    for (final label in ['160 px', '480 px']) {
-      expect(tester.getRect(find.text(label)).bottom, lessThan(panelBottom));
-    }
+    // O começo da lista aparece inteiro (a alça de recolher come uns 20 do
+    // teto, então a segunda linha fica pela metade)...
+    expect(tester.getRect(find.text('160 px')).bottom, lessThan(panelBottom));
     // ...e a última opção fica abaixo do corte, alcançável rolando.
     expect(tester.getRect(find.text('1920 px')).top, greaterThan(panelBottom));
 
     // Rolar o painel traz a opção escondida para dentro.
-    await tester.drag(find.text('160 px'), const Offset(0, -400));
+    await tester.ensureVisible(find.text('1920 px'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    expect(tester.getRect(find.text('1920 px')).top, lessThan(panelBottom));
+    expect(
+      tester.getRect(find.text('1920 px')).bottom,
+      lessThanOrEqualTo(panelBottom),
+    );
   });
 }
