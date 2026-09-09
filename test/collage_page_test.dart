@@ -123,6 +123,27 @@ void main() {
     },
   );
 
+  testWidgets(
+    'o nome da aba não se repete no topo do painel — a aba do rodapé já '
+    'basta',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      // "Layout" já começa aberta: só a aba do rodapé mostra o nome, uma
+      // vez só — não mais o painel repetindo por cima.
+      expect(find.text('Layout'), findsOneWidget);
+
+      await tester.tap(find.text('Margem'));
+      await tester.pumpAndSettle();
+      expect(find.text('Margem'), findsOneWidget);
+    },
+  );
+
   testWidgets('sticker embutido pode ser adicionado à montagem', (
     tester,
   ) async {

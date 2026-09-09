@@ -674,32 +674,26 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.text => _textPanelContent(),
   };
 
-  /// Título + valor atual de uma seção — mesmo resumo que o `LabeledSection`
-  /// antigo mostrava, agora no topo do próprio painel em vez de no
-  /// cabeçalho de um card expansível.
-  Widget _panelHeader(String title, [String? value]) {
+  /// Valor atual de uma seção, alinhado à direita — sem repetir o nome da
+  /// aba: a própria aba do rodapé já fica marcada em cor diferente e em
+  /// negrito quando selecionada (`_footerTabButton`), então escrevê-lo de
+  /// novo aqui só custava espaço vertical num painel com teto de 200px.
+  /// `null` (a maioria das abas, que não tem um valor de resumo) não
+  /// desenha nada.
+  Widget _panelValueLine(String? value) {
+    if (value == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.primary,
           ),
-          if (value != null)
-            Text(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -1297,7 +1291,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Layout'),
         SizedBox(
           height: 84,
           child: ListView.separated(
@@ -1531,7 +1524,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Margem'),
         // As três de uma vez, uma embaixo da outra: antes eram chips que
         // trocavam qual delas o único slider controlava, então ver a margem
         // externa e a de entre fotos ao mesmo tempo era impossível.
@@ -1649,7 +1641,7 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Proporção', _customAspectLabel()),
+        _panelValueLine(_customAspectLabel()),
         Wrap(
           spacing: 6,
           runSpacing: 6,
@@ -1788,7 +1780,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Borda e cantos'),
         // Espessura, arredondamento e cor valem para o alvo escolhido em
         // cima (a montagem inteira ou todas as fotos), então ficam dentro da
         // caixa dele — ver [TargetSubPanel].
@@ -1976,7 +1967,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Fundo'),
         // O fundo da montagem (a área fora/entre as fotos) e o fundo de
         // dentro de cada foto (o que aparece na sobra do modo "encaixar") são
         // escolhas independentes — mesmo seletor de alvo da aba "Borda e
@@ -2203,7 +2193,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Ajustar cor'),
         ColorAdjustPanel(
           hasAdjustments: _settings.cells.any((c) => c.hasColorAdjustments),
           valueOf: (adjustment) => adjustment.valueOf(reference),
@@ -2261,7 +2250,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Stickers'),
         // Fileira de pastas e miniaturas de sticker bem menores que o
         // padrão do resto do app — este é o único lugar com tanta coisa
         // pequena lado a lado, então o tamanho das outras miniaturas
@@ -2611,7 +2599,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Texto'),
         _textComposer(),
         // Os controles de estilo só fazem sentido com um texto selecionado —
         // eles mexem naquele texto, não em todos.
