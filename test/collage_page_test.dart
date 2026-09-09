@@ -246,6 +246,72 @@ void main() {
     expect(thumbSize.height, lessThanOrEqualTo(36));
   });
 
+  testWidgets('alça do item selecionado continua funcionando mesmo coberta por '
+      'outro sticker por cima', (tester) async {
+    // Reproduz o bug relatado: dois stickers na mesma posição (o padrão
+    // de todo sticker novo), o de cima (zIndex maior) tapando o canto do
+    // selecionado, que está por baixo — antes disso bloqueava a alça,
+    // porque ela morava dentro da pilha por zIndex.
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Stickers'),
+      200,
+      scrollable: page,
+    );
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    // Sticker A: primeiro da pasta "Reações".
+    await tester.tap(find.byType(SvgPicture).first);
+    await tester.pumpAndSettle();
+
+    // Sticker B: o segundo — nasce na mesma posição de A (0.5, 0.5) e
+    // fica selecionado, por cima (zIndex maior).
+    await tester.tap(find.byType(SvgPicture).at(1));
+    await tester.pumpAndSettle();
+
+    // Manda B para trás: ele continua selecionado, mas agora A (que não
+    // se move) fica por cima, cobrindo o canto de B por completo.
+    await tester.scrollUntilVisible(
+      find.byTooltip('Trás'),
+      -200,
+      scrollable: page,
+    );
+    await tester.tap(find.byTooltip('Trás'));
+    await tester.pumpAndSettle();
+
+    Widget selectedOverlay() => tester
+        .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
+        .firstWhere((w) => w.selected);
+
+    final before = selectedOverlay() as CollageOverlayView;
+    expect(before.scale, 1.0);
+    expect(before.rotation, 0.0);
+
+    final resizeHandle = find.byIcon(Icons.open_in_full_rounded);
+    expect(resizeHandle, findsOneWidget);
+    await tester.dragFrom(tester.getCenter(resizeHandle), const Offset(40, 40));
+    await tester.pumpAndSettle();
+
+    final afterResize = selectedOverlay() as CollageOverlayView;
+    expect(afterResize.scale, greaterThan(before.scale));
+
+    final rotateHandle = find.byIcon(Icons.rotate_right_rounded);
+    expect(rotateHandle, findsOneWidget);
+    await tester.dragFrom(tester.getCenter(rotateHandle), const Offset(0, 40));
+    await tester.pumpAndSettle();
+
+    final afterRotate = selectedOverlay() as CollageOverlayView;
+    expect(afterRotate.rotation, greaterThan(0));
+  });
+
   testWidgets('opções de fundo não quebram linha dentro do próprio botão', (
     tester,
   ) async {

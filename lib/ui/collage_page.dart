@@ -36,6 +36,43 @@ import 'widgets/export_progress_dialog.dart';
 import 'widgets/folder_tab.dart';
 import 'widgets/target_sub_panel.dart';
 
+/// Geometria do sticker/texto selecionado, na medida necessária para
+/// posicionar as alças de redimensionar/girar por fora dele (ver
+/// `_CollagePageState._selectedHandlesLayer`) — junto de como escrever a
+/// transformação de volta no item certo, já que sticker e texto usam
+/// `copyWith`/`replacingSticker`/`replacingText` diferentes.
+class _SelectedOverlayGeometry {
+  const _SelectedOverlayGeometry({
+    required this.centerX,
+    required this.centerY,
+    required this.scale,
+    required this.rotation,
+    required this.minScale,
+    required this.maxScale,
+    required this.naturalSize,
+    required this.apply,
+  });
+
+  final double centerX;
+  final double centerY;
+  final double scale;
+  final double rotation;
+  final double minScale;
+  final double maxScale;
+
+  /// Tamanho do conteúdo em escala 1 — o efetivo na tela é
+  /// `naturalSize * scale`.
+  final Size naturalSize;
+
+  final void Function(
+    double centerX,
+    double centerY,
+    double scale,
+    double rotation,
+  )
+  apply;
+}
+
 /// Abas fixas no rodapé da tela de montagem — cada uma abre um painel com o
 /// conteúdo daquela seção logo acima da barra de abas, substituindo a antiga
 /// lista rolável de cards expansíveis.
@@ -800,6 +837,10 @@ class _CollagePageState extends State<CollagePage> {
                 ),
               ),
               ..._overlayWidgets(size),
+              // Sempre depois (por cima) das sobreposições, sem ligar para
+              // o zIndex de quem está selecionado — ver o porquê no doc de
+              // `CollageOverlayView`.
+              ..._selectedHandlesWidgets(size),
             ],
           );
         },
@@ -940,6 +981,259 @@ class _CollagePageState extends State<CollagePage> {
       cornerRatio: item.backgroundCornerRatio,
       padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
       child: text,
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Alças de redimensionar/girar do item selecionado — numa camada própria,
+  // sempre por cima de tudo na pilha principal (ver o porquê no doc de
+  // `CollageOverlayView`), calculadas analiticamente em vez de medidas em
+  // tempo de execução.
+  // ---------------------------------------------------------------------
+
+  /// Tamanho natural (escala 1) do conteúdo de um sticker — mesmo `refSize`
+  /// quadrado que [_stickerArt] usa.
+  Size _stickerNaturalSize(CollageSticker sticker, Size canvasSize) {
+    final refSize = canvasSize.shortestSide * CollageSticker.referenceSizeRatio;
+    return Size(refSize, refSize);
+  }
+
+  /// Tamanho natural (escala 1) do conteúdo de um texto — a mesma medida que
+  /// [_textArt] produz: o texto em si, mais o respiro da caixa de fundo
+  /// quando ela existe. Precisa de um `TextPainter` porque não é um valor
+  /// fixo — depende da string, da fonte e do tamanho escolhidos.
+  ///
+  /// Só mede uma linha (sem `maxWidth`), como o próprio [Text] faz dentro do
+  /// `Stack` sem restrição de largura; um texto tão longo que chegasse a
+  /// quebrar linha na prévia divergiria daqui — caso raro, não tratado.
+  Size _textNaturalSize(CollageTextItem item, Size canvasSize) {
+    final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: item.text,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontFamily: item.fontFamily,
+          fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
+        ),
+      ),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final size = Size(painter.width, painter.height);
+    painter.dispose();
+    if (item.backgroundColor == null) return size;
+    final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
+    return Size(size.width + padH * 2, size.height + padV * 2);
+  }
+
+  /// Geometria + como aplicar a transformação de volta, para o sticker ou
+  /// texto selecionado agora — `null` fora das abas "Stickers"/"Texto" ou
+  /// sem nada selecionado (mesma regra de [_activeSelectionId]).
+  _SelectedOverlayGeometry? _selectedOverlayGeometry(Size canvasSize) {
+    final id = _activeSelectionId;
+    if (id == null) return null;
+
+    final sticker = _findSticker(id);
+    if (sticker != null) {
+      return _SelectedOverlayGeometry(
+        centerX: sticker.centerX,
+        centerY: sticker.centerY,
+        scale: sticker.scale,
+        rotation: sticker.rotation,
+        minScale: CollageSticker.minScale,
+        maxScale: CollageSticker.maxScale,
+        naturalSize: _stickerNaturalSize(sticker, canvasSize),
+        apply: (cx, cy, s, r) => _update(
+          _settings.replacingSticker(
+            id,
+            sticker.copyWith(centerX: cx, centerY: cy, scale: s, rotation: r),
+          ),
+          pushUndo: false,
+        ),
+      );
+    }
+
+    final text = _findText(id);
+    if (text != null) {
+      return _SelectedOverlayGeometry(
+        centerX: text.centerX,
+        centerY: text.centerY,
+        scale: text.scale,
+        rotation: text.rotation,
+        minScale: CollageTextItem.minScale,
+        maxScale: CollageTextItem.maxScale,
+        naturalSize: _textNaturalSize(text, canvasSize),
+        apply: (cx, cy, s, r) => _update(
+          _settings.replacingText(
+            id,
+            text.copyWith(centerX: cx, centerY: cy, scale: s, rotation: r),
+          ),
+          pushUndo: false,
+        ),
+      );
+    }
+    return null;
+  }
+
+  bool _resizeHandleCheckpointPushed = false;
+  bool _rotateHandleCheckpointPushed = false;
+
+  /// Posição (em pixels locais do canvas) que a camada acumula a partir de
+  /// [event.delta] durante um arrasto da alça de girar — não há RenderBox
+  /// para medir o dedo direto, então a posição vem de somar os deltas a
+  /// partir de onde a alça estava no toque inicial. Reiniciada em
+  /// [_onRotateHandlePointerDown].
+  Offset? _rotatePointerPos;
+  double? _lastRotateAngle;
+
+  /// Mesma conta de [CollageOverlayView] (removida de lá): desfaz a rotação
+  /// atual do vetor de arrasto e soma as duas componentes locais — arrastar
+  /// para longe do centro (direita/baixo, sem girar) cresce; para perto,
+  /// encolhe — como fração de [canvasSize].shortestSide.
+  void _onResizeHandlePointerMove(
+    PointerMoveEvent event,
+    _SelectedOverlayGeometry geometry,
+    Size canvasSize,
+  ) {
+    final reference = canvasSize.shortestSide;
+    if (reference <= 0) return;
+    final cosA = math.cos(geometry.rotation);
+    final sinA = math.sin(geometry.rotation);
+    final local = Offset(
+      event.delta.dx * cosA + event.delta.dy * sinA,
+      -event.delta.dx * sinA + event.delta.dy * cosA,
+    );
+    final scaleDelta = (local.dx + local.dy) / reference;
+    if (scaleDelta == 0) return;
+    final newScale = (geometry.scale + geometry.scale * scaleDelta).clamp(
+      geometry.minScale,
+      geometry.maxScale,
+    );
+    if (newScale == geometry.scale) return;
+    if (!_resizeHandleCheckpointPushed) {
+      _resizeHandleCheckpointPushed = true;
+      _pushUndoCheckpoint();
+    }
+    geometry.apply(
+      geometry.centerX,
+      geometry.centerY,
+      newScale,
+      geometry.rotation,
+    );
+  }
+
+  void _onRotateHandlePointerDown(Offset handleCenter) {
+    _rotateHandleCheckpointPushed = false;
+    _rotatePointerPos = handleCenter;
+    _lastRotateAngle = null;
+  }
+
+  void _onRotateHandlePointerMove(
+    PointerMoveEvent event,
+    _SelectedOverlayGeometry geometry,
+    Offset center,
+  ) {
+    final pos = (_rotatePointerPos ?? center) + event.delta;
+    _rotatePointerPos = pos;
+    final vector = pos - center;
+    if (vector.distance < 1) return;
+    final angle = math.atan2(vector.dy, vector.dx);
+    final last = _lastRotateAngle;
+    _lastRotateAngle = angle;
+    if (last == null) return;
+    var delta = angle - last;
+    // Normaliza a virada de -pi/pi, senão passar por trás do overlay daria
+    // um giro de volta inteira num quadro só.
+    while (delta > math.pi) {
+      delta -= 2 * math.pi;
+    }
+    while (delta < -math.pi) {
+      delta += 2 * math.pi;
+    }
+    if (delta == 0) return;
+    if (!_rotateHandleCheckpointPushed) {
+      _rotateHandleCheckpointPushed = true;
+      _pushUndoCheckpoint();
+    }
+    geometry.apply(
+      geometry.centerX,
+      geometry.centerY,
+      geometry.scale,
+      geometry.rotation + delta,
+    );
+  }
+
+  /// As duas alças do item selecionado, sempre por cima de tudo — ver o doc
+  /// de `CollageOverlayView` para o porquê de não morarem mais dentro dele.
+  List<Widget> _selectedHandlesWidgets(Size canvasSize) {
+    final geometry = _selectedOverlayGeometry(canvasSize);
+    if (geometry == null) return const [];
+
+    final center = Offset(
+      geometry.centerX * canvasSize.width,
+      geometry.centerY * canvasSize.height,
+    );
+    final halfW = geometry.naturalSize.width * geometry.scale / 2;
+    final halfH = geometry.naturalSize.height * geometry.scale / 2;
+    final cosR = math.cos(geometry.rotation);
+    final sinR = math.sin(geometry.rotation);
+    Offset rotate(Offset local) => Offset(
+      local.dx * cosR - local.dy * sinR,
+      local.dx * sinR + local.dy * cosR,
+    );
+
+    final resizeCenter = center + rotate(Offset(halfW, halfH));
+    final rotateCenter = center + rotate(Offset(halfW, -halfH));
+
+    return [
+      _handleCircle(
+        center: resizeCenter,
+        icon: Icons.open_in_full_rounded,
+        onPointerDown: (_) => _resizeHandleCheckpointPushed = false,
+        onPointerMove: (event) =>
+            _onResizeHandlePointerMove(event, geometry, canvasSize),
+      ),
+      _handleCircle(
+        center: rotateCenter,
+        icon: Icons.rotate_right_rounded,
+        onPointerDown: (_) => _onRotateHandlePointerDown(rotateCenter),
+        onPointerMove: (event) =>
+            _onRotateHandlePointerMove(event, geometry, center),
+      ),
+    ];
+  }
+
+  Widget _handleCircle({
+    required Offset center,
+    required IconData icon,
+    required void Function(PointerDownEvent) onPointerDown,
+    required void Function(PointerMoveEvent) onPointerMove,
+  }) {
+    final theme = Theme.of(context);
+    const diameter = 24.0;
+    return Positioned(
+      left: center.dx - diameter / 2,
+      top: center.dy - diameter / 2,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: onPointerDown,
+        onPointerMove: onPointerMove,
+        child: Container(
+          width: diameter,
+          height: diameter,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary,
+            shape: BoxShape.circle,
+            border: Border.all(color: theme.colorScheme.surface, width: 2),
+          ),
+          child: Icon(
+            icon,
+            size: icon == Icons.rotate_right_rounded ? 14 : 12,
+            color: theme.colorScheme.onPrimary,
+          ),
+        ),
+      ),
     );
   }
 
