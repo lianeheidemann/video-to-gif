@@ -78,6 +78,56 @@ class ColorAdjustButton extends StatelessWidget {
   }
 }
 
+/// Botão de zerar todos os ajustes de uma vez, no fim da fileira de
+/// ícones — depois das opções, e não acima delas como antes. Mesma forma de
+/// [ColorAdjustButton] (círculo + rótulo embaixo), só com o ícone de
+/// "redefinir" em vez de um ajuste, para entrar na fileira sem destoar.
+class _ResetAllButton extends StatelessWidget {
+  const _ResetAllButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: 76,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 6),
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.refresh_rounded,
+                size: 22,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Redefinir',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Fileira de ajustes + régua de intensidade: o conteúdo de "Ajustar cor",
 /// sem saber sobre o que ele age. A tela passa como ler e como gravar cada
 /// valor, então o mesmo painel serve para uma foto da montagem, para todas
@@ -138,21 +188,10 @@ class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.title != null || widget.hasAdjustments)
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.title ?? '',
-                  style: theme.textTheme.titleMedium,
-                ),
-              ),
-              if (widget.hasAdjustments)
-                TextButton(
-                  onPressed: widget.onReset,
-                  child: const Text('Redefinir'),
-                ),
-            ],
+        if (widget.title != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(widget.title!, style: theme.textTheme.titleMedium),
           ),
         SizedBox(
           height: 84,
@@ -187,6 +226,10 @@ class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
                     );
                   },
                 ),
+              // Depois das opções, não acima delas — mesmo lugar em botão
+              // que "Zerar margens" ocupa na aba "Margem". Só aparece
+              // havendo algo para zerar.
+              if (widget.hasAdjustments) _ResetAllButton(onTap: widget.onReset),
             ],
           ),
         ),
