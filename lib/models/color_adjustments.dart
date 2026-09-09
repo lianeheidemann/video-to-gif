@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show ColorFilter;
 
 /// Os oito ajustes de cor do app num objeto só, para as três telas
@@ -53,6 +54,45 @@ class ColorAdjustments {
     hue: hue,
     temperature: temperature,
   );
+
+  /// A parte dos ajustes que trata os três canais igual: `saída = ganho *
+  /// entrada + deslocamento`, com a entrada e o deslocamento na escala
+  /// 0–255. São exposição, realces, sombras, brilho e contraste, compostos
+  /// na mesma ordem de [buildAdjustmentColorFilter].
+  ///
+  /// Existe para o FFmpeg poder reproduzir o mesmo resultado da prévia: o
+  /// filtro `eq` dele é exatamente um ganho com deslocamento, e sair da
+  /// mesma conta das matrizes é o que impede a exportação de divergir do que
+  /// a tela mostrou.
+  (double gain, double shift) get toneTransfer {
+    var gain = 1.0;
+    var shift = 0.0;
+    void compose(double g, double s) {
+      gain = g * gain;
+      shift = g * shift + s;
+    }
+
+    compose(math.pow(2, exposure.clamp(-1.0, 1.0)).toDouble(), 0);
+    final h = highlights.clamp(-1.0, 1.0);
+    compose(1 + h * 0.5, -h * 0.5 * 96);
+    final sh = shadows.clamp(-1.0, 1.0);
+    compose(1 - sh * 0.35, sh * 0.35 * 190);
+    compose(1, brightness.clamp(-1.0, 1.0) * 100);
+    final c = (contrast + 1).clamp(0.0, 2.0);
+    compose(c, 127.5 * (1 - c));
+    return (gain, shift);
+  }
+
+  /// A parte que mistura canais — saturação, matiz e temperatura — como uma
+  /// matriz 4x5 (as três não têm deslocamento, então a 5ª coluna é zero).
+  /// É o que o `colorchannelmixer` do FFmpeg sabe aplicar.
+  List<double> get channelMixMatrix {
+    var m = _identity4x5();
+    m = _multiply4x5(_saturationMatrix(saturation), m);
+    m = _multiply4x5(_hueMatrix(hue), m);
+    m = _multiply4x5(_temperatureMatrix(temperature), m);
+    return m;
+  }
 
   ColorAdjustments copyWith({
     double? brightness,

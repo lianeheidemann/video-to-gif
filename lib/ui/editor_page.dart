@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:video_player/video_player.dart';
 
+import '../models/collage_color_adjustment.dart';
+import '../models/color_adjustments.dart';
 import '../models/conversion_settings.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
@@ -15,6 +17,7 @@ import '../services/ffmpeg_service.dart';
 import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
 import 'converting_page.dart';
+import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/crop_overlay.dart';
 import 'widgets/cropped_view.dart';
@@ -266,6 +269,13 @@ class _EditorPageState extends State<EditorPage> {
         EditorSection.fromLabeled(_webpQualitySection(), label: 'Qualidade')
       else
         EditorSection.fromLabeled(_colorSection(), label: 'Cores'),
+      EditorSection(
+        icon: Icons.tune_rounded,
+        title: 'Ajustar cor',
+        label: 'Cor',
+        value: _settings.adjustments.hasAdjustments ? 'Ajustada' : 'Original',
+        builder: (_) => _colorAdjustSection(),
+      ),
       EditorSection.fromLabeled(_frameStyleSection(), label: 'Moldura'),
       EditorSection.fromLabeled(_imageFrameSection(), label: 'Imagem'),
       EditorSection(
@@ -765,6 +775,31 @@ class _EditorPageState extends State<EditorPage> {
   /// Seção "Fundo transparente": vale para as duas famílias de moldura.
   /// Fica sempre visível para o estado do GIF não depender de qual caixa
   /// está aberta.
+  /// Ajuste de cor do vídeo: mesmo painel das outras duas telas, gravando em
+  /// [ConversionSettings.adjustments]. Vale só para o conteúdo — a moldura e
+  /// o fundo entram depois na cadeia de filtros e não passam pelo ajuste.
+  Widget _colorAdjustSection() {
+    final adjustments = _settings.adjustments;
+    return ColorAdjustPanel(
+      hasAdjustments: adjustments.hasAdjustments,
+      valueOf: (adjustment) => adjustment.valueIn(adjustments),
+      onChangeStart: _pushUndoCheckpoint,
+      onChanged: (adjustment, value) => _update(
+        _settings.copyWith(
+          adjustments: adjustment.applyIn(adjustments, value),
+        ),
+        pushUndo: false,
+      ),
+      onReset: () {
+        _pushUndoCheckpoint();
+        _update(
+          _settings.copyWith(adjustments: ColorAdjustments.neutral),
+          pushUndo: false,
+        );
+      },
+    );
+  }
+
   Widget _backgroundSection() {
     final frame = _settings.frame;
     return Padding(
@@ -1644,11 +1679,19 @@ class _EditorPageState extends State<EditorPage> {
       return _preview();
     }
 
+    final adjustments = _settings.adjustments;
+    Widget video = VideoPlayer(player);
+    if (adjustments.hasAdjustments) {
+      // O mesmo filtro que o FFmpeg reproduz na exportação (ver
+      // `FfmpegService.colorAdjustFilters`), para a prévia mostrar o
+      // resultado antes de converter.
+      video = ColorFiltered(colorFilter: adjustments.filter, child: video);
+    }
     final content = CroppedView(
       sourceWidth: _video.width,
       sourceHeight: _video.height,
       crop: _settings.crop,
-      child: VideoPlayer(player),
+      child: video,
     );
 
     return Container(
