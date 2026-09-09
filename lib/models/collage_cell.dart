@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'collage_background.dart';
 import 'color_adjustments.dart';
+import 'default_colors.dart';
 import 'crop_rect.dart';
 
 // As matrizes de ajuste de cor moram em color_adjustments.dart (as três
@@ -61,7 +62,7 @@ class CollageCellSettings {
     this.background = const CollageBackground(),
     this.cornerRatio = 0.0,
     this.borderThicknessAtReference = 0.0,
-    this.borderColor = const Color(0xFFFFFFFF),
+    this.borderColor = defaultFrameColor,
     this.brightness = 0.0,
     this.exposure = 0.0,
     this.contrast = 0.0,

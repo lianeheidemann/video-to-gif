@@ -1,6 +1,7 @@
 import 'dart:ui' show Color;
 
 import 'color_adjustments.dart';
+import 'default_colors.dart';
 import 'image_frame.dart';
 
 /// Estilo de moldura desenhado ao redor do GIF. Cada estilo é só um atalho
@@ -92,12 +93,12 @@ ContentFitMode resolveContentFit(
 class FrameSettings {
   const FrameSettings({
     this.style = FrameStyle.none,
-    this.color = const Color(0xFFC9A8FF),
+    this.color = defaultFrameColor,
     this.thicknessAtReference = 0,
     this.cornerRatio = 0,
     this.contentFit = ContentFitMode.auto,
     this.transparentBackground = true,
-    this.backgroundColor = const Color(0xFF000000),
+    this.backgroundColor = defaultBackgroundColor,
     this.imageFrame,
     this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
     this.contentZoom = defaultContentZoom,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:video_to_gif/models/default_colors.dart';
 import 'package:video_to_gif/models/conversion_settings.dart';
 import 'package:video_to_gif/models/frame_settings.dart';
 import 'package:video_to_gif/models/video_info.dart';
@@ -59,7 +60,7 @@ void main() {
   test('o fundo transparente vem ligado por padrão', () {
     const frame = FrameSettings();
     expect(frame.transparentBackground, isTrue);
-    expect(frame.backgroundColor, Colors.black);
+    expect(frame.backgroundColor, defaultBackgroundColor);
   });
 
   testWidgets('cor do fundo aparece somente com transparência desligada', (

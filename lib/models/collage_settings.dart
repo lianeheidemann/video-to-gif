@@ -5,6 +5,7 @@ import 'collage_cell.dart';
 import 'collage_layout.dart';
 import 'collage_sticker.dart';
 import 'collage_text.dart';
+import 'default_colors.dart';
 import 'photo_info.dart';
 
 /// Todas as configurações de uma montagem: como as fotos estão organizadas
@@ -19,7 +20,7 @@ class CollageSettings {
     this.aspectRatio = 1.0,
     this.cornerRatio = 0.0,
     this.borderThicknessAtReference = 0.0,
-    this.borderColor = const Color(0xFFFFFFFF),
+    this.borderColor = defaultFrameColor,
     this.background = const CollageBackground(),
     this.stickers = const [],
     this.texts = const [],

@@ -1,5 +1,7 @@
 import 'dart:ui' show Color;
 
+import 'default_colors.dart';
+
 /// Como o espaço fora/entre as células da montagem é preenchido.
 enum CollageBackgroundMode { transparent, color, image }
 
@@ -9,7 +11,7 @@ enum CollageBackgroundMode { transparent, color, image }
 class CollageBackground {
   const CollageBackground({
     this.mode = CollageBackgroundMode.transparent,
-    this.color = const Color(0xFFFFFFFF),
+    this.color = defaultBackgroundColor,
     this.imagePath,
   });
 
