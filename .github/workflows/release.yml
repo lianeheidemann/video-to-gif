@@ -147,6 +147,12 @@ jobs:
           name: Video to GIF ${{ steps.versao.outputs.nome }}
           files: entrega/*
           fail_on_unmatched_files: true
+          # Sem isto a action só marca o "Latest" quando ela CRIA a linha do
+          # release. Reaproveitando uma tag que já existe, ela troca os APKs e
+          # o texto mas deixa o selo onde estava — foi assim que a barra
+          # lateral do repositório ficou presa numa versão antiga enquanto os
+          # runs saíam verdes.
+          make_latest: true
           body: |
             ## Novidades
 
