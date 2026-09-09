@@ -5,12 +5,8 @@ import 'package:video_to_gif/models/collage_layout.dart';
 /// [margin] vira as duas margens (externa/entre fotos) com o mesmo valor —
 /// o comportamento equivalente ao antigo `marginRatio` único, para os testes
 /// que não se importam com a diferença entre as duas.
-List<Rect> _rectsFor(CollageLayout layout, Size size, double margin) =>
-    layout.cellRectsFor(
-      size,
-      outerMarginRatio: margin,
-      innerMarginRatio: margin,
-    );
+List<Rect> _rectsFor(CollageLayout layout, Size size, double margin) => layout
+    .cellRectsFor(size, outerMarginRatio: margin, innerMarginRatio: margin);
 
 void main() {
   test('linha de 3 fotos gera 3 células da mesma largura', () {
@@ -66,29 +62,26 @@ void main() {
     }
   });
 
-  test(
-    'margem externa e entre fotos são independentes uma da outra',
-    () {
-      final layout = CollageLayout.row(2);
-      // Só margem externa: nada entre as duas células.
-      final onlyOuter = layout.cellRectsFor(
-        const Size(300, 100),
-        outerMarginRatio: 0.1,
-        innerMarginRatio: 0,
-      );
-      expect(onlyOuter[0].left, closeTo(10, 0.001));
-      expect(onlyOuter[1].right, closeTo(290, 0.001));
-      expect(onlyOuter[0].right, closeTo(onlyOuter[1].left, 0.001));
+  test('margem externa e entre fotos são independentes uma da outra', () {
+    final layout = CollageLayout.row(2);
+    // Só margem externa: nada entre as duas células.
+    final onlyOuter = layout.cellRectsFor(
+      const Size(300, 100),
+      outerMarginRatio: 0.1,
+      innerMarginRatio: 0,
+    );
+    expect(onlyOuter[0].left, closeTo(10, 0.001));
+    expect(onlyOuter[1].right, closeTo(290, 0.001));
+    expect(onlyOuter[0].right, closeTo(onlyOuter[1].left, 0.001));
 
-      // Só margem entre fotos: as células encostam nas bordas da montagem.
-      final onlyInner = layout.cellRectsFor(
-        const Size(300, 100),
-        outerMarginRatio: 0,
-        innerMarginRatio: 0.1,
-      );
-      expect(onlyInner[0].left, closeTo(0, 0.001));
-      expect(onlyInner[1].right, closeTo(300, 0.001));
-      expect(onlyInner[1].left, greaterThan(onlyInner[0].right));
-    },
-  );
+    // Só margem entre fotos: as células encostam nas bordas da montagem.
+    final onlyInner = layout.cellRectsFor(
+      const Size(300, 100),
+      outerMarginRatio: 0,
+      innerMarginRatio: 0.1,
+    );
+    expect(onlyInner[0].left, closeTo(0, 0.001));
+    expect(onlyInner[1].right, closeTo(300, 0.001));
+    expect(onlyInner[1].left, greaterThan(onlyInner[0].right));
+  });
 }

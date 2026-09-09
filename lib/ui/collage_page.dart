@@ -2353,9 +2353,7 @@ class _CollagePageState extends State<CollagePage> {
                                   Scrollable.ensureVisible(
                                     itemContext,
                                     alignment: 0.5,
-                                    duration: const Duration(
-                                      milliseconds: 200,
-                                    ),
+                                    duration: const Duration(milliseconds: 200),
                                     curve: Curves.easeOut,
                                   );
                                 }

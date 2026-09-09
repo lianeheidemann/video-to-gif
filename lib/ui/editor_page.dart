@@ -1240,10 +1240,8 @@ class _EditorPageState extends State<EditorPage> {
   void _pickFrameColor() => _pickColor(
     title: 'Cor da moldura',
     selectedColor: _settings.frame.color,
-    onSelected: (color) => _updateFrame(
-      _settings.frame.copyWith(color: color),
-      pushUndo: false,
-    ),
+    onSelected: (color) =>
+        _updateFrame(_settings.frame.copyWith(color: color), pushUndo: false),
   );
 
   void _pickBackgroundColor() => _pickColor(
