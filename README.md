@@ -27,8 +27,8 @@ the same frame library and the same on-device export pipeline:
 | Tool | What it does |
 |---|---|
 | **Video to GIF/WebP** | Converts MP4, MOV, AVI, MKV, WebM and 3GP to **GIF or animated WebP** — trim, crop, speed, resolution, frame rate, colors and a decorative frame. For GIF it also **estimates the final file size before converting**. |
-| **Frame on a photo** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes and a transparent or colored background. |
-| **Photo collage** | Assembles several photos into one composition — layouts, margins, per-photo borders and backgrounds, stickers, text, crop and color adjustment. If any photo is an animated GIF/WebP, the whole collage can be exported **animated**. |
+| **Frame on a photo** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes, color adjustment and a transparent or colored background. |
+| **Photo collage** | Assembles several photos into one composition — layouts, margins, per-photo borders and backgrounds, stickers (in folders you create), text with imported fonts, crop and color adjustment. If any photo is an animated GIF/WebP, the whole collage can be exported **animated**. |
 
 <img src="assets/image/interface-4.png"/>
 
@@ -101,6 +101,13 @@ opens its own panel over the preview, small **save / share / convert** icons
 in the top-right corner, and **undo / redo**. Continuous controls (sliders,
 drags) collapse into a single undo step instead of thirty.
 
+All three also share the same **color adjustment** panel — eight controls as
+circular buttons over an intensity ruler: brightness, exposure, contrast,
+highlights, shadows, saturation, hue and temperature. One color matrix drives
+the live preview everywhere; on the video editor the export reproduces that
+same matrix through FFmpeg (`eq` for the tone part, `colorchannelmixer` for
+the channel-mixing part), so what you see is what gets encoded.
+
 ### Video → GIF / WebP
 
 - **Video preview** with play/pause and a timeline marking the selected
@@ -120,6 +127,8 @@ drags) collapse into a single undo step instead of thirty.
   (50–95)
 - **Color quality** (GIF) — palette of 64, 128 or 256 colors, five
   dithering levels and three palette strategies
+- **Color adjustment** — the shared eight-control panel, applied to the
+  video content only (never to the frame or the background)
 - **Looping** — infinite loop or play once
 - **Size** — the estimate, the confidence range and the destination traffic
   light live in their own tab, next to the "Measure" button
@@ -139,6 +148,9 @@ drags) collapse into a single undo step instead of thirty.
   with an automatically-detected transparent window
 - **Content fit** — auto, fill, fit, or expand with zoom, for when the
   content doesn't match the frame's aspect ratio
+- **Color adjustment** (single photo) — the shared eight-control panel,
+  applied to the photo only: the frame artwork, its color and the background
+  stay untouched
 - **Background** — transparent (real alpha on WebP and PNG, a single
   reserved color on GIF) or a solid color
 
@@ -146,8 +158,11 @@ drags) collapse into a single undo step instead of thirty.
 
 - **Layouts** — row, column, 2x2, 2x3, 3x3 or a free grid where you pick the
   number of rows and columns
-- **Aspect ratio and margin** of the composition, with the margin applied
-  both between the cells and around the outside
+- **Aspect ratio** — ready ratios plus an `x:y` chip that reveals width and
+  height fields for a custom one
+- **Margin** — outer, between photos, and an "all" row that moves both at
+  once; the three sit one under the other with their own sliders and a
+  single button that zeroes everything
 - **Border** — thickness proportional to the cell (so it looks the same at
   any export resolution), color and corner rounding, set for the whole
   montage or per photo
@@ -159,20 +174,34 @@ drags) collapse into a single undo step instead of thirty.
 - **Crop** — free by default, with ready ratios (1:1, 4:5, 5:4, 3:4, 4:3,
   9:16, 16:9, the cell's own) and a custom one you type in. An approved crop
   comes back fitted and upright inside its cell, never stretched
-- **Color adjustment** — eight controls as circular buttons with an
-  intensity ruler underneath: brightness, exposure, contrast, highlights,
-  shadows, saturation, hue and temperature. The same color matrix drives the
-  live preview and the export
+- **Color adjustment** — the shared eight-control panel, either from the
+  cell's `⋯` menu for a single photo or from its own tab, which adjusts
+  **every photo at once**. Either way it touches the photos only: background,
+  borders, stickers and text stay as they are
 - **Double tap** on a photo centers it upright inside the cell; a second tap
   expands it to fill the cell, still upright
-- **Stickers** — bundled SVGs or your own imported SVG/image, dragged,
-  scaled and rotated freely, with their own stacking order
-- **Text** — color, size, one of the bundled fonts, and an optional
-  background box with its own color and corner rounding
+- **Stickers** — bundled SVGs or your own imported SVG/image, organized in
+  folders: three bundled themes, "Imported", and folders you create yourself
+  (long-press to rename or delete; deleting a folder returns its stickers to
+  "Imported"). Dragged, scaled and rotated freely, with their own stacking
+  order
+- **Text** — written straight in the panel (no dialog), with color, an
+  optional background box, one of the bundled fonts or **a .ttf/.otf you
+  import yourself**
+- **Rotate handle** on the selected sticker or text — pinch-to-rotate needs
+  both fingers inside the box, which almost never happens on a wide, short
+  text box
+- **Selection follows the tab** — the frame, the handles and the action bar
+  only show while the tab that owns the item ("Stickers"/"Text") is open
 - **Animated export** — when any photo in the montage is an animated
   GIF/WebP, saving and sharing offer **PNG, GIF or WebP**, plus a choice of
   matching the **longest** or the **shortest** animation. Photos that finish
-  early hold their last frame instead of disappearing
+  early hold their last frame instead of disappearing. The animated export
+  shows a **progress dialog with cancel**, covering both phases (drawing the
+  frames and encoding them)
+- **Export resolution follows the layout** — the width is derived from how
+  much of the montage each cell occupies, so a photo in a quarter-width cell
+  keeps its own resolution instead of being shrunk to fit the largest photo
 
 ## How to run it
 
