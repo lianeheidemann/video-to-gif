@@ -311,6 +311,15 @@ class _CollagePageState extends State<CollagePage> {
     widget.photos,
   );
 
+  /// Valor próprio da linha "Tudo" da aba "Margem" — só muda quando ELA é
+  /// arrastada (que também iguala `outerMarginRatio`/`innerMarginRatio` a
+  /// esse valor). Sem isto, "Tudo" mostrava a média das outras duas a cada
+  /// rebuild, então o próprio slider se movia sozinho ao arrastar "Externa"
+  /// ou "Entre fotos" — o oposto do que uma pessoa espera de um slider que
+  /// não tocou.
+  late double _marginAllValue =
+      (_settings.outerMarginRatio + _settings.innerMarginRatio) / 2;
+
   List<ImportedAsset> _importedStickers = [];
   List<ImportedAsset> _importedBackgrounds = [];
 
@@ -1535,16 +1544,20 @@ class _CollagePageState extends State<CollagePage> {
                   _marginRow(
                     icon: Icons.border_all_rounded,
                     label: 'Tudo',
-                    // "Tudo" não tem valor próprio: mostra a média das duas e,
-                    // ao arrastar, iguala as duas ao valor escolhido.
-                    value: (outer + inner) / 2,
-                    onChanged: (v) => _update(
-                      _settings.copyWith(
-                        outerMarginRatio: v,
-                        innerMarginRatio: v,
-                      ),
-                      pushUndo: false,
-                    ),
+                    // Valor próprio (ver [_marginAllValue]) — não recalcula
+                    // a média a cada rebuild, então arrastar "Externa"/
+                    // "Entre fotos" não move este slider.
+                    value: _marginAllValue,
+                    onChanged: (v) {
+                      _marginAllValue = v;
+                      _update(
+                        _settings.copyWith(
+                          outerMarginRatio: v,
+                          innerMarginRatio: v,
+                        ),
+                        pushUndo: false,
+                      );
+                    },
                   ),
                   _marginRow(
                     icon: Icons.border_outer_rounded,
@@ -1571,12 +1584,15 @@ class _CollagePageState extends State<CollagePage> {
               tooltip: 'Zerar margens',
               onPressed: outer == 0 && inner == 0
                   ? null
-                  : () => _update(
-                      _settings.copyWith(
-                        outerMarginRatio: 0,
-                        innerMarginRatio: 0,
-                      ),
-                    ),
+                  : () {
+                      _marginAllValue = 0;
+                      _update(
+                        _settings.copyWith(
+                          outerMarginRatio: 0,
+                          innerMarginRatio: 0,
+                        ),
+                      );
+                    },
               icon: const Icon(Icons.refresh_rounded),
             ),
           ],

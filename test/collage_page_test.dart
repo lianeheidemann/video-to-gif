@@ -603,12 +603,16 @@ void main() {
           tester.widget<Slider>(sliders.at(index)).value;
 
       final initialOuter = sliderValue(1);
+      final initialAll = sliderValue(0);
 
-      // Mexer na linha "Entre fotos" não move a externa.
+      // Mexer na linha "Entre fotos" não move a externa, nem "Tudo" — antes
+      // "Tudo" mostrava a média das outras duas a cada rebuild, então o
+      // próprio slider se movia sozinho sem ninguém tocar nele.
       await tester.drag(sliders.at(2), const Offset(120, 0));
       await tester.pumpAndSettle();
       expect(sliderValue(2), isNot(closeTo(initialOuter, 0.001)));
       expect(sliderValue(1), closeTo(initialOuter, 0.001));
+      expect(sliderValue(0), closeTo(initialAll, 0.001));
 
       // "Tudo" iguala as duas ao valor arrastado.
       await tester.drag(sliders.at(0), const Offset(60, 0));
