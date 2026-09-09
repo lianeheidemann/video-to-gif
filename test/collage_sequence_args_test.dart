@@ -35,6 +35,9 @@ void main() {
     expect(graph, contains('reserve_transparent=1'));
     expect(graph, contains('paletteuse'));
     expect(graph, contains('alpha_threshold=128'));
+    // Difusão de erro em vez do quadriculado do bayer — ver o comentário em
+    // collageSequenceArgs.
+    expect(graph, contains('dither=sierra2_4a'));
     expect(list, containsAllInOrder(['-gifflags', '-transdiff']));
     expect(list, containsAllInOrder(['-loop', '0']));
     expect(list, isNot(contains('libwebp')));
@@ -44,6 +47,7 @@ void main() {
     final list = args(webp: true);
     expect(list, containsAllInOrder(['-c:v', 'libwebp']));
     expect(list, containsAllInOrder(['-pix_fmt', 'yuva420p']));
+    expect(list, containsAllInOrder(['-quality', '92']));
     expect(list, containsAllInOrder(['-loop', '0']));
     expect(list.join(' '), isNot(contains('palettegen')));
     expect(list.join(' '), isNot(contains('paletteuse')));

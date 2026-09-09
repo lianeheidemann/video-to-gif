@@ -1277,10 +1277,13 @@ class FfmpegService {
         ...input,
         '-c:v',
         'libwebp',
+        // 92/6 no lugar de 85/4: a montagem costuma ter arte com linhas
+        // finas e texto, onde 85 deixava halo visível em volta das bordas.
+        // O nível de compressão mais alto custa tempo de CPU, não tamanho.
         '-quality',
-        '85',
+        '92',
         '-compression_level',
-        '4',
+        '6',
         '-pix_fmt',
         'yuva420p',
         '-loop',
@@ -1296,7 +1299,11 @@ class FfmpegService {
       '-filter_complex',
       '[0:v]split[pal_src][gif_src];'
           '[pal_src]palettegen=max_colors=$colors:reserve_transparent=1[pal];'
-          '[gif_src][pal]paletteuse=dither=bayer:bayer_scale=3:'
+          // sierra2_4a no lugar de bayer: o padrão quadriculado do bayer
+          // aparecia em áreas lisas (parede, pele) da montagem. A difusão de
+          // erro dá degradê mais limpo; em troca pode "fervilhar" um pouco
+          // entre quadros, o que quase não se nota numa montagem de fotos.
+          '[gif_src][pal]paletteuse=dither=sierra2_4a:'
           'alpha_threshold=128[out]',
       '-map',
       '[out]',

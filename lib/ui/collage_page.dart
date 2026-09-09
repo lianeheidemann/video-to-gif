@@ -2983,14 +2983,38 @@ class _CollagePageState extends State<CollagePage> {
   // Ações
   // ---------------------------------------------------------------------
 
+  /// Largura da exportação: grande o bastante para cada foto caber na sua
+  /// célula sem encolher.
+  ///
+  /// Antes valia o maior lado entre as fotos, o que ignorava o layout: numa
+  /// montagem com quatro fotos lado a lado, cada célula fica com ~1/4 da
+  /// largura, então exportar na largura de UMA foto reduzia todas a um
+  /// quarto do tamanho — era isso que saía visivelmente borrado. Agora a
+  /// conta é ao contrário: mede que fração da montagem cada célula ocupa e
+  /// pede a largura que devolve a resolução original de cada foto.
   int _exportWidth() {
-    var maxSide = 0;
-    for (final cell in _settings.cells) {
-      if (cell.photoWidth > maxSide) maxSide = cell.photoWidth;
-      if (cell.photoHeight > maxSide) maxSide = cell.photoHeight;
+    // A fração não depende do tamanho medido, então qualquer largura de
+    // referência serve para descobrir as proporções do layout.
+    const probe = 1000.0;
+    final probeSize = Size(probe, probe / _settings.aspectRatio);
+    final geometry = CollageGeometry.of(probeSize, _settings);
+    var needed = 480.0;
+    for (var i = 0; i < _settings.cells.length; i++) {
+      if (i >= geometry.cellRects.length) continue;
+      final cell = _settings.cells[i];
+      if (!cell.hasPhoto) continue;
+      final rect = geometry.cellRects[i];
+      if (rect.width > 0) {
+        needed = math.max(needed, cell.photoWidth * probe / rect.width);
+      }
+      if (rect.height > 0) {
+        // Pela altura: a montagem precisa de tantas alturas quanto a célula
+        // é menor que a foto, e a largura sai da proporção da montagem.
+        final byHeight = cell.photoHeight * probeSize.height / rect.height;
+        needed = math.max(needed, byHeight * _settings.aspectRatio);
+      }
     }
-    if (maxSide < 480) maxSide = 480;
-    return maxSide.clamp(480, 2200);
+    return needed.round().clamp(480, 2200);
   }
 
   Future<File> _writeTempFile(Uint8List bytes, String extension) async {
@@ -3177,7 +3201,11 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   /// Largura da exportação animada — o PNG usa [_exportWidth] inteiro.
-  int _animatedExportWidth() => math.min(_exportWidth(), 1080);
+  ///
+  /// O teto existe porque a animação paga o custo de desenhar e codificar
+  /// cada quadro; 1440 ainda cabe no celular e já é o bastante para quatro
+  /// fotos de 360px lado a lado saírem sem redução.
+  int _animatedExportWidth() => math.min(_exportWidth(), 1440);
 
   /// Tamanho final em pixels, do mesmo jeito que o compositor calcula: a
   /// altura sai da proporção da montagem.
