@@ -12,9 +12,9 @@ import 'package:video_to_gif/models/photo_info.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
 import 'package:video_to_gif/ui/widgets/collage_overlay_view.dart';
+import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
 import 'package:video_to_gif/ui/widgets/folder_tab.dart';
 import 'package:video_to_gif/ui/widgets/target_sub_panel.dart';
-import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
   final recorder = ui.PictureRecorder();
@@ -75,10 +75,9 @@ void main() {
       );
       await tester.tap(find.text('Texto'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Adicionar texto'));
-      await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'oi');
-      await tester.tap(find.text('OK'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Adicionar texto'));
       await tester.pumpAndSettle();
 
       // Com o texto recém-criado selecionado, a barra de ações da sobreposição
@@ -371,10 +370,9 @@ void main() {
     await tester.scrollUntilVisible(find.text('Texto'), 200, scrollable: page);
     await tester.tap(find.text('Texto'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Adicionar texto'));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'oi');
-    await tester.tap(find.text('OK'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Adicionar texto'));
     await tester.pumpAndSettle();
 
     // Com o texto recém-criado selecionado, o painel mostra os controles de
@@ -532,10 +530,9 @@ void main() {
       // Cria um texto pela aba "Texto" — ele já nasce selecionado.
       await tester.tap(find.text('Texto'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Adicionar texto'));
-      await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'oi');
-      await tester.tap(find.text('OK'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Adicionar texto'));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Duplicar'), findsOneWidget);
 
@@ -655,4 +652,41 @@ void main() {
       );
     },
   );
+\n
+  testWidgets('lápis edita o texto no próprio painel, sem abrir diálogo', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Texto'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'oi');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Adicionar texto'));
+    await tester.pumpAndSettle();
+    expect(find.text('oi'), findsOneWidget);
+
+    // O lápis traz a frase para o mesmo campo do painel — nenhuma janela
+    // nova aparece.
+    await tester.tap(find.byTooltip('Editar'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      'oi',
+    );
+
+    await tester.enterText(find.byType(TextField), 'tchau');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Salvar texto'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('tchau'), findsOneWidget);
+    expect(find.text('oi'), findsNothing);
+  });
 }

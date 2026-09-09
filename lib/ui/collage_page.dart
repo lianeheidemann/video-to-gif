@@ -157,6 +157,23 @@ class _CollagePageState extends State<CollagePage> {
   bool _saving = false;
   bool _sharing = false;
 
+  /// Campo de escrever texto que fica no próprio painel da aba "Texto" — o
+  /// mesmo campo cria uma caixa nova e edita a selecionada, sem abrir
+  /// diálogo nenhum.
+  final _textController = TextEditingController();
+  final _textFocus = FocusNode();
+
+  /// Id da caixa sendo editada pelo campo; `null` = o campo está criando uma
+  /// caixa nova.
+  String? _editingTextId;
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _textFocus.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -264,6 +281,13 @@ class _CollagePageState extends State<CollagePage> {
     if (id == null) return;
     if (_findSticker(id) == null && _findText(id) == null) {
       _selectedOverlayId = null;
+    }
+    // Desfazer/remover a caixa que estava sendo editada deixava o campo do
+    // painel apontando para algo que não existe mais.
+    final editingId = _editingTextId;
+    if (editingId != null && _findText(editingId) == null) {
+      _editingTextId = null;
+      _textController.clear();
     }
   }
 
@@ -1958,11 +1982,7 @@ class _CollagePageState extends State<CollagePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _panelHeader('Texto'),
-        OutlinedButton.icon(
-          onPressed: _addText,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Adicionar texto'),
-        ),
+        _textComposer(),
         // Os controles de estilo só fazem sentido com um texto selecionado —
         // eles mexem naquele texto, não em todos.
         if (selected != null) ...[
@@ -2067,26 +2087,127 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
-  Future<void> _addText() async {
-    final text = await _promptTextInput(initial: '');
-    if (text == null || text.trim().isEmpty) return;
-    final item = CollageTextItem(
-      id: 't_${DateTime.now().microsecondsSinceEpoch}',
-      text: text.trim(),
-      centerX: 0.5,
-      centerY: 0.5,
-      zIndex: _settings.nextZIndex,
+  /// Campo de escrever texto do painel: o botão da ponta cria a caixa (ou
+  /// confirma a edição, quando o lápis carregou uma aqui). Escrever direto no
+  /// painel evita a janela que existia só para digitar uma frase.
+  Widget _textComposer() {
+    final theme = Theme.of(context);
+    final editing = _editingTextId != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              editing ? 'Editar texto' : 'Novo texto',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const Spacer(),
+            if (editing)
+              TextButton(
+                onPressed: _cancelTextEdit,
+                child: const Text('Cancelar'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _textController,
+          builder: (context, value, _) {
+            final canSubmit = value.text.trim().isNotEmpty;
+            return TextField(
+              controller: _textController,
+              focusNode: _textFocus,
+              minLines: 1,
+              // Até 3 linhas, o mesmo que o diálogo antigo aceitava — com
+              // `TextInputType.multiline` o Enter quebra linha e quem
+              // confirma é o botão da ponta.
+              maxLines: 3,
+              keyboardType: TextInputType.multiline,
+              textCapitalization: TextCapitalization.sentences,
+              onSubmitted: (_) => _submitPanelText(),
+              decoration: InputDecoration(
+                hintText: 'Digite seu texto...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                contentPadding: const EdgeInsets.fromLTRB(18, 12, 4, 12),
+                suffixIcon: Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: IconButton(
+                    tooltip: editing ? 'Salvar texto' : 'Adicionar texto',
+                    onPressed: canSubmit ? _submitPanelText : null,
+                    icon: Icon(
+                      editing ? Icons.check_rounded : Icons.add_rounded,
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: canSubmit
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.surfaceContainerHighest,
+                      foregroundColor: canSubmit
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
-    _update(_settings.addingText(item));
-    setState(() => _selectedOverlayId = item.id);
   }
 
-  Future<void> _editSelectedText(String id) async {
+  /// Cria a caixa nova (ou salva a que o lápis trouxe para o campo). O foco
+  /// volta para o campo em vez de sair: dá para escrever várias caixas em
+  /// sequência sem reabrir o teclado a cada uma.
+  void _submitPanelText() {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    final editingId = _editingTextId;
+    if (editingId != null) {
+      final item = _findText(editingId);
+      if (item != null) {
+        _update(_settings.replacingText(editingId, item.copyWith(text: text)));
+      }
+      setState(() => _editingTextId = null);
+    } else {
+      final item = CollageTextItem(
+        id: 't_${DateTime.now().microsecondsSinceEpoch}',
+        text: text,
+        centerX: 0.5,
+        centerY: 0.5,
+        zIndex: _settings.nextZIndex,
+      );
+      _update(_settings.addingText(item));
+      setState(() => _selectedOverlayId = item.id);
+    }
+    _textController.clear();
+    _textFocus.requestFocus();
+  }
+
+  void _cancelTextEdit() {
+    setState(() => _editingTextId = null);
+    _textController.clear();
+  }
+
+  /// O lápis da barra de ações traz o texto da caixa selecionada para o campo
+  /// do painel — que já está na tela, já que a barra só aparece com a aba
+  /// "Texto" aberta.
+  void _editSelectedText(String id) {
     final item = _findText(id);
     if (item == null) return;
-    final text = await _promptTextInput(initial: item.text);
-    if (text == null || text.trim().isEmpty) return;
-    _update(_settings.replacingText(id, item.copyWith(text: text.trim())));
+    setState(() {
+      _editingTextId = id;
+      _textController.text = item.text;
+      _textController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: item.text.length,
+      );
+    });
+    _textFocus.requestFocus();
   }
 
   Future<String?> _promptTextInput({
