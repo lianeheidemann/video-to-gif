@@ -7,7 +7,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../models/collage_color_adjustment.dart';
 import '../models/color_adjustments.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';

@@ -11,7 +11,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/collage_background.dart';
 import '../models/collage_cell.dart';
-import '../models/collage_color_adjustment.dart';
 import '../models/collage_export.dart';
 import '../models/collage_layout.dart';
 import '../models/collage_settings.dart';
@@ -586,7 +585,7 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.margin => 'Margem',
     _CollageTab.border => 'Borda',
     _CollageTab.background => 'Fundo',
-    _CollageTab.color => 'Ajustar cor',
+    _CollageTab.color => 'Cor',
     _CollageTab.stickers => 'Stickers',
     _CollageTab.text => 'Texto',
   };

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+// ColorAdjustments vem reexportado por collage_cell.dart.
 import 'collage_cell.dart';
-import 'color_adjustments.dart';
 
 /// Os ajustes de cor oferecidos na folha "Ajustar cor" de uma foto da
 /// montagem, na ordem em que aparecem na fileira de bolinhas. Cada um sabe

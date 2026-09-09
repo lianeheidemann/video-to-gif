@@ -22,9 +22,9 @@ String _encode({
   'filePath': filePath,
   'isVector': isVector,
   'aspect': aspect,
-  // Omitido quando nulo para reproduzir também as entradas antigas, gravadas
+  // Nulo some da linha, reproduzindo também as entradas antigas, gravadas
   // antes de existirem pastas.
-  if (folderId != null) 'folderId': folderId,
+  'folderId': ?folderId,
 });
 
 void main() {

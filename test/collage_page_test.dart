@@ -225,9 +225,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Transparente'), findsOneWidget);
-    expect(find.text('Cor'), findsOneWidget);
-    expect(find.text('Imagem'), findsOneWidget);
+    // Pelo chip, e não pelo texto solto: "Cor" também é o rótulo de uma aba
+    // do rodapé, e o que este teste checa são os três botões do painel.
+    expect(find.widgetWithText(ChoiceChip, 'Transparente'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Cor'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Imagem'), findsOneWidget);
   });
 
   testWidgets('recorte aprovado entra em "encaixar", na horizontal', (

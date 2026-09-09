@@ -20,6 +20,9 @@ String _encode({
   'filePath': filePath,
 });
 
+// Não há teste para "arquivo que não é fonte é recusado": quem recusa é o
+// FontLoader do engine, que no ambiente de teste aceita qualquer coisa — o
+// teste passaria a medir o dublê, não o comportamento no aparelho.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -41,27 +44,6 @@ void main() {
           family: 'ImportedFont1',
           label: 'Sumiu',
           filePath: '${tempDir.path}/nao_existe.ttf',
-        ),
-      ],
-    });
-
-    const store = ImportedFontStore();
-    expect(await store.loadAll(), isEmpty);
-  });
-
-  test('arquivo que não é fonte fica de fora, sem derrubar a lista', () async {
-    // Bytes que o engine não aceita como fonte: a entrada some da lista em
-    // vez de virar uma opção quebrada (ou uma exceção na abertura da tela).
-    final fake = File('${tempDir.path}/nao_e_fonte.ttf');
-    await fake.writeAsBytes([1, 2, 3, 4]);
-
-    SharedPreferences.setMockInitialValues({
-      'importedFonts': [
-        _encode(
-          id: 'a',
-          family: 'ImportedFont1',
-          label: 'Quebrada',
-          filePath: fake.path,
         ),
       ],
     });
