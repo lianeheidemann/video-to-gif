@@ -1911,8 +1911,8 @@ class _CollagePageState extends State<CollagePage> {
           children: [
             Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
             Container(
-              width: 28,
-              height: 28,
+              width: 22,
+              height: 22,
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,

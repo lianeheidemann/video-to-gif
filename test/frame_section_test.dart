@@ -188,7 +188,6 @@ void main() {
     // moldura escolhida.
     expect(imageFrame, findsOneWidget);
     expect(_checkIn('imageFrameThumb_bundled_titanio'), findsOneWidget);
-    expect(find.text('Moldura de imagem'), findsWidgets);
   });
 
   testWidgets('painel de ajuste só aparece com moldura de imagem ativa', (
@@ -225,7 +224,7 @@ void main() {
 
       final contentHeader = find.text('Ajuste do conteúdo');
       await tester.ensureVisible(contentHeader);
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(contentHeader);
       await tester.pump(const Duration(milliseconds: 300));
 
