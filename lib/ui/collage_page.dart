@@ -31,6 +31,7 @@ import 'widgets/collage_painter.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/folder_tab.dart';
+import 'widgets/target_sub_panel.dart';
 
 /// Abas fixas no rodapé da tela de montagem — cada uma abre um painel com o
 /// conteúdo daquela seção logo acima da barra de abas, substituindo a antiga
@@ -363,7 +364,10 @@ class _CollagePageState extends State<CollagePage> {
       duration: const Duration(milliseconds: 180),
       alignment: Alignment.bottomCenter,
       child: Container(
-        constraints: const BoxConstraints(maxHeight: 300),
+        // 300 de conteúdo + a alça e o respiro da caixa de sub-opções que
+        // entraram depois — sem isso, painéis cheios (Fundo com "Cor"
+        // escolhida) passavam a rolar mais cedo do que rolavam antes.
+        constraints: const BoxConstraints(maxHeight: 330),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerLow,
           border: Border(
@@ -1206,53 +1210,53 @@ class _CollagePageState extends State<CollagePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _panelHeader('Borda e cantos'),
-        Wrap(
-          spacing: 8,
-          children: [
-            ChoiceChip(
-              label: const Text('Montagem'),
-              selected: !targetsPhotos,
-              onSelected: (_) => setState(() => _borderTargetsPhotos = false),
-            ),
-            ChoiceChip(
-              label: const Text('Fotos'),
-              selected: targetsPhotos,
-              onSelected: (_) => setState(() => _borderTargetsPhotos = true),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _sliderRow(
-          label: 'Espessura da borda',
-          value: thickness,
-          min: 0,
-          max: maxThickness,
-          display: '${thickness.round()}px',
-          onChanged: applyThickness,
-        ),
-        const SizedBox(height: 12),
-        _sliderRow(
-          label: 'Arredondamento dos cantos',
-          value: cornerRatio,
-          min: 0,
-          max: maxCornerRatio,
-          display: '${(cornerRatio / maxCornerRatio * 100).round()}%',
-          onChanged: applyCornerRatio,
-        ),
-        if (thickness > 0) ...[
-          const SizedBox(height: 4),
-          Divider(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+        // Espessura, arredondamento e cor valem para o alvo escolhido em
+        // cima (a montagem inteira ou todas as fotos), então ficam dentro da
+        // caixa dele — ver [TargetSubPanel].
+        TargetSubPanel(
+          options: const ['Montagem', 'Fotos'],
+          selectedIndex: targetsPhotos ? 1 : 0,
+          onSelected: (index) =>
+              setState(() => _borderTargetsPhotos = index == 1),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sliderRow(
+                label: 'Espessura da borda',
+                value: thickness,
+                min: 0,
+                max: maxThickness,
+                display: '${thickness.round()}px',
+                onChanged: applyThickness,
+              ),
+              const SizedBox(height: 12),
+              _sliderRow(
+                label: 'Arredondamento dos cantos',
+                value: cornerRatio,
+                min: 0,
+                max: maxCornerRatio,
+                display: '${(cornerRatio / maxCornerRatio * 100).round()}%',
+                onChanged: applyCornerRatio,
+              ),
+              if (thickness > 0) ...[
+                const SizedBox(height: 4),
+                Divider(
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.45,
+                  ),
+                ),
+                _colorRow(
+                  'Cor da borda',
+                  borderColor,
+                  () => _pickBorderColor(
+                    current: borderColor,
+                    onSelected: applyBorderColor,
+                  ),
+                ),
+              ],
+            ],
           ),
-          _colorRow(
-            'Cor da borda',
-            borderColor,
-            () => _pickBorderColor(
-              current: borderColor,
-              onSelected: applyBorderColor,
-            ),
-          ),
-        ],
+        ),
       ],
     );
   }
@@ -1397,64 +1401,67 @@ class _CollagePageState extends State<CollagePage> {
         // O fundo da montagem (a área fora/entre as fotos) e o fundo de
         // dentro de cada foto (o que aparece na sobra do modo "encaixar") são
         // escolhas independentes — mesmo seletor de alvo da aba "Borda e
-        // cantos".
-        Wrap(
-          spacing: 8,
-          children: [
-            ChoiceChip(
-              label: const Text('Montagem'),
-              selected: !_backgroundTargetsPhotos,
-              onSelected: (_) =>
-                  setState(() => _backgroundTargetsPhotos = false),
-            ),
-            ChoiceChip(
-              label: const Text('Fotos'),
-              selected: _backgroundTargetsPhotos,
-              onSelected: (_) =>
-                  setState(() => _backgroundTargetsPhotos = true),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // `ChoiceChip`s em vez de `SegmentedButton`: os 3 rótulos
-        // ("Transparente" principalmente) não cabem lado a lado com ícone
-        // dentro da largura do painel do rodapé sem quebrar linha dentro do
-        // próprio botão — chip quebra para a linha de baixo inteiro, nunca
-        // no meio de uma palavra.
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final entry in const [
-              (
-                CollageBackgroundMode.transparent,
-                'Transparente',
-                Icons.check_box_outline_blank_rounded,
+        // cantos". Transparente/Cor/Imagem valem para o alvo escolhido, por
+        // isso ficam dentro da caixa dele (ver [TargetSubPanel]).
+        TargetSubPanel(
+          options: const ['Montagem', 'Fotos'],
+          selectedIndex: _backgroundTargetsPhotos ? 1 : 0,
+          onSelected: (index) =>
+              setState(() => _backgroundTargetsPhotos = index == 1),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // `ChoiceChip`s em vez de `SegmentedButton`: os 3 rótulos
+              // ("Transparente" principalmente) não cabem lado a lado com
+              // ícone dentro da largura do painel do rodapé sem quebrar linha
+              // dentro do próprio botão — chip quebra para a linha de baixo
+              // inteiro, nunca no meio de uma palavra.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final entry in const [
+                    (
+                      CollageBackgroundMode.transparent,
+                      'Transparente',
+                      Icons.check_box_outline_blank_rounded,
+                    ),
+                    (
+                      CollageBackgroundMode.color,
+                      'Cor',
+                      Icons.palette_outlined,
+                    ),
+                    (
+                      CollageBackgroundMode.image,
+                      'Imagem',
+                      Icons.image_outlined,
+                    ),
+                  ])
+                    ChoiceChip(
+                      avatar: Icon(entry.$3, size: 18),
+                      label: Text(entry.$2),
+                      selected: background.mode == entry.$1,
+                      onSelected: (_) => _applyBackground(
+                        background.copyWith(mode: entry.$1),
+                      ),
+                    ),
+                ],
               ),
-              (CollageBackgroundMode.color, 'Cor', Icons.palette_outlined),
-              (CollageBackgroundMode.image, 'Imagem', Icons.image_outlined),
-            ])
-              ChoiceChip(
-                avatar: Icon(entry.$3, size: 18),
-                label: Text(entry.$2),
-                selected: background.mode == entry.$1,
-                onSelected: (_) =>
-                    _applyBackground(background.copyWith(mode: entry.$1)),
-              ),
-          ],
-        ),
-        if (background.mode == CollageBackgroundMode.color) ...[
-          const SizedBox(height: 8),
-          _colorRow(
-            'Cor do fundo',
-            background.color,
-            _openBackgroundColorPicker,
+              if (background.mode == CollageBackgroundMode.color) ...[
+                const SizedBox(height: 8),
+                _colorRow(
+                  'Cor do fundo',
+                  background.color,
+                  _openBackgroundColorPicker,
+                ),
+              ],
+              if (background.mode == CollageBackgroundMode.image) ...[
+                const SizedBox(height: 12),
+                _backgroundImagePicker(),
+              ],
+            ],
           ),
-        ],
-        if (background.mode == CollageBackgroundMode.image) ...[
-          const SizedBox(height: 12),
-          _backgroundImagePicker(),
-        ],
+        ),
       ],
     );
   }

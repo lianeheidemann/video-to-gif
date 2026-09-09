@@ -13,6 +13,7 @@ import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
 import 'package:video_to_gif/ui/widgets/collage_overlay_view.dart';
 import 'package:video_to_gif/ui/widgets/folder_tab.dart';
+import 'package:video_to_gif/ui/widgets/target_sub_panel.dart';
 import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
@@ -606,4 +607,52 @@ void main() {
     );
     expect(imported.selected, isTrue);
   });
+
+  testWidgets(
+    'modos de fundo ficam dentro da caixa do alvo, com os dois alvos',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Fundo'));
+      await tester.pumpAndSettle();
+
+      // "Transparente/Cor/Imagem" configuram o alvo escolhido em cima, então
+      // precisam estar dentro da caixa dele — é isso que deixa claro que são
+      // sub-opções, e não opções de mesmo nível.
+      for (final label in ['Transparente', 'Cor', 'Imagem']) {
+        expect(
+          find.descendant(
+            of: find.byType(TargetSubPanel),
+            matching: find.widgetWithText(ChoiceChip, label),
+          ),
+          findsOneWidget,
+        );
+      }
+      // "Montagem" começa como o alvo escolhido.
+      final panel = tester.widget<TargetSubPanel>(find.byType(TargetSubPanel));
+      expect(panel.selectedIndex, 0);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Fotos'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<TargetSubPanel>(find.byType(TargetSubPanel)).selectedIndex,
+        1,
+      );
+      // Trocar de alvo mantém os três modos na caixa — muda o que eles
+      // configuram, não onde moram.
+      expect(
+        find.descendant(
+          of: find.byType(TargetSubPanel),
+          matching: find.widgetWithText(ChoiceChip, 'Transparente'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 }
