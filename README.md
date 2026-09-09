@@ -101,6 +101,12 @@ opens its own panel over the preview, small **save / share / convert** icons
 in the top-right corner, and **undo / redo**. Continuous controls (sliders,
 drags) collapse into a single undo step instead of thirty.
 
+Each panel is capped in height and scrolls inside itself, so a long section
+never pushes the preview off screen. The handle at the top of the panel
+**collapses it down to that handle, and pulls it back up** — collapsed is not
+closed: the tab stays active, so a sticker or a text box keeps its selection
+and stays draggable in the preview while its controls are out of the way.
+
 All three also share the same **color adjustment** panel — eight controls as
 circular buttons over an intensity ruler: brightness, exposure, contrast,
 highlights, shadows, saturation, hue and temperature. One color matrix drives
@@ -181,9 +187,12 @@ the channel-mixing part), so what you see is what gets encoded.
 - **Double tap** on a photo centers it upright inside the cell; a second tap
   expands it to fill the cell, still upright
 - **Stickers** — bundled SVGs or your own imported SVG/image, organized in
-  folders: three bundled themes, "Imported", and folders you create yourself
-  (long-press to rename or delete; deleting a folder returns its stickers to
-  "Imported"). Dragged, scaled and rotated freely, with their own stacking
+  folders: the bundled themes (Reactions, Symbols, Effects and **GitHub**,
+  the last one with 38 marks), "Black" and "Imported", plus folders you
+  create yourself (long-press to rename or delete; deleting a folder returns
+  its stickers to "Imported"). Every folder except the bundled themes also
+  takes imports, and each row shows bundled art and imported stickers
+  together. Dragged, scaled and rotated freely, with their own stacking
   order
 - **Text** — written straight in the panel (no dialog), with color, an
   optional background box, one of the bundled fonts or **a .ttf/.otf you
