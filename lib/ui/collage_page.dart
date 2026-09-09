@@ -39,7 +39,16 @@ import 'widgets/target_sub_panel.dart';
 /// Abas fixas no rodapé da tela de montagem — cada uma abre um painel com o
 /// conteúdo daquela seção logo acima da barra de abas, substituindo a antiga
 /// lista rolável de cards expansíveis.
-enum _CollageTab { layout, aspect, margin, border, background, stickers, text }
+enum _CollageTab {
+  layout,
+  aspect,
+  margin,
+  border,
+  background,
+  color,
+  stickers,
+  text,
+}
 
 /// Qual margem o slider da aba "Margem" está controlando: [both] mexe nas
 /// duas proporcionalmente ao mesmo tempo (o controle original, antes da
@@ -475,6 +484,7 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.margin => _marginPanelContent(),
     _CollageTab.border => _borderPanelContent(),
     _CollageTab.background => _backgroundPanelContent(),
+    _CollageTab.color => _colorPanelContent(),
     _CollageTab.stickers => _stickersPanelContent(),
     _CollageTab.text => _textPanelContent(),
   };
@@ -565,6 +575,7 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.margin => Icons.space_dashboard_outlined,
     _CollageTab.border => Icons.crop_din_rounded,
     _CollageTab.background => Icons.wallpaper_rounded,
+    _CollageTab.color => Icons.tune_rounded,
     _CollageTab.stickers => Icons.emoji_emotions_outlined,
     _CollageTab.text => Icons.text_fields_rounded,
   };
@@ -575,6 +586,7 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.margin => 'Margem',
     _CollageTab.border => 'Borda',
     _CollageTab.background => 'Fundo',
+    _CollageTab.color => 'Ajustar cor',
     _CollageTab.stickers => 'Stickers',
     _CollageTab.text => 'Texto',
   };
@@ -1684,6 +1696,45 @@ class _CollagePageState extends State<CollagePage> {
   int _previewSampleWidth() => 480;
 
   // ---------------------------------------------------------------------
+  // Seção "Ajustar cor"
+  // ---------------------------------------------------------------------
+
+  /// Ajuste de cor de todas as fotos de uma vez. Mexe só no que é foto —
+  /// `CollageCellSettings` guarda os valores e o filtro de cor sai deles no
+  /// desenho da imagem da célula (ver `collage_painter.dart`), então fundo,
+  /// borda, stickers e texto ficam de fora por construção.
+  ///
+  /// Os valores mostrados vêm da célula de referência
+  /// ([CollageSettings.cellStyleTemplate]), a mesma lógica das abas "Borda e
+  /// cantos" e "Fundo" quando o alvo é "Fotos": os controles aplicam em lote,
+  /// então uma célula representa todas.
+  Widget _colorPanelContent() {
+    final reference = _settings.cellStyleTemplate;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelHeader('Ajustar cor'),
+        ColorAdjustPanel(
+          hasAdjustments: _settings.cells.any((c) => c.hasColorAdjustments),
+          valueOf: (adjustment) => adjustment.valueOf(reference),
+          onChangeStart: _pushUndoCheckpoint,
+          onChanged: (adjustment, value) => _update(
+            _settings.updatingAllCells((c) => adjustment.apply(c, value)),
+            pushUndo: false,
+          ),
+          onReset: () {
+            _pushUndoCheckpoint();
+            _update(
+              _settings.updatingAllCells((c) => c.withoutColorAdjustments()),
+              pushUndo: false,
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------
   // Seção "Stickers" / "Texto"
   // ---------------------------------------------------------------------
 
@@ -2787,7 +2838,6 @@ class _CollagePageState extends State<CollagePage> {
   /// aplicada na hora à célula, então a prévia atrás da folha mostra o
   /// resultado enquanto o dedo ainda está na tela.
   void _openCellColorAdjust(int index) {
-    var current = CollageColorAdjustment.brightness;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -2801,119 +2851,36 @@ class _CollagePageState extends State<CollagePage> {
           builder: (sheetContext, sheetSetState) {
             if (index >= _settings.cells.length) return const SizedBox.shrink();
             final cell = _settings.cells[index];
-            final theme = Theme.of(sheetContext);
-
-            void applyValue(double value) {
-              _update(
-                _settings.replacingCell(index, current.apply(cell, value)),
-                pushUndo: false,
-              );
-              sheetSetState(() {});
-            }
-
-            // Duplo toque num ícone zera só aquele ajuste (mesmo atalho que a
-            // régua já tem) e o seleciona, sem gastar um passo de desfazer
-            // quando ele já estava zerado.
-            void resetAdjustment(CollageColorAdjustment adjustment) {
-              if (adjustment.valueOf(cell) != 0) {
-                _pushUndoCheckpoint();
-                _update(
-                  _settings.replacingCell(index, adjustment.apply(cell, 0)),
-                  pushUndo: false,
-                );
-              }
-              sheetSetState(() => current = adjustment);
-            }
-
             return SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Ajustar cor',
-                            style: theme.textTheme.titleMedium,
-                          ),
-                        ),
-                        if (cell.hasColorAdjustments)
-                          TextButton(
-                            onPressed: () {
-                              _pushUndoCheckpoint();
-                              _update(
-                                _settings.replacingCell(
-                                  index,
-                                  cell.withoutColorAdjustments(),
-                                ),
-                                pushUndo: false,
-                              );
-                              sheetSetState(() {});
-                            },
-                            child: const Text('Redefinir'),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 84,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          for (final adjustment
-                              in CollageColorAdjustment.values)
-                            // O Builder dá a cada ícone o próprio
-                            // BuildContext, que Scrollable.ensureVisible usa
-                            // para centralizar exatamente esse ícone na
-                            // fileira ao selecioná-lo — sem isso o ícone
-                            // escolhido podia ficar escondido perto da borda.
-                            Builder(
-                              builder: (itemContext) {
-                                void select() {
-                                  sheetSetState(() => current = adjustment);
-                                  Scrollable.ensureVisible(
-                                    itemContext,
-                                    alignment: 0.5,
-                                    duration: const Duration(milliseconds: 200),
-                                    curve: Curves.easeOut,
-                                  );
-                                }
-
-                                return ColorAdjustButton(
-                                  adjustment: adjustment,
-                                  selected: adjustment == current,
-                                  value: adjustment.valueOf(cell),
-                                  onTap: select,
-                                  onDoubleTap: () {
-                                    resetAdjustment(adjustment);
-                                    Scrollable.ensureVisible(
-                                      itemContext,
-                                      alignment: 0.5,
-                                      duration: const Duration(
-                                        milliseconds: 200,
-                                      ),
-                                      curve: Curves.easeOut,
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                        ],
+                child: ColorAdjustPanel(
+                  title: 'Ajustar cor',
+                  hasAdjustments: cell.hasColorAdjustments,
+                  valueOf: (adjustment) => adjustment.valueOf(cell),
+                  onChangeStart: _pushUndoCheckpoint,
+                  onChanged: (adjustment, value) {
+                    _update(
+                      _settings.replacingCell(
+                        index,
+                        adjustment.apply(cell, value),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    // Sem repetir o nome do ajuste aqui: o ícone escolhido
-                    // logo acima já fica roxo e com o rótulo em destaque, e
-                    // a régua mostra só o valor.
-                    IntensityRuler(
-                      value: current.valueOf(cell),
-                      onChangeStart: _pushUndoCheckpoint,
-                      onChanged: applyValue,
-                    ),
-                  ],
+                      pushUndo: false,
+                    );
+                    sheetSetState(() {});
+                  },
+                  onReset: () {
+                    _pushUndoCheckpoint();
+                    _update(
+                      _settings.replacingCell(
+                        index,
+                        cell.withoutColorAdjustments(),
+                      ),
+                      pushUndo: false,
+                    );
+                    sheetSetState(() {});
+                  },
                 ),
               ),
             );

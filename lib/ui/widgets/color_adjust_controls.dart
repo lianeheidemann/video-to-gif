@@ -78,6 +78,131 @@ class ColorAdjustButton extends StatelessWidget {
   }
 }
 
+/// Fileira de ajustes + régua de intensidade: o conteúdo de "Ajustar cor",
+/// sem saber sobre o que ele age. A tela passa como ler e como gravar cada
+/// valor, então o mesmo painel serve para uma foto da montagem, para todas
+/// elas de uma vez, para a moldura e para o GIF.
+///
+/// A seleção do ajuste é estado só de tela (qual bolinha está aberta), por
+/// isso mora aqui e não sobe para quem chamou.
+class ColorAdjustPanel extends StatefulWidget {
+  const ColorAdjustPanel({
+    super.key,
+    required this.valueOf,
+    required this.onChanged,
+    required this.onChangeStart,
+    required this.onReset,
+    required this.hasAdjustments,
+    this.title,
+  });
+
+  final double Function(CollageColorAdjustment adjustment) valueOf;
+  final void Function(CollageColorAdjustment adjustment, double value)
+  onChanged;
+
+  /// Chamado uma vez no início de um arrasto (ou antes de zerar um ajuste),
+  /// para o gesto inteiro virar um passo só de desfazer.
+  final VoidCallback onChangeStart;
+
+  /// Zera todos os ajustes de uma vez — o botão só aparece com
+  /// [hasAdjustments].
+  final VoidCallback onReset;
+  final bool hasAdjustments;
+
+  /// Cabeçalho opcional: a folha por foto mostra "Ajustar cor" aqui, o painel
+  /// de aba não precisa (o rodapé já diz onde está).
+  final String? title;
+
+  @override
+  State<ColorAdjustPanel> createState() => _ColorAdjustPanelState();
+}
+
+class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
+  CollageColorAdjustment _current = CollageColorAdjustment.brightness;
+
+  /// Duplo toque num ícone zera só aquele ajuste (mesmo atalho que a régua
+  /// tem) e o seleciona, sem gastar um passo de desfazer quando ele já
+  /// estava zerado.
+  void _reset(CollageColorAdjustment adjustment) {
+    if (widget.valueOf(adjustment) != 0) {
+      widget.onChangeStart();
+      widget.onChanged(adjustment, 0);
+    }
+    setState(() => _current = adjustment);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.title != null || widget.hasAdjustments)
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.title ?? '',
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              if (widget.hasAdjustments)
+                TextButton(
+                  onPressed: widget.onReset,
+                  child: const Text('Redefinir'),
+                ),
+            ],
+          ),
+        SizedBox(
+          height: 84,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final adjustment in CollageColorAdjustment.values)
+                // O Builder dá a cada ícone o próprio BuildContext, que
+                // Scrollable.ensureVisible usa para centralizar exatamente
+                // esse ícone na fileira ao selecioná-lo — sem isso o ícone
+                // escolhido podia ficar escondido perto da borda.
+                Builder(
+                  builder: (itemContext) {
+                    void show() => Scrollable.ensureVisible(
+                      itemContext,
+                      alignment: 0.5,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOut,
+                    );
+                    return ColorAdjustButton(
+                      adjustment: adjustment,
+                      selected: adjustment == _current,
+                      value: widget.valueOf(adjustment),
+                      onTap: () {
+                        setState(() => _current = adjustment);
+                        show();
+                      },
+                      onDoubleTap: () {
+                        _reset(adjustment);
+                        show();
+                      },
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Sem repetir o nome do ajuste aqui: o ícone escolhido logo acima já
+        // fica roxo e com o rótulo em destaque, e a régua mostra só o valor.
+        IntensityRuler(
+          value: widget.valueOf(_current),
+          onChangeStart: widget.onChangeStart,
+          onChanged: (value) => widget.onChanged(_current, value),
+        ),
+      ],
+    );
+  }
+}
+
 /// Régua de intensidade de `-1` a `1`, com o zero no centro: os tracinhos
 /// deslizam sob um marcador fixo, e o valor atual aparece em cima. É o
 /// controle da referência que a Liane mandou — arrastar para os lados em vez
