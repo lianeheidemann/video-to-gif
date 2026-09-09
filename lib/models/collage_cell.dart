@@ -167,6 +167,18 @@ class CollageCellSettings {
   double get _effectiveOriginX => (manualCrop?.x ?? 0).toDouble();
   double get _effectiveOriginY => (manualCrop?.y ?? 0).toDouble();
 
+  /// Retângulo de origem (pixels da foto decodificada) que [manualCrop]
+  /// recorta — ou a foto inteira, sem recorte manual nenhum. Fonte comum
+  /// para o "src" de `drawImageRect`/`_CroppedCover` em
+  /// [CollageCellFitMode.contain], que — ao contrário de [coverSrcRect] —
+  /// não tem zoom/offset próprios para compor com o recorte.
+  Rect get manualCropSrcRect => Rect.fromLTWH(
+    _effectiveOriginX,
+    _effectiveOriginY,
+    _effectiveWidth,
+    _effectiveHeight,
+  );
+
   double borderThicknessFor(double cellWidth) {
     if (cellWidth <= 0) return borderThicknessAtReference;
     return borderThicknessAtReference * (cellWidth / referenceWidth);

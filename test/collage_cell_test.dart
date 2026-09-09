@@ -474,6 +474,27 @@ void main() {
       expect(delta.dx, closeTo(0.2, 0.001));
       expect(delta.dy, 0);
     });
+
+    test('manualCropSrcRect é a foto inteira sem recorte manual', () {
+      const cell = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 500,
+        fitMode: CollageCellFitMode.contain,
+      );
+      expect(cell.manualCropSrcRect, const Rect.fromLTWH(0, 0, 1000, 500));
+    });
+
+    test('manualCropSrcRect reflete o recorte manual, em vez da foto inteira '
+        '— era isto que faltava para "encaixar" não achatar a foto ao '
+        'aplicar um recorte', () {
+      const cell = CollageCellSettings(
+        photoWidth: 1000,
+        photoHeight: 500,
+        fitMode: CollageCellFitMode.contain,
+        manualCrop: CropRect(x: 100, y: 50, width: 300, height: 200),
+      );
+      expect(cell.manualCropSrcRect, const Rect.fromLTWH(100, 50, 300, 200));
+    });
   });
 
   group('borda por foto', () {

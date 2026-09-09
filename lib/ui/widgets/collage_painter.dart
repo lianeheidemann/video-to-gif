@@ -254,19 +254,16 @@ void paintCollageCell(
         );
       }
     case CollageCellFitMode.contain:
-      // Foto inteira (sem recorte): o que sobrar dentro da célula mostra o
-      // fundo geral da montagem, já pintado por baixo antes das células.
+      // A foto (ou só o recorte manual, quando há um — `manualCropSrcRect`
+      // já resolve os dois casos) inteira: o que sobrar dentro da célula
+      // mostra o fundo geral da montagem, já pintado por baixo antes das
+      // células.
       final display = cell.containDisplaySize(contentRect.size);
       if (display != Size.zero) {
         final offset = cell.containDisplayOffset(contentRect.size);
         canvas.drawImageRect(
           photoImage,
-          Rect.fromLTWH(
-            0,
-            0,
-            photoImage.width.toDouble(),
-            photoImage.height.toDouble(),
-          ),
+          cell.manualCropSrcRect,
           Rect.fromCenter(
             center: offset,
             width: display.width,

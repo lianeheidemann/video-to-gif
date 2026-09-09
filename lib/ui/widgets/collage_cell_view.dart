@@ -380,13 +380,24 @@ class _CellPhoto extends StatelessWidget {
     // O deslocamento entra por dentro da rotação (este widget já é filho do
     // `Transform.rotate` de [build]), igual ao `translate` que
     // `paintCollageCell` aplica antes de girar o canvas na exportação.
+    //
+    // `_CroppedCover` (o mesmo widget do modo "preencher") entra aqui para
+    // o recorte manual valer também em "encaixar" — sem ele, a foto
+    // *inteira* sempre era esticada dentro de `display`, mesmo com um
+    // `manualCrop` menor: o recorte nunca era aplicado de fato, só o
+    // tamanho da caixa encolhia, o que se via como a foto "achatada" em vez
+    // de recortada. Sem `manualCrop`, `manualCropSrcRect` é a foto inteira
+    // — mesmo resultado de antes.
     return Transform.translate(
       offset: offset,
       child: _Unclipped(
-        child: SizedBox(
-          width: display.width,
-          height: display.height,
-          child: Image.file(File(cell.photoPath!), fit: BoxFit.fill),
+        child: _CroppedCover(
+          photoPath: cell.photoPath!,
+          photoWidth: cell.photoWidth,
+          photoHeight: cell.photoHeight,
+          src: cell.manualCropSrcRect,
+          destWidth: display.width,
+          destHeight: display.height,
         ),
       ),
     );
