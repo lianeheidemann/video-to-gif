@@ -1962,13 +1962,17 @@ class _CollagePageState extends State<CollagePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _panelHeader('Stickers'),
+        // Fileira de pastas e miniaturas de sticker bem menores que o
+        // padrão do resto do app — este é o único lugar com tanta coisa
+        // pequena lado a lado, então o tamanho das outras miniaturas
+        // (seletor de fundo, trocar foto) fica como está.
         SizedBox(
-          height: 62,
+          height: 44,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             // +1 pelo botão de criar pasta, sempre no fim da linha.
             itemCount: _StickerFolder.values.length + _customFolders.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
               if (index < _StickerFolder.values.length) {
                 final folder = _StickerFolder.values[index];
@@ -1997,9 +2001,9 @@ class _CollagePageState extends State<CollagePage> {
             },
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         SizedBox(
-          height: 70,
+          height: 58,
           // Uma fileira só: primeiro a arte embutida da pasta, depois o que
           // foi importado para ela e, no fim, o tile de importar (nas pastas
           // que aceitam importação). Antes eram dois caminhos separados, e
@@ -2010,22 +2014,36 @@ class _CollagePageState extends State<CollagePage> {
                 bundledStickers.length +
                 imported.length +
                 (showsImports ? 1 : 0),
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               if (index < bundledStickers.length) {
                 final sticker = bundledStickers[index];
-                return GestureDetector(
-                  onTap: () => _addBundledSticker(sticker),
-                  child: _bundledStickerThumb(sticker),
+                // `Center`: dentro de um `ListView` horizontal, o filho
+                // direto é estirado para a altura inteira da fileira,
+                // ignorando a altura que o `Container` pede — sem isto a
+                // miniatura saía do tamanho da fileira (58), não dos 36
+                // pedidos.
+                return Center(
+                  child: GestureDetector(
+                    onTap: () => _addBundledSticker(sticker),
+                    child: _bundledStickerThumb(sticker, size: 44, height: 36),
+                  ),
                 );
               }
               final importedIndex = index - bundledStickers.length;
               if (importedIndex < imported.length) {
                 final asset = imported[importedIndex];
-                return GestureDetector(
-                  onTap: () => _addStickerFromAsset(asset),
-                  onLongPress: () => _confirmRemoveSticker(asset),
-                  child: _assetThumb(asset, selected: false),
+                return Center(
+                  child: GestureDetector(
+                    onTap: () => _addStickerFromAsset(asset),
+                    onLongPress: () => _confirmRemoveSticker(asset),
+                    child: _assetThumb(
+                      asset,
+                      selected: false,
+                      size: 44,
+                      height: 36,
+                    ),
+                  ),
                 );
               }
               return _importTile(
@@ -2037,6 +2055,8 @@ class _CollagePageState extends State<CollagePage> {
                       : _stickerFolderId,
                 ),
                 label: 'Importar',
+                size: 44,
+                height: 36,
               );
             },
           ),
@@ -2162,15 +2182,19 @@ class _CollagePageState extends State<CollagePage> {
     });
   }
 
-  Widget _bundledStickerThumb((String path, String label) sticker) {
+  Widget _bundledStickerThumb(
+    (String path, String label) sticker, {
+    double size = 62,
+    double height = 46,
+  }) {
     final theme = Theme.of(context);
     return Container(
-      width: 62,
-      height: 46,
-      padding: const EdgeInsets.all(8),
+      width: size,
+      height: height,
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
@@ -2603,20 +2627,25 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
-  Widget _importTile({required VoidCallback onTap, required String label}) {
+  Widget _importTile({
+    required VoidCallback onTap,
+    required String label,
+    double size = 62,
+    double height = 46,
+  }) {
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
-        width: 62,
+        width: size,
         child: Column(
           children: [
             Container(
-              width: 62,
-              height: 46,
+              width: size,
+              height: height,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: theme.colorScheme.outlineVariant.withValues(
                     alpha: 0.5,
@@ -2626,6 +2655,7 @@ class _CollagePageState extends State<CollagePage> {
               child: Icon(
                 Icons.add_photo_alternate_outlined,
                 color: theme.colorScheme.primary,
+                size: 18,
               ),
             ),
             const SizedBox(height: 4),
@@ -2714,15 +2744,20 @@ class _CollagePageState extends State<CollagePage> {
     if (!identical(updated, _settings)) _update(updated);
   }
 
-  Widget _assetThumb(ImportedAsset asset, {required bool selected}) {
+  Widget _assetThumb(
+    ImportedAsset asset, {
+    required bool selected,
+    double size = 62,
+    double height = 46,
+  }) {
     final theme = Theme.of(context);
     return Container(
-      width: 62,
-      height: 46,
+      width: size,
+      height: height,
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: selected
               ? theme.colorScheme.primary

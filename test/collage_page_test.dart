@@ -207,6 +207,45 @@ void main() {
     },
   );
 
+  testWidgets('pastas e miniaturas da aba Stickers são pequenas', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Stickers'),
+      200,
+      scrollable: page,
+    );
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    // Bem menores que o padrão de 62×46 usado pelo seletor de imagem de
+    // fundo — é justamente o ponto do pedido ("bem menor, principalmente
+    // as stickers").
+    final folderSize = tester.getSize(
+      find.widgetWithText(FolderTab, 'Reações'),
+    );
+    expect(folderSize.height, lessThan(50));
+
+    final thumbSize = tester.getSize(
+      find
+          .ancestor(
+            of: find.byType(SvgPicture).first,
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    expect(thumbSize.width, lessThanOrEqualTo(44));
+    expect(thumbSize.height, lessThanOrEqualTo(36));
+  });
+
   testWidgets('opções de fundo não quebram linha dentro do próprio botão', (
     tester,
   ) async {
