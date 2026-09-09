@@ -32,7 +32,6 @@ Future<void> _pumpPanel(
   required SizeEstimate estimate,
   int originalBytes = 24 * 1024 * 1024,
   VoidCallback? onMeasure,
-  VoidCallback? onConvert,
   bool measuring = false,
 }) async {
   tester.view.physicalSize = const Size(1000, 1800);
@@ -50,7 +49,6 @@ Future<void> _pumpPanel(
             summary: _summary,
             measuring: measuring,
             onMeasure: onMeasure ?? () {},
-            onConvert: onConvert ?? () {},
           ),
         ),
       ),
@@ -159,16 +157,11 @@ void main() {
       expect(chamou, isFalse);
     });
 
-    testWidgets('converte ao tocar no botão principal', (tester) async {
-      var chamou = false;
-      await _pumpPanel(
-        tester,
-        estimate: _estimate(bytes: 3 * 1024 * 1024),
-        onConvert: () => chamou = true,
-      );
+    testWidgets('não mostra mais um botão de converter — isso é papel da '
+        'AppBar', (tester) async {
+      await _pumpPanel(tester, estimate: _estimate(bytes: 3 * 1024 * 1024));
 
-      await tester.tap(find.text('Converter em GIF'));
-      expect(chamou, isTrue);
+      expect(find.text('Converter em GIF'), findsNothing);
     });
   });
 

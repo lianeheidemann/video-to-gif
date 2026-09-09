@@ -53,32 +53,37 @@ class CollageLayout {
   int get cellCount => _effectiveColumns * _effectiveRows;
 
   /// Retângulos de cada célula dentro de um canvas de [canvasSize], já
-  /// aplicando [marginRatio] (proporcional ao menor lado do canvas, mesmo
-  /// espírito de [FrameSettings.cornerRatio]) tanto entre as células quanto
-  /// na borda externa da montagem. Única fonte de geometria: usada pela
-  /// prévia ao vivo e pela exportação, para as duas nunca ficarem fora de
-  /// sincronia.
-  List<Rect> cellRectsFor(Size canvasSize, double marginRatio) {
+  /// aplicando [outerMarginRatio] (da borda da montagem até as fotos) e
+  /// [innerMarginRatio] (só entre as fotos) — ambos proporcionais ao menor
+  /// lado do canvas, mesmo espírito de [FrameSettings.cornerRatio], e
+  /// independentes entre si. Única fonte de geometria: usada pela prévia ao
+  /// vivo e pela exportação, para as duas nunca ficarem fora de sincronia.
+  List<Rect> cellRectsFor(
+    Size canvasSize, {
+    required double outerMarginRatio,
+    required double innerMarginRatio,
+  }) {
     final cols = _effectiveColumns;
     final rowsN = _effectiveRows;
-    final margin = canvasSize.shortestSide * marginRatio;
+    final outerMargin = canvasSize.shortestSide * outerMarginRatio;
+    final innerMargin = canvasSize.shortestSide * innerMarginRatio;
 
-    final availableWidth = (canvasSize.width - margin * (cols + 1)).clamp(
-      0.0,
-      canvasSize.width,
-    );
-    final availableHeight = (canvasSize.height - margin * (rowsN + 1)).clamp(
-      0.0,
-      canvasSize.height,
-    );
+    final availableWidth =
+        (canvasSize.width - outerMargin * 2 - innerMargin * (cols - 1)).clamp(
+          0.0,
+          canvasSize.width,
+        );
+    final availableHeight =
+        (canvasSize.height - outerMargin * 2 - innerMargin * (rowsN - 1))
+            .clamp(0.0, canvasSize.height);
     final cellWidth = availableWidth / cols;
     final cellHeight = availableHeight / rowsN;
 
     final rects = <Rect>[];
     for (var r = 0; r < rowsN; r++) {
       for (var c = 0; c < cols; c++) {
-        final left = margin + c * (cellWidth + margin);
-        final top = margin + r * (cellHeight + margin);
+        final left = outerMargin + c * (cellWidth + innerMargin);
+        final top = outerMargin + r * (cellHeight + innerMargin);
         rects.add(Rect.fromLTWH(left, top, cellWidth, cellHeight));
       }
     }

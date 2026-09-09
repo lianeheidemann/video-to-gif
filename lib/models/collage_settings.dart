@@ -14,7 +14,8 @@ class CollageSettings {
   const CollageSettings({
     required this.layout,
     this.cells = const [],
-    this.marginRatio = 0.03,
+    this.outerMarginRatio = 0.03,
+    this.innerMarginRatio = 0.03,
     this.aspectRatio = 1.0,
     this.cornerRatio = 0.0,
     this.borderThicknessAtReference = 0.0,
@@ -27,9 +28,14 @@ class CollageSettings {
   final CollageLayout layout;
   final List<CollageCellSettings> cells;
 
-  /// Margem proporcional ao menor lado do canvas, entre células e ao redor
-  /// da montagem — ver [CollageLayout.cellRectsFor].
-  final double marginRatio;
+  /// Margem proporcional ao menor lado do canvas, da borda da montagem até
+  /// as fotos — ver [CollageLayout.cellRectsFor]. Independente de
+  /// [innerMarginRatio]: dá para ter uma sem a outra.
+  final double outerMarginRatio;
+
+  /// Margem proporcional ao menor lado do canvas, só entre as fotos (o
+  /// "gutter" da grade) — ver [CollageLayout.cellRectsFor].
+  final double innerMarginRatio;
 
   /// Proporção largura/altura de todo o canvas da montagem.
   final double aspectRatio;
@@ -84,7 +90,8 @@ class CollageSettings {
   CollageSettings copyWith({
     CollageLayout? layout,
     List<CollageCellSettings>? cells,
-    double? marginRatio,
+    double? outerMarginRatio,
+    double? innerMarginRatio,
     double? aspectRatio,
     double? cornerRatio,
     double? borderThicknessAtReference,
@@ -96,7 +103,8 @@ class CollageSettings {
     return CollageSettings(
       layout: layout ?? this.layout,
       cells: cells ?? this.cells,
-      marginRatio: marginRatio ?? this.marginRatio,
+      outerMarginRatio: outerMarginRatio ?? this.outerMarginRatio,
+      innerMarginRatio: innerMarginRatio ?? this.innerMarginRatio,
       aspectRatio: aspectRatio ?? this.aspectRatio,
       cornerRatio: cornerRatio ?? this.cornerRatio,
       borderThicknessAtReference:

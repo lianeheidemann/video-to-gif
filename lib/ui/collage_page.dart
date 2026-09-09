@@ -35,6 +35,26 @@ import 'widgets/color_picker_sheet.dart';
 /// lista rolável de cards expansíveis.
 enum _CollageTab { layout, aspect, margin, border, background, stickers, text }
 
+/// Qual margem o slider da aba "Margem" está controlando: [both] mexe nas
+/// duas proporcionalmente ao mesmo tempo (o controle original, antes da
+/// única opção que existia), [outer] só na moldura externa (da borda da
+/// montagem até as fotos) e [inner] só no espaço entre as fotos.
+enum _MarginTarget { both, outer, inner }
+
+/// Pastas da seção "Stickers": três temáticas com os stickers embutidos do
+/// app, mais uma para os stickers importados pelo usuário (que tem também o
+/// botão "Importar").
+enum _StickerFolder { reactions, symbols, effects, imported }
+
+extension on _StickerFolder {
+  String get label => switch (this) {
+    _StickerFolder.reactions => 'Reações',
+    _StickerFolder.symbols => 'Símbolos',
+    _StickerFolder.effects => 'Efeitos',
+    _StickerFolder.imported => 'Importados',
+  };
+}
+
 /// Tela do editor de montagem de fotos: agrupa [photos] num layout (linha,
 /// coluna ou grade), com margem/proporção/borda/cantos configuráveis (da
 /// montagem inteira e de cada foto), fundo transparente/cor/imagem, stickers
@@ -59,15 +79,31 @@ class _CollagePageState extends State<CollagePage> {
     ImportedAssetKind.backgroundImage,
   );
 
-  /// Stickers prontos, embutidos no app (`assets/sticker/`) — aparecem antes
-  /// dos importados pelo usuário na seção "Stickers".
-  static const _bundledStickers = <(String path, String label)>[
-    ('assets/sticker/heart.svg', 'Coração'),
-    ('assets/sticker/star.svg', 'Estrela'),
+  /// Stickers prontos, embutidos no app (`assets/sticker/`), agrupados por
+  /// pasta temática na seção "Stickers" — ver [_StickerFolder].
+  static const _stickerFolderReactions = <(String path, String label)>[
     ('assets/sticker/thumbs_up.svg', 'Joinha'),
     ('assets/sticker/smiley.svg', 'Sorriso'),
+  ];
+  static const _stickerFolderSymbols = <(String path, String label)>[
+    ('assets/sticker/heart.svg', 'Coração'),
+    ('assets/sticker/star.svg', 'Estrela'),
+  ];
+  static const _stickerFolderEffects = <(String path, String label)>[
     ('assets/sticker/sparkle.svg', 'Brilho'),
   ];
+
+  /// Stickers embutidos da pasta [folder] — vazio para
+  /// [_StickerFolder.imported], que mostra os importados pelo usuário em vez
+  /// disso (ver [_stickersPanelContent]).
+  static List<(String path, String label)> _bundledStickersFor(
+    _StickerFolder folder,
+  ) => switch (folder) {
+    _StickerFolder.reactions => _stickerFolderReactions,
+    _StickerFolder.symbols => _stickerFolderSymbols,
+    _StickerFolder.effects => _stickerFolderEffects,
+    _StickerFolder.imported => const [],
+  };
 
   late CollageSettings _settings = CollageSettings.forLayout(
     _defaultLayoutFor(widget.photos.length),
@@ -95,6 +131,13 @@ class _CollagePageState extends State<CollagePage> {
   /// Mesmo papel de [_borderTargetsPhotos], para a aba "Fundo": `false` = o
   /// fundo da montagem inteira, `true` = o fundo de dentro de cada foto.
   bool _backgroundTargetsPhotos = false;
+
+  /// Mesmo papel de [_borderTargetsPhotos], para a aba "Margem" — ver
+  /// [_MarginTarget].
+  _MarginTarget _marginTarget = _MarginTarget.both;
+
+  /// Pasta aberta na aba "Stickers" — ver [_StickerFolder].
+  _StickerFolder _stickerFolder = _StickerFolder.reactions;
 
   bool _saving = false;
   bool _sharing = false;
@@ -441,6 +484,15 @@ class _CollagePageState extends State<CollagePage> {
                             child: CollageCellView(
                               cell: _settings.cells[i],
                               cellSize: geometry.cellRects[i].size,
+                              // Com "Stickers" ou "Texto" aberto no rodapé, a
+                              // foto para de responder a gesto — só um dos
+                              // dois grupos (fotos, ou stickers/texto) pode
+                              // ser movido por vez, o mesmo motivo que
+                              // CollageOverlayView.interactive já aplica ao
+                              // contrário nesses dois casos.
+                              interactive:
+                                  _activeTab != _CollageTab.stickers &&
+                                  _activeTab != _CollageTab.text,
                               onGestureStart: _pushUndoCheckpoint,
                               onChanged: (cell) => _update(
                                 _settings.replacingCell(i, cell),
@@ -882,24 +934,71 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Margem" / "Proporção" / "Borda e cantos"
   // ---------------------------------------------------------------------
 
+  /// Valor mostrado/arrastado pelo slider conforme [_marginTarget]: "Tudo"
+  /// não tem uma proporção própria — mostra a média das duas, e ao arrastar
+  /// iguala as duas a esse valor.
+  double get _marginSliderValue => switch (_marginTarget) {
+    _MarginTarget.both =>
+      (_settings.outerMarginRatio + _settings.innerMarginRatio) / 2,
+    _MarginTarget.outer => _settings.outerMarginRatio,
+    _MarginTarget.inner => _settings.innerMarginRatio,
+  };
+
+  void _applyMargin(double v) {
+    switch (_marginTarget) {
+      case _MarginTarget.both:
+        _update(
+          _settings.copyWith(outerMarginRatio: v, innerMarginRatio: v),
+          pushUndo: false,
+        );
+      case _MarginTarget.outer:
+        _update(_settings.copyWith(outerMarginRatio: v), pushUndo: false);
+      case _MarginTarget.inner:
+        _update(_settings.copyWith(innerMarginRatio: v), pushUndo: false);
+    }
+  }
+
   Widget _marginPanelContent() {
-    final percent =
-        (_settings.marginRatio / CollageSettings.maxMarginRatio * 100).round();
+    final value = _marginSliderValue.clamp(
+      CollageSettings.minMarginRatio,
+      CollageSettings.maxMarginRatio,
+    );
+    final percent = (value / CollageSettings.maxMarginRatio * 100).round();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _panelHeader('Margem', '$percent%'),
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Tudo'),
+              selected: _marginTarget == _MarginTarget.both,
+              onSelected: (_) =>
+                  setState(() => _marginTarget = _MarginTarget.both),
+            ),
+            ChoiceChip(
+              label: const Text('Externa'),
+              selected: _marginTarget == _MarginTarget.outer,
+              onSelected: (_) =>
+                  setState(() => _marginTarget = _MarginTarget.outer),
+            ),
+            ChoiceChip(
+              label: const Text('Entre fotos'),
+              selected: _marginTarget == _MarginTarget.inner,
+              onSelected: (_) =>
+                  setState(() => _marginTarget = _MarginTarget.inner),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
         Slider(
           min: CollageSettings.minMarginRatio,
           max: CollageSettings.maxMarginRatio,
-          value: _settings.marginRatio.clamp(
-            CollageSettings.minMarginRatio,
-            CollageSettings.maxMarginRatio,
-          ),
+          value: value,
           label: '$percent%',
           onChangeStart: (_) => _pushUndoCheckpoint(),
-          onChanged: (v) =>
-              _update(_settings.copyWith(marginRatio: v), pushUndo: false),
+          onChanged: _applyMargin,
         ),
       ],
     );
@@ -1428,44 +1527,60 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
 
   Widget _stickersPanelContent() {
-    final theme = Theme.of(context);
+    final folder = _stickerFolder;
+    final isImportedFolder = folder == _StickerFolder.imported;
+    final bundled = _bundledStickersFor(folder);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _panelHeader('Stickers'),
-        Text(
-          'Toque para adicionar um sticker à montagem.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in _StickerFolder.values)
+              ChoiceChip(
+                label: Text(option.label),
+                selected: folder == option,
+                onSelected: (_) => setState(() => _stickerFolder = option),
+              ),
+          ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         SizedBox(
           height: 70,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: _bundledStickers.length + _importedStickers.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, index) {
-              if (index < _bundledStickers.length) {
-                final sticker = _bundledStickers[index];
-                return GestureDetector(
-                  onTap: () => _addBundledSticker(sticker),
-                  child: _bundledStickerThumb(sticker),
-                );
-              }
-              final importedIndex = index - _bundledStickers.length;
-              if (importedIndex == _importedStickers.length) {
-                return _importTile(onTap: _importSticker, label: 'Importar');
-              }
-              final asset = _importedStickers[importedIndex];
-              return GestureDetector(
-                onTap: () => _addStickerFromAsset(asset),
-                onLongPress: () => _confirmRemoveSticker(asset),
-                child: _assetThumb(asset, selected: false),
-              );
-            },
-          ),
+          child: isImportedFolder
+              ? ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _importedStickers.length + 1,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    if (index == _importedStickers.length) {
+                      return _importTile(
+                        onTap: _importSticker,
+                        label: 'Importar',
+                      );
+                    }
+                    final asset = _importedStickers[index];
+                    return GestureDetector(
+                      onTap: () => _addStickerFromAsset(asset),
+                      onLongPress: () => _confirmRemoveSticker(asset),
+                      child: _assetThumb(asset, selected: false),
+                    );
+                  },
+                )
+              : ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: bundled.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final sticker = bundled[index];
+                    return GestureDetector(
+                      onTap: () => _addBundledSticker(sticker),
+                      child: _bundledStickerThumb(sticker),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -2153,6 +2268,10 @@ class _CollagePageState extends State<CollagePage> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      // Sem véu: a régua muda a prévia da montagem em tempo real (ver
+      // comentário acima), e uma barreira escura por trás escondia
+      // exatamente o resultado que essa mexida deveria mostrar.
+      barrierColor: Colors.transparent,
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, sheetSetState) {
@@ -2166,6 +2285,20 @@ class _CollagePageState extends State<CollagePage> {
                 pushUndo: false,
               );
               sheetSetState(() {});
+            }
+
+            // Duplo toque num ícone zera só aquele ajuste (mesmo atalho que a
+            // régua já tem) e o seleciona, sem gastar um passo de desfazer
+            // quando ele já estava zerado.
+            void resetAdjustment(CollageColorAdjustment adjustment) {
+              if (adjustment.valueOf(cell) != 0) {
+                _pushUndoCheckpoint();
+                _update(
+                  _settings.replacingCell(index, adjustment.apply(cell, 0)),
+                  pushUndo: false,
+                );
+              }
+              sheetSetState(() => current = adjustment);
             }
 
             return SafeArea(
@@ -2208,12 +2341,43 @@ class _CollagePageState extends State<CollagePage> {
                         children: [
                           for (final adjustment
                               in CollageColorAdjustment.values)
-                            ColorAdjustButton(
-                              adjustment: adjustment,
-                              selected: adjustment == current,
-                              value: adjustment.valueOf(cell),
-                              onTap: () =>
-                                  sheetSetState(() => current = adjustment),
+                            // O Builder dá a cada ícone o próprio
+                            // BuildContext, que Scrollable.ensureVisible usa
+                            // para centralizar exatamente esse ícone na
+                            // fileira ao selecioná-lo — sem isso o ícone
+                            // escolhido podia ficar escondido perto da borda.
+                            Builder(
+                              builder: (itemContext) {
+                                void select() {
+                                  sheetSetState(() => current = adjustment);
+                                  Scrollable.ensureVisible(
+                                    itemContext,
+                                    alignment: 0.5,
+                                    duration: const Duration(
+                                      milliseconds: 200,
+                                    ),
+                                    curve: Curves.easeOut,
+                                  );
+                                }
+
+                                return ColorAdjustButton(
+                                  adjustment: adjustment,
+                                  selected: adjustment == current,
+                                  value: adjustment.valueOf(cell),
+                                  onTap: select,
+                                  onDoubleTap: () {
+                                    resetAdjustment(adjustment);
+                                    Scrollable.ensureVisible(
+                                      itemContext,
+                                      alignment: 0.5,
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
+                                      curve: Curves.easeOut,
+                                    );
+                                  },
+                                );
+                              },
                             ),
                         ],
                       ),
@@ -2287,7 +2451,8 @@ class _CollagePageState extends State<CollagePage> {
     final refHeight = refWidth / _settings.aspectRatio;
     final rects = _settings.layout.cellRectsFor(
       Size(refWidth, refHeight),
-      _settings.marginRatio,
+      outerMarginRatio: _settings.outerMarginRatio,
+      innerMarginRatio: _settings.innerMarginRatio,
     );
     if (index >= rects.length) return 1.0;
     final rect = rects[index];
@@ -2360,12 +2525,20 @@ class _CollagePageState extends State<CollagePage> {
   /// Pergunta o formato quando há foto animada na montagem; sem nenhuma, o
   /// PNG é a única saída possível e a folha não aparece. Devolve `null`
   /// quando a pessoa fecha a folha sem escolher.
+  ///
+  /// [_exportFormat]/[_durationRule] só guardam a última escolha para a
+  /// folha já abrir marcada nela; a seleção feita durante esta chamada vive
+  /// em variáveis locais (`selectedFormat`/`selectedRule`) para não vazar
+  /// para outra folha que porventura esteja aberta ao mesmo tempo.
   Future<CollageExportFormat?> _askExportFormat() async {
     final info = await inspectCollageAnimation(_settings);
     if (!mounted) return null;
     if (!info.hasAnimation) return CollageExportFormat.png;
 
-    return showModalBottomSheet<CollageExportFormat>(
+    var selectedFormat = _exportFormat;
+    var selectedRule = _durationRule;
+
+    final result = await showModalBottomSheet<CollageExportFormat>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -2395,11 +2568,10 @@ class _CollagePageState extends State<CollagePage> {
                     ),
                     const SizedBox(height: 12),
                     RadioGroup<CollageExportFormat>(
-                      groupValue: _exportFormat,
+                      groupValue: selectedFormat,
                       onChanged: (value) {
                         if (value == null) return;
-                        setState(() => _exportFormat = value);
-                        sheetSetState(() {});
+                        sheetSetState(() => selectedFormat = value);
                       },
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -2414,7 +2586,7 @@ class _CollagePageState extends State<CollagePage> {
                         ],
                       ),
                     ),
-                    if (_exportFormat.isAnimated &&
+                    if (selectedFormat.isAnimated &&
                         info.hasDifferentDurations) ...[
                       const Divider(height: 24),
                       Text(
@@ -2424,11 +2596,10 @@ class _CollagePageState extends State<CollagePage> {
                         ),
                       ),
                       RadioGroup<CollageDurationRule>(
-                        groupValue: _durationRule,
+                        groupValue: selectedRule,
                         onChanged: (value) {
                           if (value == null) return;
-                          setState(() => _durationRule = value);
-                          sheetSetState(() {});
+                          sheetSetState(() => selectedRule = value);
                         },
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -2450,7 +2621,7 @@ class _CollagePageState extends State<CollagePage> {
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () =>
-                          Navigator.of(sheetContext).pop(_exportFormat),
+                          Navigator.of(sheetContext).pop(selectedFormat),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(52),
                       ),
@@ -2464,6 +2635,14 @@ class _CollagePageState extends State<CollagePage> {
         },
       ),
     );
+
+    if (result != null && mounted) {
+      setState(() {
+        _exportFormat = selectedFormat;
+        _durationRule = selectedRule;
+      });
+    }
+    return result;
   }
 
   String _formatSeconds(Duration duration) =>

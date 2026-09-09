@@ -155,7 +155,8 @@ void main() {
       final settings = CollageSettings(
         layout: CollageLayout.row(2),
         aspectRatio: 2.0,
-        marginRatio: 0.1,
+        outerMarginRatio: 0.1,
+        innerMarginRatio: 0.1,
         background: const CollageBackground(
           mode: CollageBackgroundMode.color,
           color: Color(0xFF00FF00),
@@ -206,7 +207,8 @@ void main() {
       final settings = CollageSettings(
         layout: CollageLayout.row(2),
         aspectRatio: 2.0,
-        marginRatio: 0.1,
+        outerMarginRatio: 0.1,
+        innerMarginRatio: 0.1,
         borderThicknessAtReference: 24,
         borderColor: const Color(0xFF00FF00),
         cells: [
@@ -254,7 +256,8 @@ void main() {
       final settings = CollageSettings(
         layout: CollageLayout.row(1),
         aspectRatio: 2.0,
-        marginRatio: 0,
+        outerMarginRatio: 0,
+        innerMarginRatio: 0,
         borderThicknessAtReference: 24,
         borderColor: const Color(0xFF000000),
         background: CollageBackground(
@@ -290,7 +293,8 @@ void main() {
       final settings = CollageSettings(
         layout: CollageLayout.row(2),
         aspectRatio: 2.0,
-        marginRatio: 0.1,
+        outerMarginRatio: 0.1,
+        innerMarginRatio: 0.1,
         background: const CollageBackground(
           mode: CollageBackgroundMode.color,
           color: Color(0xFF00FF00),
@@ -336,7 +340,8 @@ void main() {
       final settings = CollageSettings(
         layout: CollageLayout.row(1),
         aspectRatio: 4.0,
-        marginRatio: 0,
+        outerMarginRatio: 0,
+        innerMarginRatio: 0,
         background: const CollageBackground(
           mode: CollageBackgroundMode.color,
           color: Color(0xFF00FF00),
@@ -375,7 +380,8 @@ void main() {
     final settings = CollageSettings(
       layout: CollageLayout.row(1),
       aspectRatio: 1.0,
-      marginRatio: 0,
+      outerMarginRatio: 0,
+      innerMarginRatio: 0,
       background: const CollageBackground(
         mode: CollageBackgroundMode.color,
         color: Color(0xFF0000FF),
@@ -415,7 +421,8 @@ void main() {
       final settings = CollageSettings(
         layout: CollageLayout.row(1),
         aspectRatio: 1.0,
-        marginRatio: 0,
+        outerMarginRatio: 0,
+        innerMarginRatio: 0,
         background: const CollageBackground(
           mode: CollageBackgroundMode.color,
           color: Color(0xFF0000FF),
@@ -480,7 +487,8 @@ void main() {
       final settings = CollageSettings(
         layout: CollageLayout.row(2),
         aspectRatio: 4.0,
-        marginRatio: 0.05,
+        outerMarginRatio: 0.05,
+        innerMarginRatio: 0.05,
         background: const CollageBackground(
           mode: CollageBackgroundMode.color,
           color: Color(0xFF00FF00),
@@ -533,7 +541,8 @@ void main() {
     final settings = CollageSettings(
       layout: CollageLayout.row(1),
       aspectRatio: 4.0,
-      marginRatio: 0,
+      outerMarginRatio: 0,
+      innerMarginRatio: 0,
       cells: [
         CollageCellSettings(
           photoPath: photoPath,
@@ -577,7 +586,8 @@ void main() {
     final settings = CollageSettings(
       layout: CollageLayout.row(1),
       aspectRatio: 4.0,
-      marginRatio: 0,
+      outerMarginRatio: 0,
+      innerMarginRatio: 0,
       cells: [
         CollageCellSettings(
           photoPath: photoPath,

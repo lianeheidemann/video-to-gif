@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -11,6 +13,7 @@ import '../models/photo_info.dart';
 import '../services/imported_frame_store.dart';
 import '../services/output_service.dart';
 import '../services/photo_frame_compositor.dart';
+import 'widgets/color_picker_sheet.dart';
 import 'widgets/editor_tabs_footer.dart';
 import 'widgets/frame_painter.dart';
 
@@ -40,6 +43,11 @@ class PhotoFramePage extends StatefulWidget {
 class _PhotoFramePageState extends State<PhotoFramePage> {
   static const _output = OutputService();
   final _importedFrameStore = ImportedFrameStore();
+
+  /// Ancorada no `RepaintBoundary` em volta da prévia — [_renderPreviewImage]
+  /// usa isso para rasterizar exatamente o que está na tela para o
+  /// conta-gotas do seletor de cor.
+  final _colorPreviewKey = GlobalKey();
 
   FrameSettings _frame = const FrameSettings();
   List<ImageFrameAsset> _importedImageFrames = [];
@@ -253,7 +261,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
               child: Center(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  child: _framedPreview(),
+                  child: RepaintBoundary(
+                    key: _colorPreviewKey,
+                    child: _framedPreview(),
+                  ),
                 ),
               ),
             ),
@@ -702,17 +713,6 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   // Cor (compartilhada entre moldura e fundo)
   // ---------------------------------------------------------------------
 
-  static const _colorSwatches = <Color>[
-    Color(0xFFC9A8FF),
-    Colors.white,
-    Colors.black,
-    Color(0xFFE57373),
-    Color(0xFF58C78C),
-    Color(0xFFB8B36A),
-    Color(0xFF64B5F6),
-    Color(0xFFE6A15D),
-  ];
-
   Widget _frameColorRow() => _colorPickerRow(
     label: 'Cor da moldura',
     color: _frame.color,
@@ -763,98 +763,59 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   void _pickFrameColor() => _pickColor(
     title: 'Cor da moldura',
     selectedColor: _frame.color,
-    onSelected: (color) => _updateFrame(_frame.copyWith(color: color)),
+    onSelected: (color) =>
+        _updateFrame(_frame.copyWith(color: color), pushUndo: false),
   );
 
   void _pickBackgroundColor() => _pickColor(
     title: 'Cor do fundo',
     selectedColor: _frame.backgroundColor,
     onSelected: (color) =>
-        _updateFrame(_frame.copyWith(backgroundColor: color)),
+        _updateFrame(_frame.copyWith(backgroundColor: color), pushUndo: false),
   );
 
+  /// Mesma folha de cor da Montagem (swatches + conta-gotas na prévia atual
+  /// + roda HSV completa) para os dois seletores de cor desta tela — antes
+  /// esta tela tinha sua própria folha, só com swatches fixos.
+  ///
+  /// O checkpoint de desfazer entra na primeira cor escolhida, não na
+  /// abertura do painel nem em cada mexida da roda HSV/conta-gotas — mesmo
+  /// cuidado que `CollagePage._pickBorderColor` já tinha: sem isso, arrastar
+  /// pela roda de cor empilharia um passo de desfazer por quadro.
   void _pickColor({
     required String title,
     required Color selectedColor,
     required ValueChanged<Color> onSelected,
   }) {
-    showModalBottomSheet<void>(
+    var checkpointPushed = false;
+    showCollageColorPickerSheet(
       context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final theme = Theme.of(sheetContext);
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: [
-                    for (final color in _colorSwatches)
-                      _colorSwatchButton(
-                        color,
-                        selected: color == selectedColor,
-                        onTap: () {
-                          onSelected(color);
-                          Navigator.of(sheetContext).pop();
-                        },
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
+      title: title,
+      initialColor: selectedColor,
+      onColorSelected: (color) {
+        if (!checkpointPushed) {
+          checkpointPushed = true;
+          _pushUndoCheckpoint();
+        }
+        onSelected(color);
       },
+      previewImageBuilder: _renderPreviewImage,
     );
   }
 
-  Widget _colorSwatchButton(
-    Color color, {
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant,
-            width: selected ? 3 : 1.5,
-          ),
-        ),
-        child: selected
-            ? Icon(
-                Icons.check_rounded,
-                size: 18,
-                color: _contrastingIconColor(color),
-              )
-            : null,
-      ),
+  /// Rasteriza a prévia atual (já dentro da moldura) para o conta-gotas da
+  /// folha de cor poder amostrar um pixel dela — mesma técnica de
+  /// `CollagePage._renderPreviewImage`, mas capturando o que já está
+  /// desenhado na tela em vez de recompor do zero.
+  Future<ui.Image> _renderPreviewImage() async {
+    final renderObject = _colorPreviewKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderRepaintBoundary) {
+      throw StateError('Prévia indisponível para o conta-gotas.');
+    }
+    return renderObject.toImage(
+      pixelRatio: MediaQuery.of(context).devicePixelRatio,
     );
   }
-
-  Color _contrastingIconColor(Color background) =>
-      background.computeLuminance() > 0.5 ? Colors.black : Colors.white;
 
   // ---------------------------------------------------------------------
   // Sliders da moldura procedural

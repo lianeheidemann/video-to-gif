@@ -4,7 +4,8 @@ import '../../models/size_estimate.dart';
 import '../../theme.dart';
 
 /// Painel final do editor: compara o peso do vídeo original com a
-/// estimativa do GIF e traz as ações de recalcular e converter.
+/// estimativa do GIF e traz a ação de recalcular. Converter é feito pelo
+/// botão de download na AppBar — este painel não duplica mais essa ação.
 class SizePanel extends StatelessWidget {
   const SizePanel({
     super.key,
@@ -13,7 +14,6 @@ class SizePanel extends StatelessWidget {
     required this.summary,
     required this.measuring,
     required this.onMeasure,
-    required this.onConvert,
   });
 
   final SizeEstimate estimate;
@@ -24,7 +24,6 @@ class SizePanel extends StatelessWidget {
   final String summary;
   final bool measuring;
   final VoidCallback onMeasure;
-  final VoidCallback onConvert;
 
   @override
   Widget build(BuildContext context) {
@@ -44,69 +43,62 @@ class SizePanel extends StatelessWidget {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
-                      width: 44,
-                      height: 44,
+                      width: 34,
+                      height: 34,
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(11),
                         border: Border.all(color: color.withValues(alpha: 0.2)),
                       ),
-                      child: Icon(Icons.data_usage_rounded, color: color),
+                      child: Icon(Icons.data_usage_rounded, color: color, size: 19),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'Estimativa de tamanho',
-                        style: theme.textTheme.titleMedium?.copyWith(
+                        style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 22),
-                Text(
-                  'Tamanho estimado',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
+                  spacing: 8,
+                  runSpacing: 4,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       SizeEstimate.formatBytes(originalBytes),
-                      style: theme.textTheme.titleMedium?.copyWith(
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                         decoration: TextDecoration.lineThrough,
                       ),
                     ),
                     Icon(
                       Icons.arrow_forward_rounded,
-                      size: 19,
+                      size: 15,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                     Text(
                       estimate.formatted,
-                      style: theme.textTheme.headlineMedium?.copyWith(
+                      style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w800,
                         color: color,
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                        horizontal: 9,
+                        vertical: 3,
                       ),
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.1),
@@ -117,7 +109,7 @@ class SizePanel extends StatelessWidget {
                       ),
                       child: Text(
                         _verdictLabel(estimate.verdict),
-                        style: theme.textTheme.labelLarge?.copyWith(
+                        style: theme.textTheme.labelMedium?.copyWith(
                           color: color,
                           fontWeight: FontWeight.w700,
                         ),
@@ -125,45 +117,41 @@ class SizePanel extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
+                // Faixa e resumo das configurações num único texto — eram
+                // duas linhas separadas antes, só para caber a mesma
+                // informação num painel mais compacto.
                 Text(
                   '${calibrated ? 'Faixa medida' : 'Faixa provável'}: '
-                  '${estimate.formattedRange}',
+                  '${estimate.formattedRange} · $summary',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  summary,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 _ImpactBar(verdict: estimate.verdict),
-                const SizedBox(height: 18),
+                const SizedBox(height: 10),
                 OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                  ),
                   onPressed: measuring ? null : onMeasure,
                   icon: measuring
                       ? const SizedBox(
-                          width: 18,
-                          height: 18,
+                          width: 16,
+                          height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.refresh_rounded, size: 20),
+                      : const Icon(Icons.refresh_rounded, size: 18),
                   label: Text(measuring ? 'Medindo…' : 'Recalcular'),
                 ),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 18),
-        FilledButton.icon(
-          onPressed: onConvert,
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(60)),
-          icon: const Icon(Icons.swap_horiz_rounded),
-          label: const Text('Converter em GIF'),
         ),
       ],
     );

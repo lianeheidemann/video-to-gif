@@ -133,7 +133,8 @@ void main() {
   CollageSettings settingsWith(List<String> paths) => CollageSettings(
     layout: CollageLayout.row(paths.length),
     aspectRatio: paths.length.toDouble(),
-    marginRatio: 0,
+    outerMarginRatio: 0,
+    innerMarginRatio: 0,
     cells: [
       for (final path in paths)
         CollageCellSettings(photoPath: path, photoWidth: 40, photoHeight: 40),
