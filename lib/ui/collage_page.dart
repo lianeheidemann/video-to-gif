@@ -146,6 +146,12 @@ class _CollagePageState extends State<CollagePage> {
   /// [_MarginTarget].
   _MarginTarget _marginTarget = _MarginTarget.both;
 
+  /// `true` quando o chip "x:y" da aba "Proporção" está escolhido — é ele que
+  /// mostra os campos de largura e altura. Fica ligado sozinho quando a
+  /// proporção atual não bate com nenhum chip pronto (arrastar o slider, por
+  /// exemplo): nesse caso a proporção é customizada de fato.
+  bool _customAspectSelected = false;
+
   /// Pasta aberta na aba "Stickers": id de uma embutida ([_StickerFolder.id])
   /// ou de uma criada pelo usuário ([StickerFolder.id]).
   String _stickerFolderId = _StickerFolder.reactions.id;
@@ -1110,7 +1116,13 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
+  /// "x:y" é o chip da proporção livre: ou o usuário o escolheu, ou a
+  /// proporção atual não corresponde a nenhum chip pronto.
+  bool get _aspectIsCustom =>
+      _customAspectSelected || _customAspectLabel() != null;
+
   Widget _aspectPanelContent() {
+    final custom = _aspectIsCustom;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1125,10 +1137,25 @@ class _CollagePageState extends State<CollagePage> {
                 labelStyle: Theme.of(context).textTheme.bodySmall,
                 labelPadding: const EdgeInsets.symmetric(horizontal: 4),
                 label: Text(preset.$1),
-                selected: (_settings.aspectRatio - preset.$2).abs() < 0.001,
-                onSelected: (_) =>
-                    _update(_settings.copyWith(aspectRatio: preset.$2)),
+                // Com "x:y" escolhido, nenhum chip pronto fica marcado —
+                // senão dois apareceriam marcados ao mesmo tempo quando os
+                // campos formassem justo a proporção de um deles.
+                selected:
+                    !custom &&
+                    (_settings.aspectRatio - preset.$2).abs() < 0.001,
+                onSelected: (_) {
+                  setState(() => _customAspectSelected = false);
+                  _update(_settings.copyWith(aspectRatio: preset.$2));
+                },
               ),
+            ChoiceChip(
+              visualDensity: VisualDensity.compact,
+              labelStyle: Theme.of(context).textTheme.bodySmall,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+              label: const Text('x:y'),
+              selected: custom,
+              onSelected: (_) => setState(() => _customAspectSelected = true),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -1140,16 +1167,21 @@ class _CollagePageState extends State<CollagePage> {
           onChanged: (v) =>
               _update(_settings.copyWith(aspectRatio: v), pushUndo: false),
         ),
-        const SizedBox(height: 8),
-        _CustomAspectRatioInput(
-          onApply: (ratio) {
-            _pushUndoCheckpoint();
-            _update(
-              _settings.copyWith(aspectRatio: ratio.clamp(0.4, 2.5)),
-              pushUndo: false,
-            );
-          },
-        ),
+        // Largura e altura só entram na tela com "x:y" escolhido — antes
+        // ficavam sempre lá, ocupando espaço mesmo para quem só queria um
+        // dos formatos prontos.
+        if (custom) ...[
+          const SizedBox(height: 8),
+          _CustomAspectRatioInput(
+            onApply: (ratio) {
+              _pushUndoCheckpoint();
+              _update(
+                _settings.copyWith(aspectRatio: ratio.clamp(0.4, 2.5)),
+                pushUndo: false,
+              );
+            },
+          ),
+        ],
       ],
     );
   }
@@ -3213,6 +3245,7 @@ class _CustomAspectRatioInputState extends State<_CustomAspectRatioInput> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Largura',
+              hintText: 'X',
               isDense: true,
             ),
           ),
@@ -3227,6 +3260,7 @@ class _CustomAspectRatioInputState extends State<_CustomAspectRatioInput> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Altura',
+              hintText: 'Y',
               isDense: true,
             ),
           ),
