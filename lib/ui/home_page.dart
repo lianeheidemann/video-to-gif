@@ -8,6 +8,7 @@ import '../models/conversion_settings.dart';
 import '../models/photo_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../theme_controller.dart';
+import 'widgets/gif_weight_help_sheet.dart';
 import 'collage_page.dart';
 import 'editor_page.dart';
 import 'photo_frame_page.dart';
@@ -200,6 +201,11 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         actions: [
+          IconButton(
+            tooltip: 'Como deixar o GIF mais leve',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showGifWeightHelpSheet(context),
+          ),
           ValueListenableBuilder<ThemeMode>(
             valueListenable: themeModeNotifier,
             builder: (context, mode, _) {

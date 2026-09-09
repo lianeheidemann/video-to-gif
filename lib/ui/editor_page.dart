@@ -14,7 +14,6 @@ import '../models/video_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
-import '../theme_controller.dart';
 import 'converting_page.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/crop_overlay.dart';
@@ -327,34 +326,6 @@ class _EditorPageState extends State<EditorPage> {
             tooltip: 'Converter em ${_settings.format.shortLabel}',
             onPressed: _openingConversion ? null : _convert,
             icon: const Icon(Icons.download_rounded),
-          ),
-          // Tema e ajuda saíram para o menu: com desfazer/refazer/converter
-          // fixos, quatro ícones soltos não cabem numa tela estreita.
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'tema') {
-                toggleThemeMode();
-              } else {
-                _showHelp();
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'tema',
-                child: ValueListenableBuilder<ThemeMode>(
-                  valueListenable: themeModeNotifier,
-                  builder: (context, mode, _) => Text(
-                    mode == ThemeMode.dark
-                        ? 'Ativar modo claro'
-                        : 'Ativar modo escuro',
-                  ),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'ajuda',
-                child: Text('Como deixar o GIF mais leve'),
-              ),
-            ],
           ),
         ],
       ),
@@ -2636,16 +2607,6 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Abre a folha inferior explicando o que deixa o GIF mais pesado.
-  void _showHelp() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => const _HelpSheet(),
-    );
-  }
-
   /// Formata segundos como "Ns" ou "Mm Ns" quando passa de um minuto.
   static String _formatSeconds(double seconds) {
     final minutes = seconds ~/ 60;
@@ -2679,71 +2640,3 @@ class _EditorPageState extends State<EditorPage> {
 
 /// Folha inferior explicativa: lista os fatores que mais pesam no tamanho
 /// do GIF, aberta pelo botão de ajuda na barra superior do editor.
-class _HelpSheet extends StatelessWidget {
-  const _HelpSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    Widget item(String title, String body) => Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(body, style: theme.textTheme.bodyMedium),
-        ],
-      ),
-    );
-
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'O que deixa um GIF pesado',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            item(
-              '1. Duração — efeito direto',
-              'Cada segundo adiciona novos quadros. Cortar um trecho é uma das formas mais eficientes de reduzir o tamanho.',
-            ),
-            item(
-              '2. Resolução — efeito muito forte',
-              'Quanto maior a área de cada quadro, maior tende a ser o GIF. 480 px costuma funcionar bem para compartilhamento.',
-            ),
-            item(
-              '3. FPS — fluidez versus tamanho',
-              'Mais quadros deixam o movimento mais suave, mas aumentam o arquivo. 12 FPS é um bom ponto de partida.',
-            ),
-            item(
-              '4. Janela de recorte',
-              'Segure as bolinhas dos cantos da moldura na própria prévia para redimensionar. Formatos fixos preservam a proporção; Personalizado libera largura e altura.',
-            ),
-            item(
-              '5. Cores e suavização',
-              'Mais cores e dither preservam gradientes e detalhes, mas podem reduzir a eficiência da compressão.',
-            ),
-            item(
-              'Por que medir novamente?',
-              'A estimativa inicial é aproximada. Ao medir, o app usa o FFmpeg em uma pequena amostra do próprio vídeo para calibrar o cálculo.',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
