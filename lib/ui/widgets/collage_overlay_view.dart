@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 /// Um sticker ou texto posicionado livremente sobre a montagem: arrastar com
 /// 1 dedo reposiciona, pinça com 2 dedos redimensiona e gira ao mesmo tempo
 /// (mesmo callback `onScale*` do Flutter cobre os três gestos), e — quando
-/// selecionado — uma alça no canto inferior direito também redimensiona (só
-/// escala, sem girar), para quem prefere um dedo só. Toque simples seleciona
+/// selecionado — duas alças fazem o mesmo com um dedo só: a do canto
+/// inferior direito redimensiona (só escala) e a do canto superior direito
+/// gira. A alça de girar existe porque a pinça só começa com os DOIS dedos
+/// dentro da caixa: numa caixa de texto (larga e baixa) o segundo dedo quase
+/// sempre cai fora dela, e girar texto ficava praticamente impossível. Toque simples seleciona
 /// (a tela dona mostra então uma barra de ações — duplicar, trazer para
 /// frente, enviar para trás, remover). Sem nenhum recorte/"clamp": um sticker
 /// pode ficar parcial ou totalmente fora da montagem por escolha do usuário.
@@ -78,9 +81,16 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
   /// passo de desfazer que não desfaz nada.
   bool _checkpointPushed = false;
 
-  /// Chave do círculo da alça, usada só para achar seu retângulo na tela em
-  /// [_onScaleStart] — ver comentário ali sobre por que isso é necessário.
+  /// Chaves dos círculos das alças, usadas só para achar seus retângulos na
+  /// tela em [_onScaleStart] — ver comentário ali sobre por que isso é
+  /// necessário.
   final _handleKey = GlobalKey();
+  final _rotateHandleKey = GlobalKey();
+
+  /// Chave da caixa do conteúdo (já rotacionada e escalada), usada para achar
+  /// o centro visual do overlay na tela — é em volta dele que a alça de
+  /// girar mede o ângulo.
+  final _contentKey = GlobalKey();
 
   /// `true` quando o gesto de pinça/arrasto do overlay inteiro (this) começou
   /// em cima da alça — nesse caso [_onScaleUpdate] vira no-op, deixando o
@@ -108,8 +118,12 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
     _lastPointerDown = event.position;
   }
 
-  bool _pointOverHandle(Offset globalPosition) {
-    final box = _handleKey.currentContext?.findRenderObject() as RenderBox?;
+  bool _pointOverHandle(Offset globalPosition) =>
+      _pointOverKey(_handleKey, globalPosition) ||
+      _pointOverKey(_rotateHandleKey, globalPosition);
+
+  bool _pointOverKey(GlobalKey key, Offset globalPosition) {
+    final box = key.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.attached) return false;
     final topLeft = box.localToGlobal(Offset.zero);
     return (topLeft & box.size).contains(globalPosition);
@@ -213,6 +227,58 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
     );
   }
 
+  bool _rotateCheckpointPushed = false;
+
+  /// Ângulo do último ponto visto pela alça de girar, medido a partir do
+  /// centro do overlay — a rotação aplicada é a diferença entre um ponto e o
+  /// seguinte, então a alça pode ser agarrada de qualquer lado sem o
+  /// conteúdo dar um pulo no primeiro movimento.
+  double? _lastRotateAngle;
+
+  double? _angleFromCenter(Offset globalPosition) {
+    final box = _contentKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return null;
+    final center = box.localToGlobal(box.size.center(Offset.zero));
+    final vector = globalPosition - center;
+    // Em cima do próprio centro não há ângulo definido — ignora até o dedo
+    // sair de lá.
+    if (vector.distance < 1) return null;
+    return math.atan2(vector.dy, vector.dx);
+  }
+
+  void _onRotatePointerDown(PointerDownEvent event) {
+    _rotateCheckpointPushed = false;
+    _lastRotateAngle = _angleFromCenter(event.position);
+  }
+
+  void _onRotatePointerMove(PointerMoveEvent event) {
+    final angle = _angleFromCenter(event.position);
+    if (angle == null) return;
+    final last = _lastRotateAngle;
+    _lastRotateAngle = angle;
+    if (last == null) return;
+    var delta = angle - last;
+    // Normaliza a virada de -pi/pi, senão passar por trás do overlay daria um
+    // giro de volta inteira num quadro só.
+    while (delta > math.pi) {
+      delta -= 2 * math.pi;
+    }
+    while (delta < -math.pi) {
+      delta += 2 * math.pi;
+    }
+    if (delta == 0) return;
+    if (!_rotateCheckpointPushed) {
+      _rotateCheckpointPushed = true;
+      widget.onGestureStart?.call();
+    }
+    widget.onTransformChanged(
+      widget.centerX,
+      widget.centerY,
+      widget.scale,
+      widget.rotation + delta,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -236,6 +302,7 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
                 child: Transform.scale(
                   scale: widget.scale,
                   child: Container(
+                    key: _contentKey,
                     decoration: widget.selected
                         ? BoxDecoration(
                             border: Border.all(
@@ -291,6 +358,40 @@ class _CollageOverlayViewState extends State<CollageOverlayView> {
                                   child: Icon(
                                     Icons.open_in_full_rounded,
                                     size: 12,
+                                    color: theme.colorScheme.onPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (widget.selected)
+                          Positioned(
+                            // Mesmo cuidado da alça de redimensionar: por
+                            // dentro do canto, para continuar tocável.
+                            right: 0,
+                            top: 0,
+                            child: Transform.scale(
+                              scale: 1 / widget.scale,
+                              alignment: Alignment.topRight,
+                              child: Listener(
+                                behavior: HitTestBehavior.opaque,
+                                onPointerDown: _onRotatePointerDown,
+                                onPointerMove: _onRotatePointerMove,
+                                child: Container(
+                                  key: _rotateHandleKey,
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: theme.colorScheme.surface,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.rotate_right_rounded,
+                                    size: 14,
                                     color: theme.colorScheme.onPrimary,
                                   ),
                                 ),

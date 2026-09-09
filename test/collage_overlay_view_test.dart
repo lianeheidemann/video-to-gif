@@ -195,4 +195,48 @@ void main() {
       expect(lastScale, greaterThan(1.0));
     },
   );
+\n
+  testWidgets(
+    'alça de girar só aparece quando selecionado, e arrastá-la gira o '
+    'conteúdo',
+    (tester) async {
+      var lastRotation = 0.0;
+      var lastScale = 1.0;
+      await tester.pumpWidget(
+        _harness(
+          interactive: true,
+          selected: false,
+          onSelect: () {},
+          onTransformChanged: (_, _, scale, rotation) {
+            lastScale = scale;
+            lastRotation = rotation;
+          },
+        ),
+      );
+      expect(find.byIcon(Icons.rotate_right_rounded), findsNothing);
+
+      await tester.pumpWidget(
+        _harness(
+          interactive: true,
+          selected: true,
+          onSelect: () {},
+          onTransformChanged: (_, _, scale, rotation) {
+            lastScale = scale;
+            lastRotation = rotation;
+          },
+        ),
+      );
+      final handle = find.byIcon(Icons.rotate_right_rounded);
+      expect(handle, findsOneWidget);
+
+      // A alça fica no canto superior direito; puxá-la para baixo roda o
+      // conteúdo no sentido horário em volta do centro.
+      await tester.dragFrom(tester.getCenter(handle), const Offset(0, 40));
+      await tester.pumpAndSettle();
+      expect(lastRotation, greaterThan(0));
+      // Girar é só girar: a escala não pode andar junto, senão a alça faria
+      // duas coisas ao mesmo tempo.
+      expect(lastScale, 1.0);
+    },
+  );
 }
