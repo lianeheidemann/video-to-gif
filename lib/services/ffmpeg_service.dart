@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart' show Color;
 import 'package:path_provider/path_provider.dart';
 
+import '../models/color_adjustments.dart';
 import '../models/conversion_settings.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
@@ -208,8 +209,71 @@ class FfmpegService {
     final (width, height) = settings.contentDimensions(video);
     parts.add('scale=$width:$height:flags=lanczos');
 
+    // 5. ajuste de cor — por último, sobre a imagem já no tamanho final
+    //    (menos pixels para processar) e só sobre o CONTEÚDO: a moldura e o
+    //    fundo entram depois, nos grafos de moldura, e não passam por aqui.
+    parts.addAll(colorAdjustFilters(settings.adjustments));
+
     return parts.join(',');
   }
+
+  /// Traduz os oito ajustes de cor para filtros do FFmpeg, na mesma ordem em
+  /// que a prévia os aplica (ver `buildAdjustmentColorFilter`):
+  ///
+  ///  * `eq` faz a parte que trata os três canais igual (exposição, realces,
+  ///    sombras, brilho e contraste), já composta num ganho e um
+  ///    deslocamento por [ColorAdjustments.toneTransfer] — `eq` calcula
+  ///    `(entrada - 0.5) * contrast + 0.5 + brightness`, então é só resolver
+  ///    os dois parâmetros a partir do par;
+  ///  * `colorchannelmixer` faz a parte que mistura canais (saturação, matiz
+  ///    e temperatura), com a matriz de [ColorAdjustments.channelMixMatrix].
+  ///
+  /// Sair dos mesmos números das matrizes é o que mantém o GIF exportado
+  /// igual ao que a prévia mostrou.
+  @visibleForTesting
+  List<String> colorAdjustFilters(ColorAdjustments adjustments) {
+    if (!adjustments.hasAdjustments) return const [];
+    final filters = <String>[];
+
+    final (gain, shift) = adjustments.toneTransfer;
+    // O deslocamento vem na escala 0–255; o `eq` trabalha normalizado.
+    final normalizedShift = shift / 255;
+    if (gain != 1 || normalizedShift != 0) {
+      final brightness = normalizedShift - 0.5 + 0.5 * gain;
+      filters.add(
+        'eq=contrast=${_filterNumber(gain)}:'
+        'brightness=${_filterNumber(brightness)}',
+      );
+    }
+
+    final m = adjustments.channelMixMatrix;
+    if (!_isIdentityMix(m)) {
+      filters.add(
+        'colorchannelmixer='
+        'rr=${_filterNumber(m[0])}:rg=${_filterNumber(m[1])}:'
+        'rb=${_filterNumber(m[2])}:'
+        'gr=${_filterNumber(m[5])}:gg=${_filterNumber(m[6])}:'
+        'gb=${_filterNumber(m[7])}:'
+        'br=${_filterNumber(m[10])}:bg=${_filterNumber(m[11])}:'
+        'bb=${_filterNumber(m[12])}',
+      );
+    }
+
+    return filters;
+  }
+
+  bool _isIdentityMix(List<double> m) {
+    const identity = [0, 1, 2, 5, 6, 7, 10, 11, 12];
+    const expected = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    for (var i = 0; i < identity.length; i++) {
+      if ((m[identity[i]] - expected[i]).abs() > 0.0001) return false;
+    }
+    return true;
+  }
+
+  /// Número no formato que o FFmpeg entende: ponto decimal, sem notação
+  /// científica (que a linha de comando não aceita) e sem casas demais.
+  String _filterNumber(double value) => value.toStringAsFixed(4);
 
   /// Grafo de filtro completo pronto para `-lavfi`: [input] (ex.: `0:v`) até
   /// [output], já com a moldura aplicada — conteúdo ([buildVideoFilter])
@@ -1229,7 +1293,15 @@ class FfmpegService {
     required bool webp,
     int colors = 256,
     bool loop = true,
+    int? frameCount,
+    void Function(double progress)? onProgress,
   }) async {
+    // Com o número de quadros dá para transformar o tempo já codificado
+    // (relatado pelo FFmpeg em ms de mídia) em fração — sem isso a barra
+    // ficaria parada durante toda a codificação.
+    final totalMs = (frameCount ?? 0) > 0 && fps > 0
+        ? frameCount! * 1000 / fps
+        : 0.0;
     await _run(
       collageSequenceArgs(
         framePattern: framePattern,
@@ -1240,6 +1312,9 @@ class FfmpegService {
         loop: loop,
       ),
       step: 'exportação da montagem',
+      onTimeMs: onProgress == null || totalMs <= 0
+          ? null
+          : (ms) => onProgress((ms / totalMs).clamp(0.0, 1.0)),
     );
 
     final output = File(outputPath);
@@ -1266,10 +1341,13 @@ class FfmpegService {
         ...input,
         '-c:v',
         'libwebp',
+        // 92/6 no lugar de 85/4: a montagem costuma ter arte com linhas
+        // finas e texto, onde 85 deixava halo visível em volta das bordas.
+        // O nível de compressão mais alto custa tempo de CPU, não tamanho.
         '-quality',
-        '85',
+        '92',
         '-compression_level',
-        '4',
+        '6',
         '-pix_fmt',
         'yuva420p',
         '-loop',
@@ -1285,7 +1363,11 @@ class FfmpegService {
       '-filter_complex',
       '[0:v]split[pal_src][gif_src];'
           '[pal_src]palettegen=max_colors=$colors:reserve_transparent=1[pal];'
-          '[gif_src][pal]paletteuse=dither=bayer:bayer_scale=3:'
+          // sierra2_4a no lugar de bayer: o padrão quadriculado do bayer
+          // aparecia em áreas lisas (parede, pele) da montagem. A difusão de
+          // erro dá degradê mais limpo; em troca pode "fervilhar" um pouco
+          // entre quadros, o que quase não se nota numa montagem de fotos.
+          '[gif_src][pal]paletteuse=dither=sierra2_4a:'
           'alpha_threshold=128[out]',
       '-map',
       '[out]',

@@ -8,6 +8,7 @@ import '../models/conversion_settings.dart';
 import '../models/photo_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../theme_controller.dart';
+import 'widgets/gif_weight_help_sheet.dart';
 import 'collage_page.dart';
 import 'editor_page.dart';
 import 'photo_frame_page.dart';
@@ -127,7 +128,7 @@ class _HomePageState extends State<HomePage> {
   /// (`FilePicker.pickFiles` com seleção múltipla, ao contrário de
   /// `_pickPhoto`'s `pickFile` singular) e navega para [CollagePage], onde o
   /// usuário monta a colagem. Exige pelo menos duas fotos — uma única foto já
-  /// tem sua própria tela dedicada em "Colocar moldura em uma foto".
+  /// tem sua própria tela dedicada em "Colocar moldura".
   Future<void> _pickPhotosForCollage() async {
     setState(() {
       _loading = true;
@@ -200,6 +201,11 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         actions: [
+          IconButton(
+            tooltip: 'Como deixar o GIF mais leve',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showGifWeightHelpSheet(context),
+          ),
           ValueListenableBuilder<ThemeMode>(
             valueListenable: themeModeNotifier,
             builder: (context, mode, _) {
@@ -291,57 +297,19 @@ class _HomePageState extends State<HomePage> {
                 OutlinedButton.icon(
                   onPressed: _loading ? null : _pickPhoto,
                   icon: const Icon(Icons.photo_filter_outlined),
-                  label: const Text('Colocar moldura em uma foto'),
+                  label: const Text('Colocar moldura'),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _loading ? null : _pickPhotosForCollage,
                   icon: const Icon(Icons.dashboard_customize_outlined),
-                  label: const Text('Montagem de fotos'),
+                  label: const Text('Montagem'),
                 ),
                 const SizedBox(height: 28),
-                const _SupportedFormatsCard(),
-                const SizedBox(height: 16),
                 const _StepsCard(),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Lista os formatos de vídeo aceitos pelo seletor de arquivos.
-class _SupportedFormatsCard extends StatelessWidget {
-  const _SupportedFormatsCard();
-
-  static const _formats = ['MP4', 'MOV', 'AVI', 'MKV', 'WEBM', '3GP'];
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        child: Column(
-          children: [
-            Text(
-              'Formatos suportados',
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _formats.join('  ·  '),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
         ),
       ),
     );

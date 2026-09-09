@@ -59,7 +59,11 @@ Future<Uint8List> _composeProcedural(
       image,
       srcRect,
       geometry.contentRect,
-      Paint()..filterQuality = FilterQuality.high,
+      Paint()
+        ..filterQuality = FilterQuality.high
+        // Só a foto leva o ajuste de cor: a moldura e o fundo são pintados
+        // fora deste `Paint`, então continuam com a cor escolhida.
+        ..colorFilter = frame.adjustments.filter,
     );
     canvas.restore();
   });
@@ -104,7 +108,11 @@ Future<Uint8List> _composeImageFramed(
     image.width.toDouble(),
     image.height.toDouble(),
   );
-  final paint = Paint()..filterQuality = FilterQuality.high;
+  final paint = Paint()
+    ..filterQuality = FilterQuality.high
+    // Vale para os três modos de encaixe abaixo; a arte da moldura é
+    // desenhada com outro `Paint`, sem o filtro.
+    ..colorFilter = frame.adjustments.filter;
   final fit = resolveContentFit(
     frame.contentFit,
     photo.aspectRatio,

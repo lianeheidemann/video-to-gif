@@ -54,6 +54,7 @@ flutter:
     - assets/icon/icon-v4.png
     - assets/frame/
     - assets/sticker/
+    - assets/sticker/github/
   fonts:
     - family: Poppins
       fonts:

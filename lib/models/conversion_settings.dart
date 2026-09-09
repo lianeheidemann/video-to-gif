@@ -1,3 +1,4 @@
+import 'color_adjustments.dart';
 import 'crop_rect.dart';
 import 'frame_settings.dart';
 import 'video_info.dart';
@@ -116,6 +117,7 @@ class ConversionSettings {
     this.frame = const FrameSettings(),
     this.format = OutputFormat.gif,
     this.webpQuality = defaultWebpQuality,
+    this.adjustments = ColorAdjustments.neutral,
   });
 
   final double startSeconds;
@@ -131,6 +133,12 @@ class ConversionSettings {
   final FrameSettings frame;
   final OutputFormat format;
   final int webpQuality;
+
+  /// Ajustes de cor aplicados ao conteúdo do vídeo (não à moldura nem ao
+  /// fundo) — o FFmpeg os reproduz na cadeia de filtros, e a prévia usa o
+  /// mesmo `ColorFilter` das outras telas. Ver
+  /// `FfmpegService.buildVideoFilter`.
+  final ColorAdjustments adjustments;
 
   /// Presets exibidos no editor redesenhado.
   static const fpsOptions = <int>[5, 8, 10, 12, 15, 20, 24];
@@ -344,6 +352,7 @@ class ConversionSettings {
     FrameSettings? frame,
     OutputFormat? format,
     int? webpQuality,
+    ColorAdjustments? adjustments,
   }) {
     return ConversionSettings(
       startSeconds: startSeconds ?? this.startSeconds,
@@ -359,6 +368,7 @@ class ConversionSettings {
       frame: frame ?? this.frame,
       format: format ?? this.format,
       webpQuality: webpQuality ?? this.webpQuality,
+      adjustments: adjustments ?? this.adjustments,
     );
   }
 

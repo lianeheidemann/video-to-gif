@@ -67,7 +67,11 @@ class CollageTextItem {
 
   final int zIndex;
 
-  static const defaultFontSizeRatio = 0.07;
+  /// Tamanho inicial do texto novo: 35% do menor lado do canvas — cinco
+  /// vezes o 0.07 de antes, que saía pequeno demais para ler na prévia e
+  /// obrigava a esticar a alça logo depois de escrever. Continua sendo só o
+  /// ponto de partida: a pinça e a alça mexem em [scale] a partir daí.
+  static const defaultFontSizeRatio = 0.35;
   static const minScale = 0.3;
   static const maxScale = 4.0;
   static const defaultBackgroundCornerRatio = 0.3;

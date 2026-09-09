@@ -133,14 +133,6 @@ class _ResultPageState extends State<ResultPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    verdict.advice,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
                   const SizedBox(height: 10),
                   Text.rich(
                     TextSpan(

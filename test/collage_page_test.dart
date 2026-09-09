@@ -11,7 +11,10 @@ import 'package:video_to_gif/models/collage_color_adjustment.dart';
 import 'package:video_to_gif/models/photo_info.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
+import 'package:video_to_gif/ui/widgets/collage_overlay_view.dart';
 import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
+import 'package:video_to_gif/ui/widgets/folder_tab.dart';
+import 'package:video_to_gif/ui/widgets/target_sub_panel.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
   final recorder = ui.PictureRecorder();
@@ -72,10 +75,9 @@ void main() {
       );
       await tester.tap(find.text('Texto'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Adicionar texto'));
-      await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'oi');
-      await tester.tap(find.text('OK'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Adicionar texto'));
       await tester.pumpAndSettle();
 
       // Com o texto recém-criado selecionado, a barra de ações da sobreposição
@@ -179,7 +181,7 @@ void main() {
 
       // As 4 pastas existem, e "Importar" só aparece dentro de "Importados".
       for (final label in ['Reações', 'Símbolos', 'Efeitos', 'Importados']) {
-        expect(find.widgetWithText(ChoiceChip, label), findsOneWidget);
+        expect(find.widgetWithText(FolderTab, label), findsOneWidget);
       }
       expect(find.text('Importar'), findsNothing);
 
@@ -188,15 +190,15 @@ void main() {
       // de SVGs.
       expect(find.byType(SvgPicture), findsNWidgets(2));
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Símbolos'));
+      await tester.tap(find.widgetWithText(FolderTab, 'Símbolos'));
       await tester.pumpAndSettle();
       expect(find.byType(SvgPicture), findsNWidgets(2));
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Efeitos'));
+      await tester.tap(find.widgetWithText(FolderTab, 'Efeitos'));
       await tester.pumpAndSettle();
       expect(find.byType(SvgPicture), findsNWidgets(1));
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Importados'));
+      await tester.tap(find.widgetWithText(FolderTab, 'Importados'));
       await tester.pumpAndSettle();
       expect(find.text('Importar'), findsOneWidget);
       // Sem nada importado ainda, só o tile "Importar" aparece — nenhum SVG
@@ -223,9 +225,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Transparente'), findsOneWidget);
-    expect(find.text('Cor'), findsOneWidget);
-    expect(find.text('Imagem'), findsOneWidget);
+    // Pelo chip, e não pelo texto solto: "Cor" também é o rótulo de uma aba
+    // do rodapé, e o que este teste checa são os três botões do painel.
+    expect(find.widgetWithText(ChoiceChip, 'Transparente'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Cor'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Imagem'), findsOneWidget);
   });
 
   testWidgets('recorte aprovado entra em "encaixar", na horizontal', (
@@ -368,10 +372,9 @@ void main() {
     await tester.scrollUntilVisible(find.text('Texto'), 200, scrollable: page);
     await tester.tap(find.text('Texto'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Adicionar texto'));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'oi');
-    await tester.tap(find.text('OK'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Adicionar texto'));
     await tester.pumpAndSettle();
 
     // Com o texto recém-criado selecionado, o painel mostra os controles de
@@ -380,6 +383,10 @@ void main() {
     expect(find.text('Fundo do texto'), findsOneWidget);
     expect(find.text('Arredondamento do fundo'), findsNothing);
 
+    // O painel tem teto de altura e rola por dentro: o interruptor pode
+    // estar abaixo do corte.
+    await tester.ensureVisible(find.byType(Switch));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
 
@@ -446,7 +453,7 @@ void main() {
   });
 
   testWidgets(
-    'aba "Margem" ajusta margem externa e entre fotos de forma independente',
+    'aba "Margem" mostra as três de uma vez e ajusta cada uma sozinha',
     (tester) async {
       tester.view.physicalSize = const Size(900, 2400);
       tester.view.devicePixelRatio = 1;
@@ -458,61 +465,308 @@ void main() {
       await tester.tap(find.text('Margem').last);
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(ChoiceChip, 'Tudo'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Externa'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Entre fotos'), findsOneWidget);
+      // Uma linha por margem, todas na tela ao mesmo tempo: "Tudo",
+      // "Externa" e "Entre fotos", nessa ordem.
+      final sliders = find.byType(Slider);
+      expect(sliders, findsNWidgets(3));
+      for (final label in ['Tudo', 'Externa', 'Entre fotos']) {
+        expect(find.byTooltip(label), findsOneWidget);
+      }
 
-      // As duas margens começam iguais, então "Externa" e "Entre fotos"
-      // mostram o mesmo valor inicial que "Tudo".
-      final initial = tester.widget<Slider>(find.byType(Slider)).value;
+      double sliderValue(int index) =>
+          tester.widget<Slider>(sliders.at(index)).value;
 
-      // Mexe só na margem externa.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
-      await tester.pumpAndSettle();
-      await tester.drag(find.byType(Slider), const Offset(-120, 0));
-      await tester.pumpAndSettle();
-      final outerAfter = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(outerAfter, isNot(closeTo(initial, 0.001)));
+      final initialOuter = sliderValue(1);
 
-      // "Entre fotos" continua no valor original — não foi mexida.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Entre fotos'));
+      // Mexer na linha "Entre fotos" não move a externa.
+      await tester.drag(sliders.at(2), const Offset(120, 0));
       await tester.pumpAndSettle();
-      final innerStill = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(innerStill, closeTo(initial, 0.001));
-
-      // Mexe só na margem entre fotos agora.
-      await tester.drag(find.byType(Slider), const Offset(120, 0));
-      await tester.pumpAndSettle();
-      final innerAfter = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(innerAfter, isNot(closeTo(initial, 0.001)));
-
-      // "Externa" continua no valor que ficou antes, intacta pela mexida
-      // acima.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
-      await tester.pumpAndSettle();
-      final outerStill = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(outerStill, closeTo(outerAfter, 0.001));
+      expect(sliderValue(2), isNot(closeTo(initialOuter, 0.001)));
+      expect(sliderValue(1), closeTo(initialOuter, 0.001));
 
       // "Tudo" iguala as duas ao valor arrastado.
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Tudo'));
+      await tester.drag(sliders.at(0), const Offset(60, 0));
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(Slider), const Offset(60, 0));
-      await tester.pumpAndSettle();
-      final bothValue = tester.widget<Slider>(find.byType(Slider)).value;
+      expect(sliderValue(1), closeTo(sliderValue(0), 0.001));
+      expect(sliderValue(2), closeTo(sliderValue(0), 0.001));
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Externa'));
+      // O botão da direita zera tudo de uma vez.
+      await tester.tap(find.byTooltip('Zerar margens'));
       await tester.pumpAndSettle();
+      expect(sliderValue(0), 0);
+      expect(sliderValue(1), 0);
+      expect(sliderValue(2), 0);
+    },
+  );
+
+  testWidgets('a seleção de um texto só aparece com a aba "Texto" aberta', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    // Cria um texto pela aba "Texto" — ele já nasce selecionado.
+    await tester.tap(find.text('Texto'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'oi');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Adicionar texto'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Duplicar'), findsOneWidget);
+
+    // Com outra aba aberta, o texto continua na prévia mas sem nenhum
+    // controle de seleção: nem a barra de ações, nem a moldura roxa da
+    // CollageOverlayView (que fora da aba dona não responde a gesto).
+    await tester.tap(find.text('Fundo'));
+    await tester.pumpAndSettle();
+    expect(find.text('oi'), findsOneWidget);
+    expect(find.byTooltip('Duplicar'), findsNothing);
+    expect(
+      tester
+          .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
+          .every((overlay) => !overlay.selected),
+      isTrue,
+    );
+
+    // Voltando para "Texto", a seleção guardada reaparece no mesmo texto —
+    // trocar de aba esconde, não solta a seleção.
+    await tester.tap(find.text('Texto'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Duplicar'), findsOneWidget);
+    expect(
+      tester
+          .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
+          .where((overlay) => overlay.selected),
+      hasLength(1),
+    );
+  });
+
+  testWidgets('pasta criada pelo usuário aparece na barra e pode ser apagada', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    // A barra de pastas rola: "Nova pasta" fica no fim dela.
+    final folderBar = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FolderTab, 'Nova pasta'),
+      200,
+      scrollable: folderBar,
+    );
+    await tester.ensureVisible(find.widgetWithText(FolderTab, 'Nova pasta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FolderTab, 'Nova pasta'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Xícaras');
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(FolderTab, 'Xícaras'), findsOneWidget);
+    // Pasta criada começa vazia: só o tile de importar.
+    expect(find.text('Importar'), findsOneWidget);
+
+    // Segurar abre o menu com renomear/apagar — só as criadas têm esse gesto.
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FolderTab, 'Xícaras'),
+      200,
+      scrollable: folderBar,
+    );
+    await tester.longPress(find.widgetWithText(FolderTab, 'Xícaras'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apagar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Apagar'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(FolderTab, 'Xícaras'), findsNothing);
+    // Sem a pasta aberta, a barra cai em "Importados" em vez de ficar sem
+    // nenhuma pasta marcada.
+    final imported = tester.widget<FolderTab>(
+      find.widgetWithText(FolderTab, 'Importados'),
+    );
+    expect(imported.selected, isTrue);
+  });
+
+  testWidgets(
+    'modos de fundo ficam dentro da caixa do alvo, com os dois alvos',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Fundo'));
+      await tester.pumpAndSettle();
+
+      // "Transparente/Cor/Imagem" configuram o alvo escolhido em cima, então
+      // precisam estar dentro da caixa dele — é isso que deixa claro que são
+      // sub-opções, e não opções de mesmo nível.
+      for (final label in ['Transparente', 'Cor', 'Imagem']) {
+        expect(
+          find.descendant(
+            of: find.byType(TargetSubPanel),
+            matching: find.widgetWithText(ChoiceChip, label),
+          ),
+          findsOneWidget,
+        );
+      }
+      // "Montagem" começa como o alvo escolhido.
+      final panel = tester.widget<TargetSubPanel>(find.byType(TargetSubPanel));
+      expect(panel.selectedIndex, 0);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Fotos'));
+      await tester.pumpAndSettle();
+
       expect(
-        tester.widget<Slider>(find.byType(Slider)).value,
-        closeTo(bothValue, 0.001),
+        tester
+            .widget<TargetSubPanel>(find.byType(TargetSubPanel))
+            .selectedIndex,
+        1,
       );
-
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Entre fotos'));
-      await tester.pumpAndSettle();
+      // Trocar de alvo mantém os três modos na caixa — muda o que eles
+      // configuram, não onde moram.
       expect(
-        tester.widget<Slider>(find.byType(Slider)).value,
-        closeTo(bothValue, 0.001),
+        find.descendant(
+          of: find.byType(TargetSubPanel),
+          matching: find.widgetWithText(ChoiceChip, 'Transparente'),
+        ),
+        findsOneWidget,
       );
     },
   );
+  testWidgets('lápis edita o texto no próprio painel, sem abrir diálogo', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Texto'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'oi');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Adicionar texto'));
+    await tester.pumpAndSettle();
+    expect(find.text('oi'), findsOneWidget);
+
+    // O lápis traz a frase para o mesmo campo do painel — nenhuma janela
+    // nova aparece.
+    await tester.tap(find.byTooltip('Editar'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      'oi',
+    );
+
+    await tester.enterText(find.byType(TextField), 'tchau');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Salvar texto'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('tchau'), findsOneWidget);
+    expect(find.text('oi'), findsNothing);
+  });
+
+  testWidgets('recolher o painel mantém o sticker selecionado e manipulável', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(SvgPicture).first);
+    await tester.pumpAndSettle();
+
+    // Com a aba aberta, o sticker está selecionado e responde a gesto.
+    CollageOverlayView overlay() =>
+        tester.widget<CollageOverlayView>(find.byType(CollageOverlayView));
+    expect(overlay().selected, isTrue);
+    expect(overlay().interactive, isTrue);
+    expect(find.widgetWithText(FolderTab, 'Reações'), findsOneWidget);
+
+    // Puxar a alça para baixo encolhe o painel: os controles somem...
+    await tester.drag(find.byType(SvgPicture).last, const Offset(0, 200));
+    await tester.pumpAndSettle();
+    await tester.fling(
+      find.byKey(const ValueKey('collagePanelHandle')),
+      const Offset(0, 60),
+      800,
+    );
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FolderTab, 'Reações'), findsNothing);
+
+    // ...mas a aba continua sendo a aba aberta, então o sticker segue
+    // selecionado e movimentável — é o ponto do gesto.
+    expect(overlay().selected, isTrue);
+    expect(overlay().interactive, isTrue);
+
+    // Puxar de volta para cima traz os controles.
+    await tester.fling(
+      find.byKey(const ValueKey('collagePanelHandle')),
+      const Offset(0, -60),
+      800,
+    );
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FolderTab, 'Reações'), findsOneWidget);
+  });
+
+  testWidgets('pastas "GitHub" e "Black" existem e recebem importados', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    for (final label in ['GitHub', 'Black']) {
+      final folder = find.widgetWithText(FolderTab, label);
+      expect(folder, findsOneWidget);
+      await tester.scrollUntilVisible(
+        folder,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.ensureVisible(folder);
+      await tester.pumpAndSettle();
+      await tester.tap(folder);
+      await tester.pumpAndSettle();
+      if (label == 'GitHub') {
+        // Já vem com a arte embutida na fileira (o tile "Importar" fica no
+        // fim dela, fora da tela — a lista é preguiçosa).
+        expect(find.byType(SvgPicture), findsWidgets);
+      } else {
+        // Ainda sem arte: só o tile de importar.
+        expect(find.text('Importar'), findsOneWidget);
+        expect(find.byType(SvgPicture), findsNothing);
+      }
+    }
+  });
 }

@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:video_player/video_player.dart';
 
+import '../models/color_adjustments.dart';
 import '../models/conversion_settings.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
@@ -14,8 +15,8 @@ import '../models/video_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
-import '../theme_controller.dart';
 import 'converting_page.dart';
+import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/crop_overlay.dart';
 import 'widgets/cropped_view.dart';
@@ -267,6 +268,13 @@ class _EditorPageState extends State<EditorPage> {
         EditorSection.fromLabeled(_webpQualitySection(), label: 'Qualidade')
       else
         EditorSection.fromLabeled(_colorSection(), label: 'Cores'),
+      EditorSection(
+        icon: Icons.tune_rounded,
+        title: 'Ajustar cor',
+        label: 'Cor',
+        value: _settings.adjustments.hasAdjustments ? 'Ajustada' : 'Original',
+        builder: (_) => _colorAdjustSection(),
+      ),
       EditorSection.fromLabeled(_frameStyleSection(), label: 'Moldura'),
       EditorSection.fromLabeled(_imageFrameSection(), label: 'Imagem'),
       EditorSection(
@@ -327,34 +335,6 @@ class _EditorPageState extends State<EditorPage> {
             tooltip: 'Converter em ${_settings.format.shortLabel}',
             onPressed: _openingConversion ? null : _convert,
             icon: const Icon(Icons.download_rounded),
-          ),
-          // Tema e ajuda saíram para o menu: com desfazer/refazer/converter
-          // fixos, quatro ícones soltos não cabem numa tela estreita.
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'tema') {
-                toggleThemeMode();
-              } else {
-                _showHelp();
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'tema',
-                child: ValueListenableBuilder<ThemeMode>(
-                  valueListenable: themeModeNotifier,
-                  builder: (context, mode, _) => Text(
-                    mode == ThemeMode.dark
-                        ? 'Ativar modo claro'
-                        : 'Ativar modo escuro',
-                  ),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'ajuda',
-                child: Text('Como deixar o GIF mais leve'),
-              ),
-            ],
           ),
         ],
       ),
@@ -794,6 +774,29 @@ class _EditorPageState extends State<EditorPage> {
   /// Seção "Fundo transparente": vale para as duas famílias de moldura.
   /// Fica sempre visível para o estado do GIF não depender de qual caixa
   /// está aberta.
+  /// Ajuste de cor do vídeo: mesmo painel das outras duas telas, gravando em
+  /// [ConversionSettings.adjustments]. Vale só para o conteúdo — a moldura e
+  /// o fundo entram depois na cadeia de filtros e não passam pelo ajuste.
+  Widget _colorAdjustSection() {
+    final adjustments = _settings.adjustments;
+    return ColorAdjustPanel(
+      hasAdjustments: adjustments.hasAdjustments,
+      valueOf: (adjustment) => adjustment.valueIn(adjustments),
+      onChangeStart: _pushUndoCheckpoint,
+      onChanged: (adjustment, value) => _update(
+        _settings.copyWith(adjustments: adjustment.applyIn(adjustments, value)),
+        pushUndo: false,
+      ),
+      onReset: () {
+        _pushUndoCheckpoint();
+        _update(
+          _settings.copyWith(adjustments: ColorAdjustments.neutral),
+          pushUndo: false,
+        );
+      },
+    );
+  }
+
   Widget _backgroundSection() {
     final frame = _settings.frame;
     return Padding(
@@ -1673,11 +1676,19 @@ class _EditorPageState extends State<EditorPage> {
       return _preview();
     }
 
+    final adjustments = _settings.adjustments;
+    Widget video = VideoPlayer(player);
+    if (adjustments.hasAdjustments) {
+      // O mesmo filtro que o FFmpeg reproduz na exportação (ver
+      // `FfmpegService.colorAdjustFilters`), para a prévia mostrar o
+      // resultado antes de converter.
+      video = ColorFiltered(colorFilter: adjustments.filter, child: video);
+    }
     final content = CroppedView(
       sourceWidth: _video.width,
       sourceHeight: _video.height,
       crop: _settings.crop,
-      child: VideoPlayer(player),
+      child: video,
     );
 
     return Container(
@@ -2636,16 +2647,6 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  /// Abre a folha inferior explicando o que deixa o GIF mais pesado.
-  void _showHelp() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => const _HelpSheet(),
-    );
-  }
-
   /// Formata segundos como "Ns" ou "Mm Ns" quando passa de um minuto.
   static String _formatSeconds(double seconds) {
     final minutes = seconds ~/ 60;
@@ -2674,76 +2675,5 @@ class _EditorPageState extends State<EditorPage> {
     int gcd(int a, int b) => b == 0 ? a : gcd(b, a % b);
     final g = gcd(width, height);
     return '${width ~/ g}:${height ~/ g}';
-  }
-}
-
-/// Folha inferior explicativa: lista os fatores que mais pesam no tamanho
-/// do GIF, aberta pelo botão de ajuda na barra superior do editor.
-class _HelpSheet extends StatelessWidget {
-  const _HelpSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    Widget item(String title, String body) => Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(body, style: theme.textTheme.bodyMedium),
-        ],
-      ),
-    );
-
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'O que deixa um GIF pesado',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            item(
-              '1. Duração — efeito direto',
-              'Cada segundo adiciona novos quadros. Cortar um trecho é uma das formas mais eficientes de reduzir o tamanho.',
-            ),
-            item(
-              '2. Resolução — efeito muito forte',
-              'Quanto maior a área de cada quadro, maior tende a ser o GIF. 480 px costuma funcionar bem para compartilhamento.',
-            ),
-            item(
-              '3. FPS — fluidez versus tamanho',
-              'Mais quadros deixam o movimento mais suave, mas aumentam o arquivo. 12 FPS é um bom ponto de partida.',
-            ),
-            item(
-              '4. Janela de recorte',
-              'Segure as bolinhas dos cantos da moldura na própria prévia para redimensionar. Formatos fixos preservam a proporção; Personalizado libera largura e altura.',
-            ),
-            item(
-              '5. Cores e suavização',
-              'Mais cores e dither preservam gradientes e detalhes, mas podem reduzir a eficiência da compressão.',
-            ),
-            item(
-              'Por que medir novamente?',
-              'A estimativa inicial é aproximada. Ao medir, o app usa o FFmpeg em uma pequena amostra do próprio vídeo para calibrar o cálculo.',
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

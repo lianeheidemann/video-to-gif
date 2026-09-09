@@ -315,6 +315,10 @@ void main() {
     final nativeResolution = find.byKey(
       const ValueKey('frameResolutionSegment_nativeMax'),
     );
+    // O painel tem teto de altura e rola por dentro: o seletor pode estar
+    // abaixo do corte.
+    await tester.ensureVisible(nativeResolution);
+    await tester.pump();
     await tester.tap(nativeResolution);
     await tester.pump(const Duration(milliseconds: 300));
 
