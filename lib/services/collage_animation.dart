@@ -147,6 +147,14 @@ class CollageFrameSequence {
   }
 }
 
+/// Lançada por [renderCollageFrames] quando quem chamou pede o cancelamento
+/// pelo `isCancelled` — não é erro de verdade, e a tela trata mostrando
+/// "exportação cancelada" em vez de uma mensagem de falha.
+class CollageRenderCancelled implements Exception {
+  @override
+  String toString() => 'CollageRenderCancelled';
+}
+
 /// Limite de segurança para não estourar a memória/armazenamento com uma
 /// montagem de várias fotos animadas longas.
 const _maxOutputFrames = 300;
@@ -163,6 +171,7 @@ Future<CollageFrameSequence> renderCollageFrames({
   required CollageDurationRule rule,
   required Directory workDir,
   void Function(double progress)? onProgress,
+  bool Function()? isCancelled,
 }) async {
   final animated = <String, _AnimatedPhoto>{};
   final stills = <String, ui.Image>{};
@@ -198,6 +207,9 @@ Future<CollageFrameSequence> renderCollageFrames({
 
     final pattern = '${workDir.path}/quadro_%05d.png';
     for (var index = 0; index < frameCount; index++) {
+      // Entre um quadro e outro: é o ponto em que dá para parar sem deixar
+      // um PNG pela metade na pasta de trabalho.
+      if (isCancelled?.call() ?? false) throw CollageRenderCancelled();
       final t = Duration(milliseconds: (index * 1000 / fps).round());
       final cellImages = [
         for (final cell in settings.cells)

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -31,6 +32,7 @@ import 'widgets/collage_overlay_view.dart';
 import 'widgets/collage_painter.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
+import 'widgets/export_progress_dialog.dart';
 import 'widgets/folder_tab.dart';
 import 'widgets/target_sub_panel.dart';
 
@@ -176,6 +178,14 @@ class _CollagePageState extends State<CollagePage> {
   final _textController = TextEditingController();
   final _textFocus = FocusNode();
 
+  /// Progresso da exportação animada, ouvido pelo pop-up
+  /// [ExportProgressDialog] — que vive numa rota própria e por isso não é
+  /// reconstruído pelo `setState` desta tela.
+  final _exportProgress = ValueNotifier(const ExportProgress());
+
+  /// `true` entre pedir o cancelamento e a exportação de fato parar.
+  bool _exportCancelled = false;
+
   /// Id da caixa sendo editada pelo campo; `null` = o campo está criando uma
   /// caixa nova.
   String? _editingTextId;
@@ -184,6 +194,7 @@ class _CollagePageState extends State<CollagePage> {
   void dispose() {
     _textController.dispose();
     _textFocus.dispose();
+    _exportProgress.dispose();
     super.dispose();
   }
 
@@ -3177,19 +3188,94 @@ class _CollagePageState extends State<CollagePage> {
         settings: _settings,
         // A animação multiplica o custo por quadro; um limite mais baixo que
         // o do PNG mantém a exportação viável no celular.
-        outputWidth: math.min(_exportWidth(), 1080),
+        outputWidth: _animatedExportWidth(),
         rule: _durationRule,
         workDir: workDir,
+        // Desenhar os quadros é a parte longa: fica com 85% da barra, e a
+        // codificação com os 15% finais.
+        onProgress: (value) => _reportExportProgress(value * 0.85),
+        isCancelled: () => _exportCancelled,
       );
       return await _ffmpeg.encodeCollageSequence(
         framePattern: sequence.pattern,
         fps: sequence.fps,
         outputPath: '${temp.path}/montagem_$stamp.${format.extension}',
         webp: format == CollageExportFormat.webp,
+        frameCount: sequence.frameCount,
+        onProgress: (value) => _reportExportProgress(0.85 + value * 0.15),
       );
     } finally {
       if (await workDir.exists()) await workDir.delete(recursive: true);
     }
+  }
+
+  /// Largura da exportação animada — o PNG usa [_exportWidth] inteiro.
+  int _animatedExportWidth() => math.min(_exportWidth(), 1080);
+
+  /// Tamanho final em pixels, do mesmo jeito que o compositor calcula: a
+  /// altura sai da proporção da montagem.
+  (int width, int height) _exportPixelSize(CollageExportFormat format) {
+    final width = format.isAnimated ? _animatedExportWidth() : _exportWidth();
+    final height = (width / _settings.aspectRatio).round().clamp(2, 1 << 20);
+    return (width, height);
+  }
+
+  void _reportExportProgress(double value) {
+    // O notifier morre junto com a tela; sem esta guarda, um quadro que
+    // termina depois de sair da montagem escreveria num objeto descartado.
+    if (!mounted) return;
+    _exportProgress.value = ExportProgress(
+      value: value.clamp(0.0, 1.0),
+      cancelling: _exportProgress.value.cancelling,
+    );
+  }
+
+  /// Abre o pop-up de progresso e roda a exportação. Devolve o arquivo, ou
+  /// `null` quando o usuário cancelou — o pop-up sai da tela em qualquer um
+  /// dos casos, inclusive em erro, para nunca sobrar um "exportando" preso.
+  Future<File?> _exportWithProgress(CollageExportFormat format) async {
+    // O PNG sai de uma composição só, rápida demais para valer um pop-up que
+    // só piscaria na tela.
+    if (!format.isAnimated) return _buildExportFile(format);
+
+    _exportCancelled = false;
+    _exportProgress.value = const ExportProgress();
+    final (width, height) = _exportPixelSize(format);
+    final navigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ExportProgressDialog(
+          progress: _exportProgress,
+          formatLabel: format.label,
+          width: width,
+          height: height,
+          onCancel: _cancelExport,
+        ),
+      ),
+    );
+    try {
+      return await _buildExportFile(format);
+    } on CollageRenderCancelled {
+      return null;
+    } on FfmpegException {
+      // Cancelar durante a codificação chega aqui como falha do FFmpeg —
+      // não é erro para mostrar ao usuário.
+      if (_exportCancelled) return null;
+      rethrow;
+    } finally {
+      navigator.pop();
+    }
+  }
+
+  void _cancelExport() {
+    _exportCancelled = true;
+    _exportProgress.value = ExportProgress(
+      value: _exportProgress.value.value,
+      cancelling: true,
+    );
+    unawaited(_ffmpeg.cancel());
   }
 
   Future<void> _save() async {
@@ -3197,7 +3283,11 @@ class _CollagePageState extends State<CollagePage> {
     if (format == null || !mounted) return;
     setState(() => _saving = true);
     try {
-      final file = await _buildExportFile(format);
+      final file = await _exportWithProgress(format);
+      if (file == null) {
+        if (mounted) _message('Exportação cancelada.');
+        return;
+      }
       await _output.saveToGallery(file);
       if (!mounted) return;
       _message('Montagem salva na galeria.');
@@ -3220,7 +3310,11 @@ class _CollagePageState extends State<CollagePage> {
     if (format == null || !mounted) return;
     setState(() => _sharing = true);
     try {
-      final file = await _buildExportFile(format);
+      final file = await _exportWithProgress(format);
+      if (file == null) {
+        if (mounted) _message('Exportação cancelada.');
+        return;
+      }
       await _output.share(
         file,
         mimeType: format.mimeType,

@@ -1229,7 +1229,15 @@ class FfmpegService {
     required bool webp,
     int colors = 256,
     bool loop = true,
+    int? frameCount,
+    void Function(double progress)? onProgress,
   }) async {
+    // Com o número de quadros dá para transformar o tempo já codificado
+    // (relatado pelo FFmpeg em ms de mídia) em fração — sem isso a barra
+    // ficaria parada durante toda a codificação.
+    final totalMs = (frameCount ?? 0) > 0 && fps > 0
+        ? frameCount! * 1000 / fps
+        : 0.0;
     await _run(
       collageSequenceArgs(
         framePattern: framePattern,
@@ -1240,6 +1248,9 @@ class FfmpegService {
         loop: loop,
       ),
       step: 'exportação da montagem',
+      onTimeMs: onProgress == null || totalMs <= 0
+          ? null
+          : (ms) => onProgress((ms / totalMs).clamp(0.0, 1.0)),
     );
 
     final output = File(outputPath);
