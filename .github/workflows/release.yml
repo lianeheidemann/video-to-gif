@@ -150,9 +150,24 @@ jobs:
           body: |
             ## Novidades
 
-            - Agora é possível salvar as conversões como **WebP animado**, além de GIF.
-            - Agora o aplicativo também permite **adicionar molduras em fotos**, além das molduras já disponíveis no fluxo de vídeo/GIF.
-            - Nova tela dedicada para selecionar uma foto, escolher a moldura, ajustar a composição e exportar o resultado como imagem.
+            - O painel de opções do rodapé agora **recolhe**: arraste para baixo
+              para ver a prévia inteira e para cima para voltar. Recolhido, os
+              stickers e os textos continuam podendo ser selecionados e movidos.
+            - **Ajuste de cor** nas três telas — "Editar GIF", "Colocar moldura" e
+              "Montagem". Na montagem ele vale para todas as fotos de uma vez, sem
+              mexer no fundo, nas bordas nem nos outros elementos.
+            - Stickers organizados em **pastas**, com a pasta nova **GitHub** (38
+              desenhos) e a pasta **Black**. Também dá para criar, renomear e
+              apagar pastas suas.
+            - Texto escrito **direto no painel**, sem abrir outra janela, com alça
+              própria para girar e **importação de fontes** `.ttf`/`.otf`.
+            - "Margem" com as três medidas uma embaixo da outra e um botão para
+              zerar tudo.
+            - **Pop-up de progresso** ao exportar a montagem, com porcentagem,
+              formato, tamanho de saída e botão de cancelar.
+            - Montagens exportadas com muito mais nitidez: a largura de saída agora
+              vem do arranjo real das fotos (até 1440 px), e não mais do maior lado
+              de uma foto só.
 
             ## Como instalar
 
