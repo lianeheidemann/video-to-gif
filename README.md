@@ -30,7 +30,7 @@ the same frame library and the same on-device export pipeline:
 | **Frame on a photo** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes and a transparent or colored background. |
 | **Photo collage** | Assembles several photos into one composition — layouts, margins, per-photo borders and backgrounds, stickers, text, crop and color adjustment. If any photo is an animated GIF/WebP, the whole collage can be exported **animated**. |
 
-<img src="assets/image/interface-3.png"/>
+<img src="assets/image/interface-4.png"/>
 
 Choose the format that best fits your destination:
 
