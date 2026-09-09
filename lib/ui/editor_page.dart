@@ -2031,9 +2031,10 @@ class _EditorPageState extends State<EditorPage> {
             selected: visiblePresets.contains(_aspect)
                 ? _aspect
                 : visiblePresets.first,
-            labelBuilder: (preset) => preset.hint.isEmpty
-                ? preset.label
-                : '${preset.label} — ${preset.hint}',
+            // Só a numeração da proporção quando ela existe (o rótulo já
+            // é isso) — o texto por extenso ("Quadrado", "Retrato"...)
+            // deixava os chips mais largos do que precisava.
+            labelBuilder: (preset) => preset.label,
             onSelected: _selectAspectPreset,
           ),
           if (crop != null) ...[
