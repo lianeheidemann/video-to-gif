@@ -16,6 +16,7 @@ import '../models/color_adjustments.dart';
 import '../models/conversion_settings.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
+import '../models/quick_convert_format.dart';
 import '../models/size_estimate.dart';
 import '../models/video_info.dart';
 import '../ui/widgets/frame_painter.dart';
@@ -1247,6 +1248,116 @@ class FfmpegService {
       if (maskPath != null) _deleteQuietly(maskPath);
       if (frameArtPath != null) _deleteQuietly(frameArtPath);
     }
+  }
+
+  /// Converte [video] para [format], sem nenhuma configuração exposta —
+  /// usado pela tela "Converter formato" (`quick_convert_*`), que é um
+  /// recurso à parte de "Editar GIF": só troca de formato, arquivo inteiro,
+  /// sem corte/moldura/qualidade.
+  ///
+  /// GIF/WebP: monta um [ConversionSettings] fixo (arquivo inteiro, largura
+  /// escolhida do mesmo jeito que [ConversionSettings.recommendedFor], sem
+  /// ampliar) e reaproveita [convert] — mesmo pipeline de paleta/WebP já
+  /// usado por "Editar GIF" (com a mesma correção de velocidade do WebP).
+  ///
+  /// MP4/MOV/WebM: linha de comando própria e simples — só limita a largura
+  /// (mesmo teto de [ConversionSettings.recommendedFor], nunca amplia) e
+  /// codifica o áudio quando existir. Sem `-map` explícito, o FFmpeg já
+  /// escolhe sozinho o melhor stream de vídeo e (se houver) de áudio — se a
+  /// fonte não tiver áudio (ex.: veio de um GIF), as flags de áudio
+  /// simplesmente não têm efeito, sem precisar detectar isso antes.
+  Future<File> quickConvert({
+    required VideoInfo video,
+    required QuickConvertFormat format,
+    void Function(double progress)? onProgress,
+  }) async {
+    if (format.isAnimatedImage) {
+      final settings = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: video.durationSeconds,
+        targetWidth: ConversionSettings.recommendedFor(video).targetWidth,
+        format: format == QuickConvertFormat.gif
+            ? OutputFormat.gif
+            : OutputFormat.webp,
+      );
+      final result = await convert(
+        video: video,
+        settings: settings,
+        onProgress: onProgress,
+      );
+      return result.file;
+    }
+
+    _cancelled = false;
+    final dir = await getTemporaryDirectory();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final outputPath =
+        '${dir.path}/${format.extension}_$stamp.${format.extension}';
+    final width = ConversionSettings.recommendedFor(video).targetWidth;
+    final totalMs = video.durationSeconds * 1000;
+
+    try {
+      await _run(
+        quickConvertVideoArgs(
+          video: video,
+          format: format,
+          width: width,
+          outputPath: outputPath,
+        ),
+        onTimeMs: (ms) => onProgress?.call(_ratio(ms, totalMs)),
+        step: 'conversão para ${format.label}',
+      );
+      onProgress?.call(1.0);
+
+      final output = File(outputPath);
+      if (!output.existsSync() || output.lengthSync() == 0) {
+        throw FfmpegException('O arquivo saiu vazio.');
+      }
+      return output;
+    } finally {
+      _activeSessionId = null;
+    }
+  }
+
+  /// Linha de comando de conversão para MP4/MOV/WebM, usada por
+  /// [quickConvert]. Público (sem `_`) só para os testes de unidade.
+  @visibleForTesting
+  List<String> quickConvertVideoArgs({
+    required VideoInfo video,
+    required QuickConvertFormat format,
+    required int width,
+    required String outputPath,
+  }) {
+    final codecArgs = format == QuickConvertFormat.webm
+        ? ['-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-c:a', 'libopus']
+        : [
+            '-c:v',
+            'libx264',
+            '-preset',
+            'veryfast',
+            '-crf',
+            '23',
+            '-pix_fmt',
+            'yuv420p',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '128k',
+            '-movflags',
+            '+faststart',
+          ];
+
+    return [
+      '-y',
+      '-i',
+      video.path,
+      '-vf',
+      'scale=$width:-2:flags=lanczos',
+      ...codecArgs,
+      '-f',
+      format.extension,
+      outputPath,
+    ];
   }
 
   /// Teto abaixo de 100% enquanto a sessão do FFmpeg ainda não terminou de
