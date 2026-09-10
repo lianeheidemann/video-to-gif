@@ -1445,10 +1445,15 @@ class FfmpegService {
         loop: loop,
       ),
       step: 'exportação da montagem',
+      // Mesmo teto de [_ratio] usado por [convert] — sem ele a barra também
+      // parece travar perto do fim no WebP da montagem, pelo mesmo motivo
+      // (a montagem do contêiner WebPAnimEncoderAssemble roda numa chamada
+      // bloqueante só, depois do último quadro já ter sido "reportado").
       onTimeMs: onProgress == null || totalMs <= 0
           ? null
-          : (ms) => onProgress((ms / totalMs).clamp(0.0, 1.0)),
+          : (ms) => onProgress(_ratio(ms, totalMs)),
     );
+    onProgress?.call(1.0);
 
     final output = File(outputPath);
     if (!output.existsSync() || output.lengthSync() == 0) {
@@ -1474,13 +1479,18 @@ class FfmpegService {
         ...input,
         '-c:v',
         'libwebp',
-        // 92/6 no lugar de 85/4: a montagem costuma ter arte com linhas
-        // finas e texto, onde 85 deixava halo visível em volta das bordas.
-        // O nível de compressão mais alto custa tempo de CPU, não tamanho.
+        // 92 no lugar de 85: a montagem costuma ter arte com linhas finas e
+        // texto, onde 85 deixava halo visível em volta das bordas. Quem
+        // resolve isso é só o -quality — o -compression_level (o "method"
+        // do libwebp) não muda qualidade visual nenhuma, só troca tempo de
+        // CPU por tamanho de arquivo (mesmo comentário em
+        // [_webpEncodeArgs]), por isso fica no mesmo 2 do caminho principal
+        // em vez de um 6 que só deixava a montagem final do contêiner WebP
+        // mais lenta sem ganho nenhum.
         '-quality',
         '92',
         '-compression_level',
-        '6',
+        '2',
         '-pix_fmt',
         'yuva420p',
         '-loop',
