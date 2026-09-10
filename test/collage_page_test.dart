@@ -34,6 +34,23 @@ Future<void> _writeSolidPng(String path, int width, int height) async {
   }
 }
 
+/// Repete `pump` até [finder] achar algo, em vez de um `pump`/`pumpAndSettle`
+/// só — nenhum dos dois espera de verdade quando o trabalho pendente é E/S
+/// pura (ler e decodificar arquivo) sem nenhum quadro agendado no meio.
+Future<void> _pumpUntilFound(
+  WidgetTester tester,
+  Finder finder, {
+  Duration timeout = const Duration(seconds: 30),
+}) async {
+  final stopwatch = Stopwatch()..start();
+  while (finder.evaluate().isEmpty && stopwatch.elapsed < timeout) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void main() {
   late Directory tempDir;
   late List<PhotoInfo> photos;
@@ -537,8 +554,12 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Salvar na galeria'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    // A folha só abre depois de ler e decodificar cada foto (E/S de
+    // verdade) — um `pumpAndSettle` sozinho pode devolver antes disso
+    // terminar, porque nada agenda um novo quadro enquanto só se espera por
+    // E/S. Repete `pump` até o título da folha aparecer, em vez de assumir
+    // que um `pump`/`pumpAndSettle` já é tempo suficiente.
+    await _pumpUntilFound(tester, find.text('Exportar'));
 
     expect(find.text('Exportar'), findsOneWidget);
     expect(find.text('Tamanho'), findsOneWidget);

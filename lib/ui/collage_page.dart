@@ -2324,8 +2324,7 @@ class _CollagePageState extends State<CollagePage> {
                     return FolderTab(
                       label: folder.name,
                       selected: folder.id == _stickerFolderId,
-                      onTap: () =>
-                          setState(() => _stickerFolderId = folder.id),
+                      onTap: () => setState(() => _stickerFolderId = folder.id),
                       onLongPress: () => _openFolderMenu(folder),
                     );
                   },
@@ -2684,9 +2683,7 @@ class _CollagePageState extends State<CollagePage> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.4,
-        ),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(10),
         border: Border(
           left: BorderSide(color: theme.colorScheme.primary, width: 3),

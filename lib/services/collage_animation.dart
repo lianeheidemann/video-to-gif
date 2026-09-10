@@ -76,7 +76,7 @@ Future<CollageAnimationInfo> inspectCollageAnimation(
   final results = await Future.wait(
     _photoPaths(settings).map(_animationDuration),
   );
-  final durations = [for (final d in results) if (d != null) d];
+  final durations = [for (final d in results) ?d];
   if (durations.isEmpty) {
     return const CollageAnimationInfo(
       animatedCount: 0,
@@ -151,7 +151,7 @@ Duration? _gifHeaderDuration(Uint8List bytes) {
   if (bytes.length < 13 ||
       bytes[0] != 0x47 /* G */ ||
       bytes[1] != 0x49 /* I */ ||
-      bytes[2] != 0x46 /* F */) {
+      bytes[2] != 0x46 /* F */ ) {
     throw _GifParseFailure();
   }
 
