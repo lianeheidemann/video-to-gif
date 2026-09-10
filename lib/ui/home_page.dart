@@ -102,7 +102,7 @@ class _HomePageState extends State<HomePage> {
 
       final bytes = await File(path).readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
-      // "Colocar moldura" só sabe desenhar uma foto parada — um GIF/WebP
+      // "Editar imagem" só sabe desenhar uma foto parada — um GIF/WebP
       // animado decodificaria normalmente (é só imagem pra esse codec), mas
       // ia perder o resto dos quadros em silêncio, virando uma foto parada
       // sem ninguém pedir isso. Vídeo nem chega aqui: o seletor já filtra
@@ -113,7 +113,7 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             _loading = false;
             _error =
-                'Essa imagem é animada (GIF/WebP). "Colocar moldura" só '
+                'Essa imagem é animada (GIF/WebP). "Editar imagem" só '
                 'aceita fotos paradas.';
           });
         }
@@ -146,7 +146,7 @@ class _HomePageState extends State<HomePage> {
   /// (`FilePicker.pickFiles` com seleção múltipla, ao contrário de
   /// `_pickPhoto`'s `pickFile` singular) e navega para [CollagePage], onde o
   /// usuário monta a colagem. Exige pelo menos duas fotos — uma única foto já
-  /// tem sua própria tela dedicada em "Colocar moldura".
+  /// tem sua própria tela dedicada em "Editar imagem".
   Future<void> _pickPhotosForCollage() async {
     setState(() {
       _loading = true;
@@ -315,7 +315,7 @@ class _HomePageState extends State<HomePage> {
                 OutlinedButton.icon(
                   onPressed: _loading ? null : _pickPhoto,
                   icon: const Icon(Icons.photo_filter_outlined),
-                  label: const Text('Colocar moldura'),
+                  label: const Text('Editar imagem'),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
