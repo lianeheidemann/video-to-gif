@@ -51,7 +51,7 @@ Choose the format that best fits your destination:
 
 <div align="left">
 
-<img width="40%" src="assets/gif/frames-demonstration-v1.gif"/>
+<img width="40%" src="assets/gif/demonstracao-v7.webp"/>
 
 </div>
 
