@@ -9,9 +9,9 @@ import 'quick_convert_format_page.dart';
 
 /// Primeira tela de "Converter formato": só escolhe o arquivo, sem nenhuma
 /// configuração. Aceita qualquer formato que o FFmpeg saiba abrir — vídeo,
-/// GIF ou WebP —, ao contrário de "Escolher vídeo" (`FileType.video`, que
-/// nunca inclui `.gif`/`.webp`) ou "Colocar moldura" (`FileType.image`, que
-/// só aceita fotos).
+/// GIF ou WebP. Usa o seletor de mídia do sistema (`FileType.media`) para
+/// manter a mesma interface visual de galeria usada em "Escolher vídeo" e
+/// "Colocar moldura", validando depois se o conteúdo pode ser convertido.
 class QuickConvertPickPage extends StatefulWidget {
   const QuickConvertPickPage({super.key});
 
@@ -73,7 +73,7 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
 
     try {
       final picked = await FilePicker.pickFile(
-        type: FileType.any,
+        type: FileType.media,
         dialogTitle: 'Escolha um arquivo',
       );
 
