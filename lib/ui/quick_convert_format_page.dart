@@ -44,7 +44,7 @@ class _QuickConvertFormatPageState extends State<QuickConvertFormatPage> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            _SourceCard(video: video),
+            _SourceCard(video: video, extension: _sourceExtension),
             const SizedBox(height: 28),
             Text(
               'Formato de saída',
@@ -91,9 +91,14 @@ class _QuickConvertFormatPageState extends State<QuickConvertFormatPage> {
 }
 
 class _SourceCard extends StatelessWidget {
-  const _SourceCard({required this.video});
+  const _SourceCard({required this.video, required this.extension});
 
   final VideoInfo video;
+
+  /// Extensão do arquivo escolhido (sem o ponto, minúscula), já calculada
+  /// pela tela — mesmo valor usado para desmarcar o formato de saída igual
+  /// ao de origem. Aqui só vira o selo "PNG"/"MP4"/etc. ao lado do nome.
+  final String extension;
 
   @override
   Widget build(BuildContext context) {
@@ -128,13 +133,39 @@ class _SourceCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    video.fileName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          video.fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (extension.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            extension.toUpperCase(),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onPrimaryContainer,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 3),
                   Text(
