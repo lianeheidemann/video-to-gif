@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -2282,6 +2283,13 @@ class _CollagePageState extends State<CollagePage> {
           height: 44,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
+            // Fileira curta (embutidas + poucas dezenas de pastas no
+            // máximo): manter mais itens construídos fora da tela custa
+            // pouco e garante que uma pasta recém-criada já exista na árvore
+            // (e portanto seja alcançável por `Scrollable.ensureVisible`,
+            // ver o `Builder` abaixo) mesmo numa tela estreita de celular,
+            // onde a área visível + cache padrão pode não chegar até ela.
+            scrollCacheExtent: const ScrollCacheExtent.pixels(2000),
             // +1 pelo botão de criar pasta, sempre no fim da linha.
             itemCount: _StickerFolder.values.length + _customFolders.length + 1,
             separatorBuilder: (_, _) => const SizedBox(width: 6),
@@ -2409,7 +2417,14 @@ class _CollagePageState extends State<CollagePage> {
       title: 'Nova pasta',
       maxLines: 1,
     );
-    if (name == null || name.trim().isEmpty) return;
+    if (name == null) return; // Cancelado — nada a avisar.
+    if (name.trim().isEmpty) {
+      // Sem isto, um nome que não chegou a registrar (ex.: o teclado ainda
+      // compondo o texto no instante do toque) fazia "Nova pasta" parecer
+      // não fazer nada.
+      _message('Digite um nome para a pasta.');
+      return;
+    }
     try {
       final folder = await _folderStore.create(name);
       if (!mounted) return;
@@ -4041,24 +4056,29 @@ class _TextInputDialogState extends State<_TextInputDialog> {
     super.dispose();
   }
 
+  void _submit() => Navigator.of(context).pop(_controller.text);
+
   @override
   Widget build(BuildContext context) {
+    // Num campo de uma linha só (nome de pasta), a tecla de confirmar do
+    // teclado deve valer o mesmo que o botão "OK" — sem isso, ela só fecha o
+    // teclado e a pessoa acha que confirmou sem ter confirmado nada.
+    final singleLine = widget.maxLines == 1;
     return AlertDialog(
       title: Text(widget.title),
       content: TextField(
         controller: _controller,
         autofocus: true,
         maxLines: widget.maxLines,
+        textInputAction: singleLine ? TextInputAction.done : null,
+        onSubmitted: singleLine ? (_) => _submit() : null,
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('OK'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('OK')),
       ],
     );
   }
