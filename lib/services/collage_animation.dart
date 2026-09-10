@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../models/collage_background.dart';
@@ -64,14 +65,18 @@ class CollageAnimationInfo {
 /// Lê só os cabeçalhos das fotos da montagem para saber quais são animadas e
 /// quanto duram — não decodifica nenhum quadro, então serve para decidir na
 /// hora do toque se a folha de exportação mostra GIF/WebP.
+///
+/// Uma foto por vez aqui já significava esperar o disco de cada uma antes da
+/// próxima começar; com [Future.wait] elas são lidas em paralelo, o que
+/// importa sobretudo no caminho de reserva (foto que não é GIF, decodificada
+/// quadro a quadro) quando a montagem tem várias fotos animadas.
 Future<CollageAnimationInfo> inspectCollageAnimation(
   CollageSettings settings,
 ) async {
-  final durations = <Duration>[];
-  for (final path in _photoPaths(settings)) {
-    final duration = await _animationDuration(path);
-    if (duration != null) durations.add(duration);
-  }
+  final results = await Future.wait(
+    _photoPaths(settings).map(_animationDuration),
+  );
+  final durations = [for (final d in results) if (d != null) d];
   if (durations.isEmpty) {
     return const CollageAnimationInfo(
       animatedCount: 0,
@@ -96,9 +101,20 @@ Set<String> _photoPaths(CollageSettings settings) => {
 
 /// Duração total de um GIF/WebP animado, ou `null` quando o arquivo é uma
 /// imagem parada (ou não dá para ler).
+///
+/// Tenta primeiro [_gifHeaderDuration], que lê só os blocos de controle do
+/// GIF sem decodificar pixel nenhum — cobre o caso comum, já que o app é
+/// "video to GIF". Qualquer coisa que não seja um GIF bem-formado (WebP
+/// animado, arquivo corrompido, formato desconhecido) cai no caminho de
+/// reserva abaixo, que decodifica quadro a quadro como antes.
 Future<Duration?> _animationDuration(String path) async {
   try {
     final bytes = await File(path).readAsBytes();
+    try {
+      return _gifHeaderDuration(bytes);
+    } on _GifParseFailure {
+      // Não é um GIF reconhecível — segue para o decode completo abaixo.
+    }
     final codec = await ui.instantiateImageCodec(bytes);
     try {
       if (codec.frameCount <= 1) return null;
@@ -115,6 +131,120 @@ Future<Duration?> _animationDuration(String path) async {
   } catch (_) {
     return null;
   }
+}
+
+/// Sinaliza que [_gifHeaderDuration] não conseguiu interpretar os bytes como
+/// um GIF87a/89a válido — não é um erro de verdade, só o gatilho para
+/// [_animationDuration] cair no decode completo de reserva.
+class _GifParseFailure implements Exception {}
+
+/// Lê a duração total de um GIF animado direto da estrutura de blocos do
+/// arquivo (cabeçalho, *Graphic Control Extension* antes de cada quadro),
+/// sem chamar [ui.instantiateImageCodec] nem decodificar um pixel sequer.
+/// Devolve `null` para um GIF válido com um quadro só (parado); lança
+/// [_GifParseFailure] para qualquer coisa que não seja um GIF87a/89a bem
+/// formado, ou que a leitura não conseguiu terminar de percorrer.
+///
+/// Referência do formato: seção 23 (Graphic Control Extension) e 20 (Image
+/// Descriptor) do GIF89a Specification.
+Duration? _gifHeaderDuration(Uint8List bytes) {
+  if (bytes.length < 13 ||
+      bytes[0] != 0x47 /* G */ ||
+      bytes[1] != 0x49 /* I */ ||
+      bytes[2] != 0x46 /* F */) {
+    throw _GifParseFailure();
+  }
+
+  var pos = 6; // "GIFxxa"
+  pos += 4; // largura + altura da tela lógica
+  final screenPacked = _byteAt(bytes, pos);
+  pos += 1;
+  pos += 2; // cor de fundo + proporção de pixel
+  if ((screenPacked & 0x80) != 0) {
+    pos += 3 * (1 << ((screenPacked & 0x07) + 1)); // tabela de cores global
+  }
+
+  var frameCount = 0;
+  var totalMs = 0;
+  var pendingDelayCentiseconds = 0;
+
+  while (true) {
+    final block = _byteAt(bytes, pos);
+    pos += 1;
+    if (block == 0x3B) break; // trailer: fim do arquivo
+
+    if (block == 0x21) {
+      final label = _byteAt(bytes, pos);
+      pos += 1;
+      if (label == 0xF9) {
+        // Graphic Control Extension: tamanho do bloco (4), byte de opções,
+        // atraso em centésimos de segundo (little-endian), índice de cor
+        // transparente — sempre 4 bytes antes do terminador de sub-blocos.
+        pos += 1; // tamanho do bloco (sempre 4)
+        pos += 1; // byte de opções
+        pendingDelayCentiseconds =
+            _byteAt(bytes, pos) | (_byteAt(bytes, pos + 1) << 8);
+        pos += 3; // atraso (2) + índice de cor transparente (1)
+        pos = _skipGifSubBlocks(bytes, pos);
+      } else if (label == 0x01 || label == 0xFF) {
+        // Plain Text / Application Extension: um bloco de tamanho fixo (que
+        // começa com o próprio tamanho em bytes) antes dos sub-blocos.
+        final size = _byteAt(bytes, pos);
+        pos += 1 + size;
+        pos = _skipGifSubBlocks(bytes, pos);
+      } else {
+        // Comment Extension (0xFE) ou algo desconhecido: direto pros
+        // sub-blocos, que é a estrutura comum a todas as extensões.
+        pos = _skipGifSubBlocks(bytes, pos);
+      }
+    } else if (block == 0x2C) {
+      // Image Descriptor: posição/tamanho do quadro (8 bytes) + byte de
+      // opções; com tabela de cores local, ela vem antes dos dados da
+      // imagem.
+      pos += 8;
+      final imgPacked = _byteAt(bytes, pos);
+      pos += 1;
+      if ((imgPacked & 0x80) != 0) {
+        pos += 3 * (1 << ((imgPacked & 0x07) + 1));
+      }
+      pos += 1; // tamanho mínimo de código LZW
+      pos = _skipGifSubBlocks(bytes, pos);
+
+      frameCount += 1;
+      totalMs += _frameDuration(
+        Duration(milliseconds: pendingDelayCentiseconds * 10),
+      ).inMilliseconds;
+      pendingDelayCentiseconds = 0;
+    } else {
+      // Byte fora do esperado nesta posição — não é seguro seguir lendo.
+      throw _GifParseFailure();
+    }
+  }
+
+  if (frameCount <= 1) return null;
+  return Duration(milliseconds: totalMs);
+}
+
+/// Sub-blocos de tamanho variável que terminam extensões e dados de imagem
+/// no GIF: cada um começa com 1 byte de tamanho `N` seguido de `N` bytes,
+/// até um tamanho `0` marcar o fim da sequência.
+int _skipGifSubBlocks(Uint8List bytes, int start) {
+  var pos = start;
+  while (true) {
+    final size = _byteAt(bytes, pos);
+    pos += 1;
+    if (size == 0) return pos;
+    pos += size;
+  }
+}
+
+/// Acesso ao byte em [index], lançando [_GifParseFailure] em vez de
+/// `RangeError` quando os bytes acabam no meio de uma estrutura — um GIF
+/// truncado/corrompido deve cair no decode de reserva, nunca derrubar a
+/// tela.
+int _byteAt(Uint8List bytes, int index) {
+  if (index < 0 || index >= bytes.length) throw _GifParseFailure();
+  return bytes[index];
 }
 
 /// GIFs com quadro de duração 0 (ou absurdamente curta) são comuns; os

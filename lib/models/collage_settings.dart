@@ -62,6 +62,12 @@ class CollageSettings {
   static const maxBorderThickness = 24.0;
   static const minPhotos = 2;
 
+  /// Faixa do slider de proporção customizada ("x:y") — os presets vão de
+  /// `1:2` (0.5) a `2:1` (2.0), mas o slider livre extrapola um pouco além
+  /// dos dois lados para quem quer algo mais fino que qualquer preset.
+  static const minAspectRatio = 0.4;
+  static const maxAspectRatio = 3.5;
+
   /// Presets de proporção comuns em redes sociais e impressão, além do
   /// slider livre.
   static const aspectPresets = <(String label, double ratio)>[

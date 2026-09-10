@@ -507,7 +507,7 @@ void main() {
     // estilo dele.
     expect(find.text('Cor do texto'), findsOneWidget);
     expect(find.text('Fundo do texto'), findsOneWidget);
-    expect(find.text('Arredondamento do fundo'), findsNothing);
+    expect(find.text('Arredondamento'), findsNothing);
 
     // O painel tem teto de altura e rola por dentro: o interruptor pode
     // estar abaixo do corte.
@@ -516,15 +516,19 @@ void main() {
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
 
-    expect(find.text('Cor do fundo do texto'), findsOneWidget);
-    expect(find.text('Arredondamento do fundo'), findsOneWidget);
+    // Dentro da caixa agrupada os rótulos são curtos ("Cor", não "Cor do
+    // fundo do texto") — "Cor" também é o nome da aba do rodapé, daí as duas
+    // ocorrências.
+    expect(find.text('Cor'), findsNWidgets(2));
+    expect(find.text('Arredondamento'), findsOneWidget);
   });
 
-  testWidgets('sem foto animada, o download não pergunta formato nenhum', (
+  testWidgets('sem foto animada, o download só pergunta o tamanho', (
     tester,
   ) async {
-    // Só com PNGs parados a montagem tem uma saída possível — a folha de
-    // formato seria uma pergunta com uma resposta só.
+    // Só com PNGs parados a montagem tem uma saída possível — a folha não
+    // pergunta formato (seria uma pergunta com uma resposta só), mas ainda
+    // abre para deixar escolher o tamanho da exportação.
     tester.view.physicalSize = const Size(900, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -536,7 +540,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Exportar'), findsNothing);
+    expect(find.text('Exportar'), findsOneWidget);
+    expect(find.text('Tamanho'), findsOneWidget);
+    expect(find.text('Padrão'), findsOneWidget);
     expect(find.text('GIF'), findsNothing);
   });
 
