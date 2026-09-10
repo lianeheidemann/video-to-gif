@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -21,6 +24,47 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
   bool _loading = false;
   String? _error;
 
+  /// Extensões de imagem que podem ser estáticas ou animadas — só para elas
+  /// vale a pena decodificar o arquivo e conferir `frameCount` (ver
+  /// [_isStaticImage]). Extensões de vídeo nunca entram aqui: o arquivo pode
+  /// ser enorme, e `ui.instantiateImageCodec` exigiria ler tudo em memória só
+  /// para falhar a decodificação.
+  static const _imageExtensions = {
+    'jpg',
+    'jpeg',
+    'png',
+    'bmp',
+    'heic',
+    'heif',
+    'tif',
+    'tiff',
+    'gif',
+    'webp',
+  };
+
+  /// O FFprobe trata uma foto parada (JPG/PNG/...) como um "vídeo" de um
+  /// quadro só (por isso `probe()` não rejeita), mas converter isso para
+  /// vídeo de verdade (MP4/WebM/MOV) não faz sentido e falha no FFmpeg — o
+  /// app já tem uma tela própria para fotos ("Colocar moldura"). Mesma
+  /// checagem de `frameCount` que `home_page.dart._pickPhoto` usa, só que
+  /// invertida (aqui rejeita a estática, lá rejeitava a animada).
+  Future<bool> _isStaticImage(String path) async {
+    final extension = path.split('.').last.toLowerCase();
+    if (!_imageExtensions.contains(extension)) return false;
+
+    try {
+      final bytes = await File(path).readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final isStatic = codec.frameCount <= 1;
+      codec.dispose();
+      return isStatic;
+    } catch (_) {
+      // Não decodificou como imagem — não é uma foto estática, então segue
+      // o fluxo normal (o probe() abaixo decide se o arquivo é utilizável).
+      return false;
+    }
+  }
+
   Future<void> _pickFile() async {
     setState(() {
       _loading = true;
@@ -36,6 +80,19 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
       final path = picked?.path;
       if (path == null) {
         if (mounted) setState(() => _loading = false);
+        return;
+      }
+
+      if (await _isStaticImage(path)) {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error =
+                'Essa é uma foto parada, sem vídeo ou animação. '
+                '"Converter formato" é para vídeos, GIF ou WebP animado — '
+                'para fotos, use "Colocar moldura" na tela inicial.';
+          });
+        }
         return;
       }
 
