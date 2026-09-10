@@ -181,6 +181,14 @@ void main() {
 
       _expectFlagValue(args, '-pix_fmt', 'yuva420p');
       expect(_lavfiOf(args), contains('alphamerge'));
+      // A máscara da área de conteúdo é um filtro `color=...` dentro do
+      // próprio grafo, nunca uma entrada `-f lavfi` separada — essa entrada
+      // depende do dispositivo `lavfi` do libavdevice, que builds de FFmpeg
+      // pra celular costumam remover, e fazia a exportação falhar direto na
+      // abertura das entradas.
+      expect(args, isNot(contains('lavfi')));
+      expect(args.where((a) => a == '-i'), hasLength(2));
+      expect(_lavfiOf(args), contains('[area_src]'));
     });
   });
 }

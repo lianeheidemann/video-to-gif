@@ -22,6 +22,22 @@ enum CollageExportFormat {
   bool get isAnimated => this != CollageExportFormat.png;
 }
 
+/// Tamanho da exportação, como multiplicador da largura calculada
+/// automaticamente a partir das fotos e do layout ([standard] é essa largura
+/// sem nenhuma mudança — o comportamento de antes de existir essa escolha).
+enum CollageExportSize {
+  small('Pequeno', 0.5),
+  mediumSmall('Médio', 0.75),
+  standard('Padrão', 1),
+  large('Grande', 1.5),
+  extraLarge('Extra grande', 2);
+
+  const CollageExportSize(this.label, this.multiplier);
+
+  final String label;
+  final double multiplier;
+}
+
 /// Como resolver durações diferentes entre as fotos animadas da montagem.
 /// Em [longest] a montagem dura o tempo da animação mais longa e as que
 /// acabam antes **seguram o último quadro** (não somem nem piscam); em

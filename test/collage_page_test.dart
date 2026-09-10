@@ -34,6 +34,23 @@ Future<void> _writeSolidPng(String path, int width, int height) async {
   }
 }
 
+/// Repete `pump` até [finder] achar algo, em vez de um `pump`/`pumpAndSettle`
+/// só — nenhum dos dois espera de verdade quando o trabalho pendente é E/S
+/// pura (ler e decodificar arquivo) sem nenhum quadro agendado no meio.
+Future<void> _pumpUntilFound(
+  WidgetTester tester,
+  Finder finder, {
+  Duration timeout = const Duration(seconds: 30),
+}) async {
+  final stopwatch = Stopwatch()..start();
+  while (finder.evaluate().isEmpty && stopwatch.elapsed < timeout) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void main() {
   late Directory tempDir;
   late List<PhotoInfo> photos;
@@ -206,18 +223,17 @@ void main() {
       }
       expect(find.text('Importar'), findsNothing);
 
-      // "Reações" (padrão) mostra 2 stickers (Joinha, Sorriso) — os
-      // ícones não têm rótulo visível, então a checagem é pela contagem
-      // de SVGs.
-      expect(find.byType(SvgPicture), findsNWidgets(2));
+      // Cada pasta embutida mostra 6 stickers — os ícones não têm rótulo
+      // visível, então a checagem é pela contagem de SVGs.
+      expect(find.byType(SvgPicture), findsNWidgets(6));
 
       await tester.tap(find.widgetWithText(FolderTab, 'Símbolos'));
       await tester.pumpAndSettle();
-      expect(find.byType(SvgPicture), findsNWidgets(2));
+      expect(find.byType(SvgPicture), findsNWidgets(6));
 
       await tester.tap(find.widgetWithText(FolderTab, 'Efeitos'));
       await tester.pumpAndSettle();
-      expect(find.byType(SvgPicture), findsNWidgets(1));
+      expect(find.byType(SvgPicture), findsNWidgets(6));
 
       await tester.tap(find.widgetWithText(FolderTab, 'Importados'));
       await tester.pumpAndSettle();
@@ -507,7 +523,7 @@ void main() {
     // estilo dele.
     expect(find.text('Cor do texto'), findsOneWidget);
     expect(find.text('Fundo do texto'), findsOneWidget);
-    expect(find.text('Arredondamento do fundo'), findsNothing);
+    expect(find.text('Arredondamento'), findsNothing);
 
     // O painel tem teto de altura e rola por dentro: o interruptor pode
     // estar abaixo do corte.
@@ -516,15 +532,19 @@ void main() {
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
 
-    expect(find.text('Cor do fundo do texto'), findsOneWidget);
-    expect(find.text('Arredondamento do fundo'), findsOneWidget);
+    // Dentro da caixa agrupada os rótulos são curtos ("Cor", não "Cor do
+    // fundo do texto") — "Cor" também é o nome da aba do rodapé, daí as duas
+    // ocorrências.
+    expect(find.text('Cor'), findsNWidgets(2));
+    expect(find.text('Arredondamento'), findsOneWidget);
   });
 
-  testWidgets('sem foto animada, o download não pergunta formato nenhum', (
+  testWidgets('sem foto animada, o download só pergunta o tamanho', (
     tester,
   ) async {
-    // Só com PNGs parados a montagem tem uma saída possível — a folha de
-    // formato seria uma pergunta com uma resposta só.
+    // Só com PNGs parados a montagem tem uma saída possível — a folha não
+    // pergunta formato (seria uma pergunta com uma resposta só), mas ainda
+    // abre para deixar escolher o tamanho da exportação.
     tester.view.physicalSize = const Size(900, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -533,10 +553,16 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Salvar na galeria'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    // A folha só abre depois de ler e decodificar cada foto (E/S de
+    // verdade) — um `pumpAndSettle` sozinho pode devolver antes disso
+    // terminar, porque nada agenda um novo quadro enquanto só se espera por
+    // E/S. Repete `pump` até o título da folha aparecer, em vez de assumir
+    // que um `pump`/`pumpAndSettle` já é tempo suficiente.
+    await _pumpUntilFound(tester, find.text('Exportar'));
 
-    expect(find.text('Exportar'), findsNothing);
+    expect(find.text('Exportar'), findsOneWidget);
+    expect(find.text('Tamanho'), findsOneWidget);
+    expect(find.text('Padrão'), findsOneWidget);
     expect(find.text('GIF'), findsNothing);
   });
 

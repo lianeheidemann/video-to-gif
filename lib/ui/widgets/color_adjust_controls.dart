@@ -78,10 +78,10 @@ class ColorAdjustButton extends StatelessWidget {
   }
 }
 
-/// Botão de zerar todos os ajustes de uma vez, no fim da fileira de
-/// ícones — depois das opções, e não acima delas como antes. Mesma forma de
-/// [ColorAdjustButton] (círculo + rótulo embaixo), só com o ícone de
-/// "redefinir" em vez de um ajuste, para entrar na fileira sem destoar.
+/// Botão de zerar todos os ajustes de uma vez, abaixo da régua de
+/// intensidade — fora da fileira de ícones, para não competir com os
+/// ajustes em si. Mesma forma de [ColorAdjustButton] (círculo + rótulo
+/// embaixo), só com o ícone de "redefinir" em vez de um ajuste.
 class _ResetAllButton extends StatelessWidget {
   const _ResetAllButton({required this.onTap});
 
@@ -226,10 +226,6 @@ class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
                     );
                   },
                 ),
-              // Depois das opções, não acima delas — mesmo lugar em botão
-              // que "Zerar margens" ocupa na aba "Margem". Só aparece
-              // havendo algo para zerar.
-              if (widget.hasAdjustments) _ResetAllButton(onTap: widget.onReset),
             ],
           ),
         ),
@@ -241,6 +237,15 @@ class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
           onChangeStart: widget.onChangeStart,
           onChanged: (value) => widget.onChanged(_current, value),
         ),
+        // Abaixo da régua, não na fileira de ícones — deixa a fileira só com
+        // os ajustes em si, e dá espaço ao alcance do polegar.
+        if (widget.hasAdjustments) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _ResetAllButton(onTap: widget.onReset),
+          ),
+        ],
       ],
     );
   }

@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -146,23 +147,35 @@ class _CollagePageState extends State<CollagePage> {
   static const _folderStore = StickerFolderStore();
   static const _fontStore = ImportedFontStore();
 
-  /// Da fileira de pastas da aba "Stickers" — usado só para rolar até o
-  /// fim ao criar uma pasta nova, que nasce perto de "Nova pasta", no fim
-  /// da lista (ver [_createStickerFolder]).
-  final _folderScrollController = ScrollController();
+  /// Id da pasta recém-criada que ainda precisa ficar visível na fileira —
+  /// ver [_createStickerFolder]. `null` quando não há rolagem pendente.
+  String? _pendingFolderScrollId;
 
   /// Stickers prontos, embutidos no app (`assets/sticker/`), agrupados por
   /// pasta temática na seção "Stickers" — ver [_StickerFolder].
   static const _stickerFolderReactions = <(String path, String label)>[
     ('assets/sticker/thumbs_up.svg', 'Joinha'),
+    ('assets/sticker/thumbs_down.svg', 'Joinha para baixo'),
     ('assets/sticker/smiley.svg', 'Sorriso'),
+    ('assets/sticker/laughing.svg', 'Risada'),
+    ('assets/sticker/surprised.svg', 'Surpresa'),
+    ('assets/sticker/sad.svg', 'Triste'),
   ];
   static const _stickerFolderSymbols = <(String path, String label)>[
     ('assets/sticker/heart.svg', 'Coração'),
     ('assets/sticker/star.svg', 'Estrela'),
+    ('assets/sticker/lightning.svg', 'Raio'),
+    ('assets/sticker/sun.svg', 'Sol'),
+    ('assets/sticker/moon.svg', 'Lua'),
+    ('assets/sticker/check.svg', 'Confirmado'),
   ];
   static const _stickerFolderEffects = <(String path, String label)>[
     ('assets/sticker/sparkle.svg', 'Brilho'),
+    ('assets/sticker/fire.svg', 'Fogo'),
+    ('assets/sticker/boom.svg', 'Explosão'),
+    ('assets/sticker/confetti.svg', 'Confete'),
+    ('assets/sticker/whoosh.svg', 'Rastro de velocidade'),
+    ('assets/sticker/rainbow.svg', 'Arco-íris'),
   ];
 
   /// Pasta "GitHub": arte enviada pela Liane, guardada em
@@ -393,7 +406,6 @@ class _CollagePageState extends State<CollagePage> {
     _textController.dispose();
     _textFocus.dispose();
     _exportProgress.dispose();
-    _folderScrollController.dispose();
     super.dispose();
   }
 
@@ -1423,7 +1435,7 @@ class _CollagePageState extends State<CollagePage> {
             onChanged: (v) => _applyLayout(layout.copyWith(columns: v)),
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 32),
         Expanded(
           child: _stepperRow(
             'Linhas',
@@ -1691,9 +1703,12 @@ class _CollagePageState extends State<CollagePage> {
         ),
         const SizedBox(height: 12),
         Slider(
-          min: 0.4,
-          max: 2.5,
-          value: _settings.aspectRatio.clamp(0.4, 2.5),
+          min: CollageSettings.minAspectRatio,
+          max: CollageSettings.maxAspectRatio,
+          value: _settings.aspectRatio.clamp(
+            CollageSettings.minAspectRatio,
+            CollageSettings.maxAspectRatio,
+          ),
           onChangeStart: (_) => _pushUndoCheckpoint(),
           onChanged: (v) =>
               _update(_settings.copyWith(aspectRatio: v), pushUndo: false),
@@ -1707,7 +1722,12 @@ class _CollagePageState extends State<CollagePage> {
             onApply: (ratio) {
               _pushUndoCheckpoint();
               _update(
-                _settings.copyWith(aspectRatio: ratio.clamp(0.4, 2.5)),
+                _settings.copyWith(
+                  aspectRatio: ratio.clamp(
+                    CollageSettings.minAspectRatio,
+                    CollageSettings.maxAspectRatio,
+                  ),
+                ),
                 pushUndo: false,
               );
             },
@@ -2275,8 +2295,14 @@ class _CollagePageState extends State<CollagePage> {
         SizedBox(
           height: 44,
           child: ListView.separated(
-            controller: _folderScrollController,
             scrollDirection: Axis.horizontal,
+            // Fileira curta (embutidas + poucas dezenas de pastas no
+            // máximo): manter mais itens construídos fora da tela custa
+            // pouco e garante que uma pasta recém-criada já exista na árvore
+            // (e portanto seja alcançável por `Scrollable.ensureVisible`,
+            // ver o `Builder` abaixo) mesmo numa tela estreita de celular,
+            // onde a área visível + cache padrão pode não chegar até ela.
+            scrollCacheExtent: const ScrollCacheExtent.pixels(2000),
             // +1 pelo botão de criar pasta, sempre no fim da linha.
             itemCount: _StickerFolder.values.length + _customFolders.length + 1,
             separatorBuilder: (_, _) => const SizedBox(width: 6),
@@ -2292,11 +2318,37 @@ class _CollagePageState extends State<CollagePage> {
               final customIndex = index - _StickerFolder.values.length;
               if (customIndex < _customFolders.length) {
                 final folder = _customFolders[customIndex];
-                return FolderTab(
-                  label: folder.name,
-                  selected: folder.id == _stickerFolderId,
-                  onTap: () => setState(() => _stickerFolderId = folder.id),
-                  onLongPress: () => _openFolderMenu(folder),
+                // A pasta recém-criada rola até ficar visível sozinha (ver
+                // [_createStickerFolder]) — igual ao ícone de ajuste
+                // selecionado em [ColorAdjustPanel], um `Builder` dá a este
+                // item específico o próprio `BuildContext`, que
+                // `Scrollable.ensureVisible` usa para centralizar exatamente
+                // ele na fileira. Calcular a posição na mão (por
+                // `maxScrollExtent`) dependia do layout já estar pronto no
+                // frame seguinte; isto usa a posição real do item, então
+                // funciona mesmo se o painel ainda estiver se ajustando
+                // (ex.: o teclado fechando ao mesmo tempo).
+                return Builder(
+                  builder: (itemContext) {
+                    if (_pendingFolderScrollId == folder.id) {
+                      _pendingFolderScrollId = null;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!itemContext.mounted) return;
+                        Scrollable.ensureVisible(
+                          itemContext,
+                          alignment: 0.5,
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOut,
+                        );
+                      });
+                    }
+                    return FolderTab(
+                      label: folder.name,
+                      selected: folder.id == _stickerFolderId,
+                      onTap: () => setState(() => _stickerFolderId = folder.id),
+                      onLongPress: () => _openFolderMenu(folder),
+                    );
+                  },
                 );
               }
               return FolderTab(
@@ -2378,24 +2430,32 @@ class _CollagePageState extends State<CollagePage> {
       title: 'Nova pasta',
       maxLines: 1,
     );
-    if (name == null || name.trim().isEmpty) return;
-    final folder = await _folderStore.create(name);
-    if (!mounted) return;
-    setState(() {
-      _customFolders = [..._customFolders, folder];
-      _stickerFolderId = folder.id;
-    });
-    // A pasta nova nasce perto do fim da fileira (antes só de "Nova
-    // pasta"), fora da parte já visível se houver muitas pastas — sem
-    // rolar até lá, ela ficava fora da vista logo depois de criada.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_folderScrollController.hasClients) return;
-      _folderScrollController.animateTo(
-        _folderScrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    });
+    if (name == null) return; // Cancelado — nada a avisar.
+    if (name.trim().isEmpty) {
+      // Sem isto, um nome que não chegou a registrar (ex.: o teclado ainda
+      // compondo o texto no instante do toque) fazia "Nova pasta" parecer
+      // não fazer nada.
+      _message('Digite um nome para a pasta.');
+      return;
+    }
+    try {
+      final folder = await _folderStore.create(name);
+      if (!mounted) return;
+      setState(() {
+        _customFolders = [..._customFolders, folder];
+        _stickerFolderId = folder.id;
+        // A pasta nova nasce perto do fim da fileira (antes só de "Nova
+        // pasta"), fora da parte já visível se houver muitas pastas — o
+        // item dela mesma, ao entrar na árvore, pede pra rolar até si (ver
+        // o `Builder` em `_stickersPanelContent`).
+        _pendingFolderScrollId = folder.id;
+      });
+    } catch (e) {
+      // Uma pasta que falha ao salvar não pode desaparecer em silêncio —
+      // sem isto, tocar "Nova pasta" simplesmente não fazia nada visível.
+      if (!mounted) return;
+      _message('Não deu para criar a pasta: $e');
+    }
   }
 
   /// Menu de segurar uma pasta criada — as embutidas não passam
@@ -2633,49 +2693,74 @@ class _CollagePageState extends State<CollagePage> {
             (on) => _toggleTextBackground(selected.id, on),
           ),
           if (selected.hasBackground) ...[
-            _colorRow(
-              'Cor do fundo do texto',
-              selected.backgroundColor!,
-              () => _pickTextBackgroundColor(selected.id),
-            ),
             const SizedBox(height: 4),
-            _sliderRow(
-              label: 'Opacidade do fundo',
-              value: selected.backgroundColor!.a,
-              min: 0,
-              max: 1,
-              display: '${(selected.backgroundColor!.a * 100).round()}%',
-              onChanged: (v) => _update(
-                _settings.replacingText(
-                  selected.id,
-                  selected.copyWith(
-                    backgroundColor: selected.backgroundColor!.withValues(
-                      alpha: v,
-                    ),
-                  ),
-                ),
-                pushUndo: false,
-              ),
-            ),
-            const SizedBox(height: 4),
-            _sliderRow(
-              label: 'Arredondamento do fundo',
-              value: selected.backgroundCornerRatio,
-              min: 0,
-              max: CollageTextItem.maxBackgroundCornerRatio,
-              display:
-                  '${(selected.backgroundCornerRatio / CollageTextItem.maxBackgroundCornerRatio * 100).round()}%',
-              onChanged: (v) => _update(
-                _settings.replacingText(
-                  selected.id,
-                  selected.copyWith(backgroundCornerRatio: v),
-                ),
-                pushUndo: false,
-              ),
-            ),
+            _textBackgroundGroup(selected),
           ],
         ],
       ],
+    );
+  }
+
+  /// Cor/opacidade/arredondamento do fundo do texto, agrupados numa caixa com
+  /// destaque à esquerda — deixa claro que os três são sub-opções de "Fundo
+  /// do texto" logo acima, então os rótulos aqui dentro não repetem "do
+  /// fundo" (a folha de cor, mais longe desse contexto, continua dizendo
+  /// "Cor do fundo do texto").
+  Widget _textBackgroundGroup(CollageTextItem selected) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(
+          left: BorderSide(color: theme.colorScheme.primary, width: 3),
+        ),
+      ),
+      child: Column(
+        children: [
+          _colorRow(
+            'Cor',
+            selected.backgroundColor!,
+            () => _pickTextBackgroundColor(selected.id),
+          ),
+          const SizedBox(height: 4),
+          _sliderRow(
+            label: 'Opacidade',
+            value: selected.backgroundColor!.a,
+            min: 0,
+            max: 1,
+            display: '${(selected.backgroundColor!.a * 100).round()}%',
+            onChanged: (v) => _update(
+              _settings.replacingText(
+                selected.id,
+                selected.copyWith(
+                  backgroundColor: selected.backgroundColor!.withValues(
+                    alpha: v,
+                  ),
+                ),
+              ),
+              pushUndo: false,
+            ),
+          ),
+          const SizedBox(height: 4),
+          _sliderRow(
+            label: 'Arredondamento',
+            value: selected.backgroundCornerRatio,
+            min: 0,
+            max: CollageTextItem.maxBackgroundCornerRatio,
+            display:
+                '${(selected.backgroundCornerRatio / CollageTextItem.maxBackgroundCornerRatio * 100).round()}%',
+            onChanged: (v) => _update(
+              _settings.replacingText(
+                selected.id,
+                selected.copyWith(backgroundCornerRatio: v),
+              ),
+              pushUndo: false,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3545,7 +3630,8 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
 
   /// Largura da exportação: grande o bastante para cada foto caber na sua
-  /// célula sem encolher.
+  /// célula sem encolher, multiplicada pelo tamanho escolhido em
+  /// [_exportSize] ("Padrão" tem multiplicador 1 e não muda nada daqui).
   ///
   /// Antes valia o maior lado entre as fotos, o que ignorava o layout: numa
   /// montagem com quatro fotos lado a lado, cada célula fica com ~1/4 da
@@ -3575,7 +3661,12 @@ class _CollagePageState extends State<CollagePage> {
         needed = math.max(needed, byHeight * _settings.aspectRatio);
       }
     }
-    return needed.round().clamp(480, 2200);
+    // O piso/teto escalam junto com o tamanho escolhido — "Extra grande"
+    // pode pedir o dobro do teto padrão, "Pequeno" aceita a metade do piso.
+    final multiplier = _exportSize.multiplier;
+    final minWidth = (480 * multiplier).round();
+    final maxWidth = (2200 * multiplier).round();
+    return (needed * multiplier).round().clamp(minWidth, maxWidth);
   }
 
   Future<File> _writeTempFile(Uint8List bytes, String extension) async {
@@ -3588,26 +3679,55 @@ class _CollagePageState extends State<CollagePage> {
     return file;
   }
 
-  /// Formato e regra de duração escolhidos na última exportação — a folha de
-  /// opções reabre já marcada no que a pessoa usou da última vez.
+  /// Formato, regra de duração e tamanho escolhidos na última exportação —
+  /// a folha de opções reabre já marcada no que a pessoa usou da última vez.
   CollageExportFormat _exportFormat = CollageExportFormat.gif;
   CollageDurationRule _durationRule = CollageDurationRule.longest;
+  CollageExportSize _exportSize = CollageExportSize.standard;
 
-  /// Pergunta o formato quando há foto animada na montagem; sem nenhuma, o
-  /// PNG é a única saída possível e a folha não aparece. Devolve `null`
-  /// quando a pessoa fecha a folha sem escolher.
-  ///
-  /// [_exportFormat]/[_durationRule] só guardam a última escolha para a
-  /// folha já abrir marcada nela; a seleção feita durante esta chamada vive
-  /// em variáveis locais (`selectedFormat`/`selectedRule`) para não vazar
-  /// para outra folha que porventura esteja aberta ao mesmo tempo.
-  Future<CollageExportFormat?> _askExportFormat() async {
+  /// Resultado da última [inspectCollageAnimation], junto do conjunto de
+  /// fotos que ele descreve — enquanto as fotos não mudam (adicionar/tirar/
+  /// trocar uma célula troca o caminho também), reabrir a folha de exportar
+  /// não precisa reler nenhum arquivo do zero.
+  Set<String>? _cachedAnimationPhotoPaths;
+  CollageAnimationInfo? _cachedAnimationInfo;
+
+  Future<CollageAnimationInfo> _inspectAnimationCached() async {
+    final Set<String> paths = {
+      for (final cell in _settings.cells)
+        if (cell.photoPath != null) cell.photoPath!,
+    };
+    final cachedPaths = _cachedAnimationPhotoPaths;
+    final cachedInfo = _cachedAnimationInfo;
+    if (cachedInfo != null &&
+        cachedPaths != null &&
+        cachedPaths.length == paths.length &&
+        cachedPaths.containsAll(paths)) {
+      return cachedInfo;
+    }
     final info = await inspectCollageAnimation(_settings);
-    if (!mounted) return null;
-    if (!info.hasAnimation) return CollageExportFormat.png;
+    _cachedAnimationPhotoPaths = paths;
+    _cachedAnimationInfo = info;
+    return info;
+  }
 
-    var selectedFormat = _exportFormat;
+  /// Pergunta o formato (quando há foto animada na montagem) e o tamanho da
+  /// exportação. Devolve `null` quando a pessoa fecha a folha sem escolher.
+  ///
+  /// [_exportFormat]/[_durationRule]/[_exportSize] só guardam a última
+  /// escolha para a folha já abrir marcada nela; a seleção feita durante
+  /// esta chamada vive em variáveis locais (`selectedFormat`/`selectedRule`/
+  /// `selectedSize`) para não vazar para outra folha que porventura esteja
+  /// aberta ao mesmo tempo.
+  Future<CollageExportFormat?> _askExportFormat() async {
+    final info = await _inspectAnimationCached();
+    if (!mounted) return null;
+
+    var selectedFormat = info.hasAnimation
+        ? _exportFormat
+        : CollageExportFormat.png;
     var selectedRule = _durationRule;
+    var selectedSize = _exportSize;
 
     final result = await showModalBottomSheet<CollageExportFormat>(
       context: context,
@@ -3626,69 +3746,93 @@ class _CollagePageState extends State<CollagePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Exportar', style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      info.animatedCount == 1
-                          ? 'Uma das fotos é animada — a montagem pode sair '
-                                'animada também.'
-                          : '${info.animatedCount} fotos são animadas — a '
-                                'montagem pode sair animada também.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    RadioGroup<CollageExportFormat>(
-                      groupValue: selectedFormat,
-                      onChanged: (value) {
-                        if (value == null) return;
-                        sheetSetState(() => selectedFormat = value);
-                      },
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final format in CollageExportFormat.values)
-                            RadioListTile<CollageExportFormat>(
-                              contentPadding: EdgeInsets.zero,
-                              value: format,
-                              title: Text(format.label),
-                              subtitle: Text(format.subtitle),
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (selectedFormat.isAnimated &&
-                        info.hasDifferentDurations) ...[
-                      const Divider(height: 24),
+                    if (info.hasAnimation) ...[
+                      const SizedBox(height: 4),
                       Text(
-                        'Duração',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
+                        info.animatedCount == 1
+                            ? 'Uma das fotos é animada — a montagem pode '
+                                  'sair animada também.'
+                            : '${info.animatedCount} fotos são animadas — '
+                                  'a montagem pode sair animada também.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      RadioGroup<CollageDurationRule>(
-                        groupValue: selectedRule,
+                      const SizedBox(height: 12),
+                      RadioGroup<CollageExportFormat>(
+                        groupValue: selectedFormat,
                         onChanged: (value) {
                           if (value == null) return;
-                          sheetSetState(() => selectedRule = value);
+                          sheetSetState(() => selectedFormat = value);
                         },
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            for (final rule in CollageDurationRule.values)
-                              RadioListTile<CollageDurationRule>(
+                            for (final format in CollageExportFormat.values)
+                              RadioListTile<CollageExportFormat>(
                                 contentPadding: EdgeInsets.zero,
-                                value: rule,
-                                title: Text(
-                                  '${rule.label} '
-                                  '(${_formatSeconds(info.durationFor(rule))})',
-                                ),
-                                subtitle: Text(rule.subtitle),
+                                value: format,
+                                title: Text(format.label),
+                                subtitle: Text(format.subtitle),
                               ),
                           ],
                         ),
                       ),
-                    ],
+                      if (selectedFormat.isAnimated &&
+                          info.hasDifferentDurations) ...[
+                        const Divider(height: 24),
+                        Text(
+                          'Duração',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        RadioGroup<CollageDurationRule>(
+                          groupValue: selectedRule,
+                          onChanged: (value) {
+                            if (value == null) return;
+                            sheetSetState(() => selectedRule = value);
+                          },
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (final rule in CollageDurationRule.values)
+                                RadioListTile<CollageDurationRule>(
+                                  contentPadding: EdgeInsets.zero,
+                                  value: rule,
+                                  title: Text(
+                                    '${rule.label} '
+                                    '(${_formatSeconds(info.durationFor(rule))})',
+                                  ),
+                                  subtitle: Text(rule.subtitle),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const Divider(height: 24),
+                    ] else
+                      const SizedBox(height: 12),
+                    Text(
+                      'Tamanho',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final size in CollageExportSize.values)
+                          ChoiceChip(
+                            label: Text(size.label),
+                            selected: selectedSize == size,
+                            onSelected: (_) =>
+                                sheetSetState(() => selectedSize = size),
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () =>
@@ -3711,6 +3855,7 @@ class _CollagePageState extends State<CollagePage> {
       setState(() {
         _exportFormat = selectedFormat;
         _durationRule = selectedRule;
+        _exportSize = selectedSize;
       });
     }
     return result;
@@ -3765,8 +3910,10 @@ class _CollagePageState extends State<CollagePage> {
   ///
   /// O teto existe porque a animação paga o custo de desenhar e codificar
   /// cada quadro; 1440 ainda cabe no celular e já é o bastante para quatro
-  /// fotos de 360px lado a lado saírem sem redução.
-  int _animatedExportWidth() => math.min(_exportWidth(), 1440);
+  /// fotos de 360px lado a lado saírem sem redução — e escala com
+  /// [_exportSize] do mesmo jeito que o teto do PNG.
+  int _animatedExportWidth() =>
+      math.min(_exportWidth(), (1440 * _exportSize.multiplier).round());
 
   /// Tamanho final em pixels, do mesmo jeito que o compositor calcula: a
   /// altura sai da proporção da montagem.
@@ -3922,24 +4069,29 @@ class _TextInputDialogState extends State<_TextInputDialog> {
     super.dispose();
   }
 
+  void _submit() => Navigator.of(context).pop(_controller.text);
+
   @override
   Widget build(BuildContext context) {
+    // Num campo de uma linha só (nome de pasta), a tecla de confirmar do
+    // teclado deve valer o mesmo que o botão "OK" — sem isso, ela só fecha o
+    // teclado e a pessoa acha que confirmou sem ter confirmado nada.
+    final singleLine = widget.maxLines == 1;
     return AlertDialog(
       title: Text(widget.title),
       content: TextField(
         controller: _controller,
         autofocus: true,
         maxLines: widget.maxLines,
+        textInputAction: singleLine ? TextInputAction.done : null,
+        onSubmitted: singleLine ? (_) => _submit() : null,
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('OK'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('OK')),
       ],
     );
   }

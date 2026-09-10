@@ -101,6 +101,23 @@ class _HomePageState extends State<HomePage> {
 
       final bytes = await File(path).readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
+      // "Colocar moldura" só sabe desenhar uma foto parada — um GIF/WebP
+      // animado decodificaria normalmente (é só imagem pra esse codec), mas
+      // ia perder o resto dos quadros em silêncio, virando uma foto parada
+      // sem ninguém pedir isso. Vídeo nem chega aqui: o seletor já filtra
+      // por `FileType.image`.
+      if (codec.frameCount > 1) {
+        codec.dispose();
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error =
+                'Essa imagem é animada (GIF/WebP). "Colocar moldura" só '
+                'aceita fotos paradas.';
+          });
+        }
+        return;
+      }
       final frame = await codec.getNextFrame();
       final photo = PhotoInfo(
         path: path,
