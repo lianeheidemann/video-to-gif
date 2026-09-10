@@ -718,14 +718,14 @@ class _EditorPageState extends State<EditorPage> {
               children: [
                 _frameColorRow(),
                 Divider(
-                  height: 17,
+                  height: 13,
                   color: theme.colorScheme.outlineVariant.withValues(
                     alpha: 0.45,
                   ),
                 ),
                 _frameThicknessRow(),
                 Divider(
-                  height: 17,
+                  height: 13,
                   color: theme.colorScheme.outlineVariant.withValues(
                     alpha: 0.45,
                   ),
@@ -830,11 +830,11 @@ class _EditorPageState extends State<EditorPage> {
   Widget _frameStyleThumbnails() {
     final active = _activeFrameStyle;
     return SizedBox(
-      height: 108,
+      height: 84,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: FrameStyle.values.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final style = FrameStyle.values[index];
           return _frameStyleThumb(style, selected: style == active);
@@ -848,7 +848,7 @@ class _EditorPageState extends State<EditorPage> {
       key: ValueKey('frameStyleThumb_${style.name}'),
       label: style.label,
       selected: selected,
-      padding: const EdgeInsets.all(11),
+      padding: const EdgeInsets.all(8),
       onTap: () => _selectFrameStyle(style),
       child: _frameStyleGlyph(
         style,
@@ -878,15 +878,15 @@ class _EditorPageState extends State<EditorPage> {
       onTap: onTap,
       onLongPress: onLongPress,
       child: SizedBox(
-        width: 62,
+        width: 46,
         child: Column(
           children: [
             Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 62,
-                  height: 62,
+                  width: 46,
+                  height: 46,
                   padding: padding,
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHigh,
@@ -907,8 +907,8 @@ class _EditorPageState extends State<EditorPage> {
                     top: -4,
                     right: -4,
                     child: Container(
-                      width: 18,
-                      height: 18,
+                      width: 14,
+                      height: 14,
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary,
                         shape: BoxShape.circle,
@@ -919,7 +919,7 @@ class _EditorPageState extends State<EditorPage> {
                       ),
                       child: const Icon(
                         Icons.check_rounded,
-                        size: 12,
+                        size: 9,
                         color: Colors.white,
                       ),
                     ),
@@ -957,7 +957,7 @@ class _EditorPageState extends State<EditorPage> {
     if (style == FrameStyle.none) {
       return Icon(
         Icons.crop_free_rounded,
-        size: 22,
+        size: 16,
         color: color.withValues(alpha: 0.6),
       );
     }
@@ -1026,11 +1026,11 @@ class _EditorPageState extends State<EditorPage> {
     final selected = _settings.frame.imageFrame;
     final assets = [...ImageFrameLibrary.bundled, ..._importedImageFrames];
     return SizedBox(
-      height: 108,
+      height: 84,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: assets.length + 2,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           if (index == 0) return _noImageFrameThumb(selected: selected == null);
           if (index == assets.length + 1) return _importFrameThumb();
@@ -1050,14 +1050,14 @@ class _EditorPageState extends State<EditorPage> {
       key: const ValueKey('imageFrameThumb_none'),
       label: FrameStyle.none.label,
       selected: selected,
-      padding: const EdgeInsets.all(11),
+      padding: const EdgeInsets.all(8),
       onTap: () => _updateFrameKeepingAnchorPosition(
         _settings.frame.copyWith(clearImageFrame: true),
         anchorKey: _imageFrameAnchorKey,
       ),
       child: Icon(
         Icons.crop_free_rounded,
-        size: 22,
+        size: 16,
         color: theme.colorScheme.primary.withValues(alpha: 0.6),
       ),
     );
@@ -1068,7 +1068,7 @@ class _EditorPageState extends State<EditorPage> {
       key: ValueKey('imageFrameThumb_${asset.id}'),
       label: asset.label,
       selected: selected,
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(4),
       onTap: () => _selectImageFrame(asset),
       onLongPress: asset.source == ImageFrameSource.bundledSvg
           ? null
@@ -1103,12 +1103,12 @@ class _EditorPageState extends State<EditorPage> {
       behavior: HitTestBehavior.opaque,
       onTap: _importFrameImage,
       child: SizedBox(
-        width: 62,
+        width: 46,
         child: Column(
           children: [
             Container(
-              width: 62,
-              height: 62,
+              width: 46,
+              height: 46,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(16),
@@ -1223,8 +1223,8 @@ class _EditorPageState extends State<EditorPage> {
           children: [
             Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
             Container(
-              width: 28,
-              height: 28,
+              width: 22,
+              height: 22,
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,
@@ -1552,15 +1552,15 @@ class _EditorPageState extends State<EditorPage> {
     return Row(
       children: [
         Container(
-          width: 40,
-          height: 40,
+          width: 32,
+          height: 32,
           decoration: BoxDecoration(
             color: theme.colorScheme.primary.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             _contentFitIcon(mode),
-            size: 20,
+            size: 16,
             color: theme.colorScheme.primary,
           ),
         ),
@@ -2031,9 +2031,10 @@ class _EditorPageState extends State<EditorPage> {
             selected: visiblePresets.contains(_aspect)
                 ? _aspect
                 : visiblePresets.first,
-            labelBuilder: (preset) => preset.hint.isEmpty
-                ? preset.label
-                : '${preset.label} — ${preset.hint}',
+            // Só a numeração da proporção quando ela existe (o rótulo já
+            // é isso) — o texto por extenso ("Quadrado", "Retrato"...)
+            // deixava os chips mais largos do que precisava.
+            labelBuilder: (preset) => preset.label,
             onSelected: _selectAspectPreset,
           ),
           if (crop != null) ...[
@@ -2509,7 +2510,7 @@ class _EditorPageState extends State<EditorPage> {
                 ),
               ),
               Divider(
-                height: 17,
+                height: 13,
                 color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
               ),
               _collapsibleSubsection(

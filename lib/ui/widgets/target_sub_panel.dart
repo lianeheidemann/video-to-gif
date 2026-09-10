@@ -28,8 +28,8 @@ class TargetSubPanel extends StatelessWidget {
   /// Os controles que dependem do alvo — vão dentro da caixa.
   final Widget child;
 
-  static const _notchWidth = 22.0;
-  static const _notchHeight = 7.0;
+  static const _notchWidth = 18.0;
+  static const _notchHeight = 6.0;
   static const _radius = 14.0;
 
   @override
@@ -56,6 +56,8 @@ class TargetSubPanel extends StatelessWidget {
                   children: [
                     ChoiceChip(
                       label: Text(options[i]),
+                      visualDensity: VisualDensity.compact,
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
                       selected: i == selectedIndex,
                       onSelected: (_) => onSelected(i),
                     ),
@@ -80,7 +82,7 @@ class TargetSubPanel extends StatelessWidget {
         ),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          padding: const EdgeInsets.fromLTRB(9, 9, 9, 9),
           decoration: BoxDecoration(
             color: fill,
             borderRadius: BorderRadius.circular(_radius),

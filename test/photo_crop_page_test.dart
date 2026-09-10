@@ -43,12 +43,14 @@ void main() {
     WidgetTester tester, {
     CropRect? initialCrop,
     Size viewSize = const Size(500, 900),
+    ThemeData? theme,
   }) async {
     tester.view.physicalSize = viewSize;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
+        theme: theme,
         home: PhotoCropPage(
           photoPath: photoPath,
           photoWidth: 400,
@@ -74,6 +76,23 @@ void main() {
     expect(overlay.crop?.width, 400);
     expect(overlay.crop?.height, 200);
   });
+
+  testWidgets(
+    'chips de proporção travam a aparência escura mesmo no tema claro',
+    (tester) async {
+      // A tela é sempre escura de propósito — sem isso, o Material 3
+      // tingia o chip com o ColorScheme do tema ambiente (que no modo
+      // claro é claro), apagando o contraste das cores fixas e deixando o
+      // texto ilegível.
+      await pumpPage(tester, theme: ThemeData.light());
+
+      final chip = tester.widget<ChoiceChip>(
+        find.widgetWithText(ChoiceChip, '1:1'),
+      );
+      expect(chip.surfaceTintColor, Colors.transparent);
+      expect(chip.elevation, 0);
+    },
+  );
 
   testWidgets('escolher uma proporção trava o recorte nela', (tester) async {
     await pumpPage(tester);

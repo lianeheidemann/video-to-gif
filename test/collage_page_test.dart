@@ -123,6 +123,27 @@ void main() {
     },
   );
 
+  testWidgets(
+    'o nome da aba não se repete no topo do painel — a aba do rodapé já '
+    'basta',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      // "Layout" já começa aberta: só a aba do rodapé mostra o nome, uma
+      // vez só — não mais o painel repetindo por cima.
+      expect(find.text('Layout'), findsOneWidget);
+
+      await tester.tap(find.text('Margem'));
+      await tester.pumpAndSettle();
+      expect(find.text('Margem'), findsOneWidget);
+    },
+  );
+
   testWidgets('sticker embutido pode ser adicionado à montagem', (
     tester,
   ) async {
@@ -206,6 +227,111 @@ void main() {
       expect(find.byType(SvgPicture), findsNothing);
     },
   );
+
+  testWidgets('pastas e miniaturas da aba Stickers são pequenas', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Stickers'),
+      200,
+      scrollable: page,
+    );
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    // Bem menores que o padrão de 62×46 usado pelo seletor de imagem de
+    // fundo — é justamente o ponto do pedido ("bem menor, principalmente
+    // as stickers").
+    final folderSize = tester.getSize(
+      find.widgetWithText(FolderTab, 'Reações'),
+    );
+    expect(folderSize.height, lessThan(50));
+
+    final thumbSize = tester.getSize(
+      find
+          .ancestor(
+            of: find.byType(SvgPicture).first,
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    expect(thumbSize.width, lessThanOrEqualTo(44));
+    expect(thumbSize.height, lessThanOrEqualTo(36));
+  });
+
+  testWidgets('alça do item selecionado continua funcionando mesmo coberta por '
+      'outro sticker por cima', (tester) async {
+    // Reproduz o bug relatado: dois stickers na mesma posição (o padrão
+    // de todo sticker novo), o de cima (zIndex maior) tapando o canto do
+    // selecionado, que está por baixo — antes disso bloqueava a alça,
+    // porque ela morava dentro da pilha por zIndex.
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+
+    final page = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Stickers'),
+      200,
+      scrollable: page,
+    );
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+
+    // Sticker A: primeiro da pasta "Reações".
+    await tester.tap(find.byType(SvgPicture).first);
+    await tester.pumpAndSettle();
+
+    // Sticker B: o segundo — nasce na mesma posição de A (0.5, 0.5) e
+    // fica selecionado, por cima (zIndex maior).
+    await tester.tap(find.byType(SvgPicture).at(1));
+    await tester.pumpAndSettle();
+
+    // Manda B para trás: ele continua selecionado, mas agora A (que não
+    // se move) fica por cima, cobrindo o canto de B por completo.
+    await tester.scrollUntilVisible(
+      find.byTooltip('Trás'),
+      -200,
+      scrollable: page,
+    );
+    await tester.tap(find.byTooltip('Trás'));
+    await tester.pumpAndSettle();
+
+    Widget selectedOverlay() => tester
+        .widgetList<CollageOverlayView>(find.byType(CollageOverlayView))
+        .firstWhere((w) => w.selected);
+
+    final before = selectedOverlay() as CollageOverlayView;
+    expect(before.scale, 1.0);
+    expect(before.rotation, 0.0);
+
+    final resizeHandle = find.byIcon(Icons.open_in_full_rounded);
+    expect(resizeHandle, findsOneWidget);
+    await tester.dragFrom(tester.getCenter(resizeHandle), const Offset(40, 40));
+    await tester.pumpAndSettle();
+
+    final afterResize = selectedOverlay() as CollageOverlayView;
+    expect(afterResize.scale, greaterThan(before.scale));
+
+    final rotateHandle = find.byIcon(Icons.rotate_right_rounded);
+    expect(rotateHandle, findsOneWidget);
+    await tester.dragFrom(tester.getCenter(rotateHandle), const Offset(0, 40));
+    await tester.pumpAndSettle();
+
+    final afterRotate = selectedOverlay() as CollageOverlayView;
+    expect(afterRotate.rotation, greaterThan(0));
+  });
 
   testWidgets('opções de fundo não quebram linha dentro do próprio botão', (
     tester,
@@ -477,12 +603,16 @@ void main() {
           tester.widget<Slider>(sliders.at(index)).value;
 
       final initialOuter = sliderValue(1);
+      final initialAll = sliderValue(0);
 
-      // Mexer na linha "Entre fotos" não move a externa.
+      // Mexer na linha "Entre fotos" não move a externa, nem "Tudo" — antes
+      // "Tudo" mostrava a média das outras duas a cada rebuild, então o
+      // próprio slider se movia sozinho sem ninguém tocar nele.
       await tester.drag(sliders.at(2), const Offset(120, 0));
       await tester.pumpAndSettle();
       expect(sliderValue(2), isNot(closeTo(initialOuter, 0.001)));
       expect(sliderValue(1), closeTo(initialOuter, 0.001));
+      expect(sliderValue(0), closeTo(initialAll, 0.001));
 
       // "Tudo" iguala as duas ao valor arrastado.
       await tester.drag(sliders.at(0), const Offset(60, 0));
@@ -598,6 +728,43 @@ void main() {
     );
     expect(imported.selected, isTrue);
   });
+
+  testWidgets(
+    'criar uma pasta rola a fileira até ela, sem precisar rolar na mão',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Stickers'));
+      await tester.pumpAndSettle();
+
+      final page = find.byType(Scrollable).first;
+
+      // Cria várias pastas: com só uma, a fileira inteira já cabe na tela e
+      // o teste não provaria nada — a pasta nova precisa nascer longe do
+      // que já está visível para a rolagem automática ter algo a fazer.
+      for (var i = 0; i < 6; i++) {
+        await tester.scrollUntilVisible(
+          find.widgetWithText(FolderTab, 'Nova pasta'),
+          200,
+          scrollable: page,
+        );
+        await tester.tap(find.widgetWithText(FolderTab, 'Nova pasta'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), 'Pasta $i');
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+      }
+
+      // Sem rolar a fileira de pastas na mão: a última criada precisa já
+      // estar visível, porque criar uma pasta rola até ela sozinho.
+      expect(find.widgetWithText(FolderTab, 'Pasta 5'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'modos de fundo ficam dentro da caixa do alvo, com os dois alvos',

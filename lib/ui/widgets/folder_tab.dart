@@ -113,6 +113,11 @@ class FolderTab extends StatelessWidget {
     final foreground = selected
         ? theme.colorScheme.onPrimaryContainer
         : theme.colorScheme.onSurfaceVariant;
+    // Rede de segurança para uma pasta antiga persistida com nome vazio —
+    // `StickerFolderStore.create` já não deixa isso acontecer de novo, mas
+    // sem isto uma entrada assim continuaria aparecendo como um vão sem
+    // texto para sempre.
+    final displayLabel = label.trim().isEmpty ? 'Pasta sem nome' : label;
     return Material(
       color: selected
           ? theme.colorScheme.primaryContainer
@@ -132,19 +137,19 @@ class FolderTab extends StatelessWidget {
           // O respiro de cima soma a altura da abinha (a `FolderTabShape`
           // reserva ela em `dimensions`), para o rótulo ficar centralizado no
           // corpo da pasta e não colado na aba.
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 18, color: foreground),
-                const SizedBox(width: 6),
+                Icon(icon, size: 15, color: foreground),
+                const SizedBox(width: 5),
               ],
               Text(
-                label,
+                displayLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelLarge?.copyWith(
+                style: theme.textTheme.labelMedium?.copyWith(
                   color: foreground,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),

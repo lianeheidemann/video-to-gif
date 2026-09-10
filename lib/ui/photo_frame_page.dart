@@ -453,12 +453,12 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             children: [
               _frameColorRow(),
               Divider(
-                height: 17,
+                height: 13,
                 color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
               ),
               _frameThicknessRow(),
               Divider(
-                height: 17,
+                height: 13,
                 color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
               ),
               _cornerRadiusRow(),
@@ -472,11 +472,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   Widget _frameStyleThumbnails() {
     final active = _frame.style;
     return SizedBox(
-      height: 108,
+      height: 84,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: FrameStyle.values.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final style = FrameStyle.values[index];
           return _frameStyleThumb(style, selected: style == active);
@@ -490,7 +490,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       key: ValueKey('frameStyleThumb_${style.name}'),
       label: style.label,
       selected: selected,
-      padding: const EdgeInsets.all(11),
+      padding: const EdgeInsets.all(8),
       onTap: () => _selectFrameStyle(style),
       child: _frameStyleGlyph(
         style,
@@ -503,7 +503,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     if (style == FrameStyle.none) {
       return Icon(
         Icons.crop_free_rounded,
-        size: 22,
+        size: 16,
         color: color.withValues(alpha: 0.6),
       );
     }
@@ -594,11 +594,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     final selected = _frame.imageFrame;
     final assets = [...ImageFrameLibrary.bundled, ..._importedImageFrames];
     return SizedBox(
-      height: 108,
+      height: 84,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: assets.length + 2,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           if (index == 0) return _noImageFrameThumb(selected: selected == null);
           if (index == assets.length + 1) return _importFrameThumb();
@@ -615,11 +615,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       key: const ValueKey('imageFrameThumb_none'),
       label: FrameStyle.none.label,
       selected: selected,
-      padding: const EdgeInsets.all(11),
+      padding: const EdgeInsets.all(8),
       onTap: () => _updateFrame(_frame.copyWith(clearImageFrame: true)),
       child: Icon(
         Icons.crop_free_rounded,
-        size: 22,
+        size: 16,
         color: theme.colorScheme.primary.withValues(alpha: 0.6),
       ),
     );
@@ -630,7 +630,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       key: ValueKey('imageFrameThumb_${asset.id}'),
       label: asset.label,
       selected: selected,
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(4),
       onTap: () => _selectImageFrame(asset),
       onLongPress: asset.source == ImageFrameSource.bundledSvg
           ? null
@@ -645,12 +645,12 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       behavior: HitTestBehavior.opaque,
       onTap: _importFrameImage,
       child: SizedBox(
-        width: 62,
+        width: 46,
         child: Column(
           children: [
             Container(
-              width: 62,
-              height: 62,
+              width: 46,
+              height: 46,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(16),
@@ -760,8 +760,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           children: [
             Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
             Container(
-              width: 28,
-              height: 28,
+              width: 22,
+              height: 22,
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,
@@ -1058,15 +1058,15 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     return Row(
       children: [
         Container(
-          width: 40,
-          height: 40,
+          width: 32,
+          height: 32,
           decoration: BoxDecoration(
             color: theme.colorScheme.primary.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             _contentFitIcon(mode),
-            size: 20,
+            size: 16,
             color: theme.colorScheme.primary,
           ),
         ),
@@ -1147,7 +1147,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         ),
         if (!frame.transparentBackground) ...[
           Divider(
-            height: 17,
+            height: 13,
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
           _backgroundColorRow(),
@@ -1180,15 +1180,15 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       onTap: onTap,
       onLongPress: onLongPress,
       child: SizedBox(
-        width: 62,
+        width: 46,
         child: Column(
           children: [
             Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 62,
-                  height: 62,
+                  width: 46,
+                  height: 46,
                   padding: padding,
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHigh,
@@ -1209,8 +1209,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                     top: -4,
                     right: -4,
                     child: Container(
-                      width: 18,
-                      height: 18,
+                      width: 14,
+                      height: 14,
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary,
                         shape: BoxShape.circle,
@@ -1221,7 +1221,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                       ),
                       child: const Icon(
                         Icons.check_rounded,
-                        size: 12,
+                        size: 9,
                         color: Colors.white,
                       ),
                     ),

@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'collage_background.dart';
 import 'color_adjustments.dart';
+import 'default_colors.dart';
 import 'crop_rect.dart';
 
 // As matrizes de ajuste de cor moram em color_adjustments.dart (as três
@@ -61,7 +62,7 @@ class CollageCellSettings {
     this.background = const CollageBackground(),
     this.cornerRatio = 0.0,
     this.borderThicknessAtReference = 0.0,
-    this.borderColor = const Color(0xFFFFFFFF),
+    this.borderColor = defaultFrameColor,
     this.brightness = 0.0,
     this.exposure = 0.0,
     this.contrast = 0.0,
@@ -165,6 +166,18 @@ class CollageCellSettings {
   double get _effectiveHeight => (manualCrop?.height ?? photoHeight).toDouble();
   double get _effectiveOriginX => (manualCrop?.x ?? 0).toDouble();
   double get _effectiveOriginY => (manualCrop?.y ?? 0).toDouble();
+
+  /// Retângulo de origem (pixels da foto decodificada) que [manualCrop]
+  /// recorta — ou a foto inteira, sem recorte manual nenhum. Fonte comum
+  /// para o "src" de `drawImageRect`/`_CroppedCover` em
+  /// [CollageCellFitMode.contain], que — ao contrário de [coverSrcRect] —
+  /// não tem zoom/offset próprios para compor com o recorte.
+  Rect get manualCropSrcRect => Rect.fromLTWH(
+    _effectiveOriginX,
+    _effectiveOriginY,
+    _effectiveWidth,
+    _effectiveHeight,
+  );
 
   double borderThicknessFor(double cellWidth) {
     if (cellWidth <= 0) return borderThicknessAtReference;

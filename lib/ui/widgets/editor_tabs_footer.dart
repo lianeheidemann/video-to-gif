@@ -115,7 +115,7 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
         setState(() => _collapsed = velocity > 0);
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Container(
           width: 36,
           height: 4,
@@ -154,7 +154,7 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      editorPanelHeader(context, section.title, section.value),
+                      editorPanelValueLine(context, section.value),
                       section.builder(context),
                     ],
                   ),
@@ -169,7 +169,7 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
   Widget _bar(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      height: 76,
+      height: 60,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -198,11 +198,11 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
     return InkWell(
       onTap: () => widget.onSelected(selected ? null : index),
       child: SizedBox(
-        width: 76,
+        width: 60,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(section.icon, color: color),
+            Icon(section.icon, size: 20, color: color),
             const SizedBox(height: 4),
             Text(
               section.barLabel,
@@ -220,31 +220,27 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
   }
 }
 
-/// Título + valor atual no topo de um painel de aba — o mesmo resumo que o
-/// card expansível mostrava no cabeçalho antes de a seção virar aba.
-Widget editorPanelHeader(BuildContext context, String title, [String? value]) {
+/// Valor atual de uma aba, alinhado à direita — sem repetir o nome da aba:
+/// a própria aba do rodapé já fica marcada em cor diferente e em negrito
+/// quando selecionada (`_tabButton`), então escrevê-lo de novo aqui só
+/// custava espaço vertical num painel com teto de 200px (mesma economia já
+/// feita para a tela de Montagem, que tem seu próprio rodapé em
+/// `collage_page.dart`). `null` (a maioria das abas, que não tem um valor
+/// de resumo) não desenha nada.
+Widget editorPanelValueLine(BuildContext context, [String? value]) {
+  if (value == null) return const SizedBox.shrink();
   final theme = Theme.of(context);
   return Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Align(
+      alignment: Alignment.centerRight,
+      child: Text(
+        value,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.primary,
         ),
-        if (value != null)
-          Text(
-            value,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-      ],
+      ),
     ),
   );
 }

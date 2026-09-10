@@ -242,6 +242,13 @@ class _PhotoCropPageState extends State<PhotoCropPage> {
       ),
       side: const BorderSide(color: Colors.white24),
       showCheckmark: false,
+      // Esta tela é sempre escura, de propósito (Scaffold preto acima) —
+      // sem travar isso, o Material 3 tinge o chip com o ColorScheme
+      // ambiente (que troca de claro pra escuro junto do app) por cima das
+      // cores fixas de propósito, apagando o contraste no modo claro.
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      pressElevation: 0,
     );
   }
 }

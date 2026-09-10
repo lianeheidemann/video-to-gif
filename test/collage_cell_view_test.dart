@@ -156,7 +156,11 @@ void main() {
 
     final display = cell.containDisplaySize(cellSize);
     expect(display.width, greaterThan(cellSize.width));
-    expect(tester.getSize(find.byType(Image)), display);
+    // `_CroppedCover` (o mesmo widget do modo "preencher", desde que
+    // "encaixar" passou a respeitar `manualCrop` de verdade) impõe o
+    // tamanho final no `FittedBox` — a `Image` interna agora mede o
+    // tamanho nativo da foto, não mais o tamanho exibido.
+    expect(tester.getSize(find.byType(FittedBox)), display);
   });
 
   testWidgets(

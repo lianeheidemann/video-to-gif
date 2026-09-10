@@ -17,6 +17,7 @@ import '../models/collage_settings.dart';
 import '../models/collage_sticker.dart';
 import '../models/collage_text.dart';
 import '../models/crop_rect.dart';
+import '../models/default_colors.dart';
 import '../models/photo_info.dart';
 import '../services/collage_animation.dart';
 import '../services/collage_compositor.dart';
@@ -34,6 +35,43 @@ import 'widgets/color_picker_sheet.dart';
 import 'widgets/export_progress_dialog.dart';
 import 'widgets/folder_tab.dart';
 import 'widgets/target_sub_panel.dart';
+
+/// Geometria do sticker/texto selecionado, na medida necessária para
+/// posicionar as alças de redimensionar/girar por fora dele (ver
+/// `_CollagePageState._selectedHandlesLayer`) — junto de como escrever a
+/// transformação de volta no item certo, já que sticker e texto usam
+/// `copyWith`/`replacingSticker`/`replacingText` diferentes.
+class _SelectedOverlayGeometry {
+  const _SelectedOverlayGeometry({
+    required this.centerX,
+    required this.centerY,
+    required this.scale,
+    required this.rotation,
+    required this.minScale,
+    required this.maxScale,
+    required this.naturalSize,
+    required this.apply,
+  });
+
+  final double centerX;
+  final double centerY;
+  final double scale;
+  final double rotation;
+  final double minScale;
+  final double maxScale;
+
+  /// Tamanho do conteúdo em escala 1 — o efetivo na tela é
+  /// `naturalSize * scale`.
+  final Size naturalSize;
+
+  final void Function(
+    double centerX,
+    double centerY,
+    double scale,
+    double rotation,
+  )
+  apply;
+}
 
 /// Abas fixas no rodapé da tela de montagem — cada uma abre um painel com o
 /// conteúdo daquela seção logo acima da barra de abas, substituindo a antiga
@@ -107,6 +145,11 @@ class _CollagePageState extends State<CollagePage> {
   );
   static const _folderStore = StickerFolderStore();
   static const _fontStore = ImportedFontStore();
+
+  /// Da fileira de pastas da aba "Stickers" — usado só para rolar até o
+  /// fim ao criar uma pasta nova, que nasce perto de "Nova pasta", no fim
+  /// da lista (ver [_createStickerFolder]).
+  final _folderScrollController = ScrollController();
 
   /// Stickers prontos, embutidos no app (`assets/sticker/`), agrupados por
   /// pasta temática na seção "Stickers" — ver [_StickerFolder].
@@ -268,6 +311,15 @@ class _CollagePageState extends State<CollagePage> {
     widget.photos,
   );
 
+  /// Valor próprio da linha "Tudo" da aba "Margem" — só muda quando ELA é
+  /// arrastada (que também iguala `outerMarginRatio`/`innerMarginRatio` a
+  /// esse valor). Sem isto, "Tudo" mostrava a média das outras duas a cada
+  /// rebuild, então o próprio slider se movia sozinho ao arrastar "Externa"
+  /// ou "Entre fotos" — o oposto do que uma pessoa espera de um slider que
+  /// não tocou.
+  late double _marginAllValue =
+      (_settings.outerMarginRatio + _settings.innerMarginRatio) / 2;
+
   List<ImportedAsset> _importedStickers = [];
   List<ImportedAsset> _importedBackgrounds = [];
 
@@ -341,6 +393,7 @@ class _CollagePageState extends State<CollagePage> {
     _textController.dispose();
     _textFocus.dispose();
     _exportProgress.dispose();
+    _folderScrollController.dispose();
     super.dispose();
   }
 
@@ -606,7 +659,7 @@ class _CollagePageState extends State<CollagePage> {
         setState(() => _panelCollapsed = velocity > 0);
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Container(
           width: 36,
           height: 4,
@@ -630,32 +683,26 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.text => _textPanelContent(),
   };
 
-  /// Título + valor atual de uma seção — mesmo resumo que o `LabeledSection`
-  /// antigo mostrava, agora no topo do próprio painel em vez de no
-  /// cabeçalho de um card expansível.
-  Widget _panelHeader(String title, [String? value]) {
+  /// Valor atual de uma seção, alinhado à direita — sem repetir o nome da
+  /// aba: a própria aba do rodapé já fica marcada em cor diferente e em
+  /// negrito quando selecionada (`_footerTabButton`), então escrevê-lo de
+  /// novo aqui só custava espaço vertical num painel com teto de 200px.
+  /// `null` (a maioria das abas, que não tem um valor de resumo) não
+  /// desenha nada.
+  Widget _panelValueLine(String? value) {
+    if (value == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.primary,
           ),
-          if (value != null)
-            Text(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -663,7 +710,7 @@ class _CollagePageState extends State<CollagePage> {
   Widget _footerTabs() {
     final theme = Theme.of(context);
     return Container(
-      height: 76,
+      height: 60,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -694,11 +741,11 @@ class _CollagePageState extends State<CollagePage> {
         _panelCollapsed = false;
       }),
       child: SizedBox(
-        width: 68,
+        width: 60,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(_tabIcon(tab), color: color),
+            Icon(_tabIcon(tab), size: 20, color: color),
             const SizedBox(height: 4),
             Text(
               _tabLabel(tab),
@@ -799,6 +846,10 @@ class _CollagePageState extends State<CollagePage> {
                 ),
               ),
               ..._overlayWidgets(size),
+              // Sempre depois (por cima) das sobreposições, sem ligar para
+              // o zIndex de quem está selecionado — ver o porquê no doc de
+              // `CollageOverlayView`.
+              ..._selectedHandlesWidgets(size),
             ],
           );
         },
@@ -942,6 +993,259 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
+  // ---------------------------------------------------------------------
+  // Alças de redimensionar/girar do item selecionado — numa camada própria,
+  // sempre por cima de tudo na pilha principal (ver o porquê no doc de
+  // `CollageOverlayView`), calculadas analiticamente em vez de medidas em
+  // tempo de execução.
+  // ---------------------------------------------------------------------
+
+  /// Tamanho natural (escala 1) do conteúdo de um sticker — mesmo `refSize`
+  /// quadrado que [_stickerArt] usa.
+  Size _stickerNaturalSize(CollageSticker sticker, Size canvasSize) {
+    final refSize = canvasSize.shortestSide * CollageSticker.referenceSizeRatio;
+    return Size(refSize, refSize);
+  }
+
+  /// Tamanho natural (escala 1) do conteúdo de um texto — a mesma medida que
+  /// [_textArt] produz: o texto em si, mais o respiro da caixa de fundo
+  /// quando ela existe. Precisa de um `TextPainter` porque não é um valor
+  /// fixo — depende da string, da fonte e do tamanho escolhidos.
+  ///
+  /// Só mede uma linha (sem `maxWidth`), como o próprio [Text] faz dentro do
+  /// `Stack` sem restrição de largura; um texto tão longo que chegasse a
+  /// quebrar linha na prévia divergiria daqui — caso raro, não tratado.
+  Size _textNaturalSize(CollageTextItem item, Size canvasSize) {
+    final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: item.text,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontFamily: item.fontFamily,
+          fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
+        ),
+      ),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final size = Size(painter.width, painter.height);
+    painter.dispose();
+    if (item.backgroundColor == null) return size;
+    final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
+    return Size(size.width + padH * 2, size.height + padV * 2);
+  }
+
+  /// Geometria + como aplicar a transformação de volta, para o sticker ou
+  /// texto selecionado agora — `null` fora das abas "Stickers"/"Texto" ou
+  /// sem nada selecionado (mesma regra de [_activeSelectionId]).
+  _SelectedOverlayGeometry? _selectedOverlayGeometry(Size canvasSize) {
+    final id = _activeSelectionId;
+    if (id == null) return null;
+
+    final sticker = _findSticker(id);
+    if (sticker != null) {
+      return _SelectedOverlayGeometry(
+        centerX: sticker.centerX,
+        centerY: sticker.centerY,
+        scale: sticker.scale,
+        rotation: sticker.rotation,
+        minScale: CollageSticker.minScale,
+        maxScale: CollageSticker.maxScale,
+        naturalSize: _stickerNaturalSize(sticker, canvasSize),
+        apply: (cx, cy, s, r) => _update(
+          _settings.replacingSticker(
+            id,
+            sticker.copyWith(centerX: cx, centerY: cy, scale: s, rotation: r),
+          ),
+          pushUndo: false,
+        ),
+      );
+    }
+
+    final text = _findText(id);
+    if (text != null) {
+      return _SelectedOverlayGeometry(
+        centerX: text.centerX,
+        centerY: text.centerY,
+        scale: text.scale,
+        rotation: text.rotation,
+        minScale: CollageTextItem.minScale,
+        maxScale: CollageTextItem.maxScale,
+        naturalSize: _textNaturalSize(text, canvasSize),
+        apply: (cx, cy, s, r) => _update(
+          _settings.replacingText(
+            id,
+            text.copyWith(centerX: cx, centerY: cy, scale: s, rotation: r),
+          ),
+          pushUndo: false,
+        ),
+      );
+    }
+    return null;
+  }
+
+  bool _resizeHandleCheckpointPushed = false;
+  bool _rotateHandleCheckpointPushed = false;
+
+  /// Posição (em pixels locais do canvas) que a camada acumula a partir de
+  /// [event.delta] durante um arrasto da alça de girar — não há RenderBox
+  /// para medir o dedo direto, então a posição vem de somar os deltas a
+  /// partir de onde a alça estava no toque inicial. Reiniciada em
+  /// [_onRotateHandlePointerDown].
+  Offset? _rotatePointerPos;
+  double? _lastRotateAngle;
+
+  /// Mesma conta de [CollageOverlayView] (removida de lá): desfaz a rotação
+  /// atual do vetor de arrasto e soma as duas componentes locais — arrastar
+  /// para longe do centro (direita/baixo, sem girar) cresce; para perto,
+  /// encolhe — como fração de [canvasSize].shortestSide.
+  void _onResizeHandlePointerMove(
+    PointerMoveEvent event,
+    _SelectedOverlayGeometry geometry,
+    Size canvasSize,
+  ) {
+    final reference = canvasSize.shortestSide;
+    if (reference <= 0) return;
+    final cosA = math.cos(geometry.rotation);
+    final sinA = math.sin(geometry.rotation);
+    final local = Offset(
+      event.delta.dx * cosA + event.delta.dy * sinA,
+      -event.delta.dx * sinA + event.delta.dy * cosA,
+    );
+    final scaleDelta = (local.dx + local.dy) / reference;
+    if (scaleDelta == 0) return;
+    final newScale = (geometry.scale + geometry.scale * scaleDelta).clamp(
+      geometry.minScale,
+      geometry.maxScale,
+    );
+    if (newScale == geometry.scale) return;
+    if (!_resizeHandleCheckpointPushed) {
+      _resizeHandleCheckpointPushed = true;
+      _pushUndoCheckpoint();
+    }
+    geometry.apply(
+      geometry.centerX,
+      geometry.centerY,
+      newScale,
+      geometry.rotation,
+    );
+  }
+
+  void _onRotateHandlePointerDown(Offset handleCenter) {
+    _rotateHandleCheckpointPushed = false;
+    _rotatePointerPos = handleCenter;
+    _lastRotateAngle = null;
+  }
+
+  void _onRotateHandlePointerMove(
+    PointerMoveEvent event,
+    _SelectedOverlayGeometry geometry,
+    Offset center,
+  ) {
+    final pos = (_rotatePointerPos ?? center) + event.delta;
+    _rotatePointerPos = pos;
+    final vector = pos - center;
+    if (vector.distance < 1) return;
+    final angle = math.atan2(vector.dy, vector.dx);
+    final last = _lastRotateAngle;
+    _lastRotateAngle = angle;
+    if (last == null) return;
+    var delta = angle - last;
+    // Normaliza a virada de -pi/pi, senão passar por trás do overlay daria
+    // um giro de volta inteira num quadro só.
+    while (delta > math.pi) {
+      delta -= 2 * math.pi;
+    }
+    while (delta < -math.pi) {
+      delta += 2 * math.pi;
+    }
+    if (delta == 0) return;
+    if (!_rotateHandleCheckpointPushed) {
+      _rotateHandleCheckpointPushed = true;
+      _pushUndoCheckpoint();
+    }
+    geometry.apply(
+      geometry.centerX,
+      geometry.centerY,
+      geometry.scale,
+      geometry.rotation + delta,
+    );
+  }
+
+  /// As duas alças do item selecionado, sempre por cima de tudo — ver o doc
+  /// de `CollageOverlayView` para o porquê de não morarem mais dentro dele.
+  List<Widget> _selectedHandlesWidgets(Size canvasSize) {
+    final geometry = _selectedOverlayGeometry(canvasSize);
+    if (geometry == null) return const [];
+
+    final center = Offset(
+      geometry.centerX * canvasSize.width,
+      geometry.centerY * canvasSize.height,
+    );
+    final halfW = geometry.naturalSize.width * geometry.scale / 2;
+    final halfH = geometry.naturalSize.height * geometry.scale / 2;
+    final cosR = math.cos(geometry.rotation);
+    final sinR = math.sin(geometry.rotation);
+    Offset rotate(Offset local) => Offset(
+      local.dx * cosR - local.dy * sinR,
+      local.dx * sinR + local.dy * cosR,
+    );
+
+    final resizeCenter = center + rotate(Offset(halfW, halfH));
+    final rotateCenter = center + rotate(Offset(halfW, -halfH));
+
+    return [
+      _handleCircle(
+        center: resizeCenter,
+        icon: Icons.open_in_full_rounded,
+        onPointerDown: (_) => _resizeHandleCheckpointPushed = false,
+        onPointerMove: (event) =>
+            _onResizeHandlePointerMove(event, geometry, canvasSize),
+      ),
+      _handleCircle(
+        center: rotateCenter,
+        icon: Icons.rotate_right_rounded,
+        onPointerDown: (_) => _onRotateHandlePointerDown(rotateCenter),
+        onPointerMove: (event) =>
+            _onRotateHandlePointerMove(event, geometry, center),
+      ),
+    ];
+  }
+
+  Widget _handleCircle({
+    required Offset center,
+    required IconData icon,
+    required void Function(PointerDownEvent) onPointerDown,
+    required void Function(PointerMoveEvent) onPointerMove,
+  }) {
+    final theme = Theme.of(context);
+    const diameter = 24.0;
+    return Positioned(
+      left: center.dx - diameter / 2,
+      top: center.dy - diameter / 2,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: onPointerDown,
+        onPointerMove: onPointerMove,
+        child: Container(
+          width: diameter,
+          height: diameter,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary,
+            shape: BoxShape.circle,
+            border: Border.all(color: theme.colorScheme.surface, width: 2),
+          ),
+          child: Icon(
+            icon,
+            size: icon == Icons.rotate_right_rounded ? 14 : 12,
+            color: theme.colorScheme.onPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget? _selectionToolbar() {
     final id = _activeSelectionId;
     if (id == null) return null;
@@ -996,7 +1300,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Layout'),
         SizedBox(
           height: 84,
           child: ListView.separated(
@@ -1230,7 +1533,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Margem'),
         // As três de uma vez, uma embaixo da outra: antes eram chips que
         // trocavam qual delas o único slider controlava, então ver a margem
         // externa e a de entre fotos ao mesmo tempo era impossível.
@@ -1242,16 +1544,20 @@ class _CollagePageState extends State<CollagePage> {
                   _marginRow(
                     icon: Icons.border_all_rounded,
                     label: 'Tudo',
-                    // "Tudo" não tem valor próprio: mostra a média das duas e,
-                    // ao arrastar, iguala as duas ao valor escolhido.
-                    value: (outer + inner) / 2,
-                    onChanged: (v) => _update(
-                      _settings.copyWith(
-                        outerMarginRatio: v,
-                        innerMarginRatio: v,
-                      ),
-                      pushUndo: false,
-                    ),
+                    // Valor próprio (ver [_marginAllValue]) — não recalcula
+                    // a média a cada rebuild, então arrastar "Externa"/
+                    // "Entre fotos" não move este slider.
+                    value: _marginAllValue,
+                    onChanged: (v) {
+                      _marginAllValue = v;
+                      _update(
+                        _settings.copyWith(
+                          outerMarginRatio: v,
+                          innerMarginRatio: v,
+                        ),
+                        pushUndo: false,
+                      );
+                    },
                   ),
                   _marginRow(
                     icon: Icons.border_outer_rounded,
@@ -1278,12 +1584,15 @@ class _CollagePageState extends State<CollagePage> {
               tooltip: 'Zerar margens',
               onPressed: outer == 0 && inner == 0
                   ? null
-                  : () => _update(
-                      _settings.copyWith(
-                        outerMarginRatio: 0,
-                        innerMarginRatio: 0,
-                      ),
-                    ),
+                  : () {
+                      _marginAllValue = 0;
+                      _update(
+                        _settings.copyWith(
+                          outerMarginRatio: 0,
+                          innerMarginRatio: 0,
+                        ),
+                      );
+                    },
               icon: const Icon(Icons.refresh_rounded),
             ),
           ],
@@ -1348,7 +1657,7 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Proporção', _customAspectLabel()),
+        _panelValueLine(_customAspectLabel()),
         Wrap(
           spacing: 6,
           runSpacing: 6,
@@ -1487,7 +1796,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Borda e cantos'),
         // Espessura, arredondamento e cor valem para o alvo escolhido em
         // cima (a montagem inteira ou todas as fotos), então ficam dentro da
         // caixa dele — ver [TargetSubPanel].
@@ -1603,8 +1911,8 @@ class _CollagePageState extends State<CollagePage> {
           children: [
             Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
             Container(
-              width: 28,
-              height: 28,
+              width: 22,
+              height: 22,
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,
@@ -1675,7 +1983,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Fundo'),
         // O fundo da montagem (a área fora/entre as fotos) e o fundo de
         // dentro de cada foto (o que aparece na sobra do modo "encaixar") são
         // escolhas independentes — mesmo seletor de alvo da aba "Borda e
@@ -1695,8 +2002,8 @@ class _CollagePageState extends State<CollagePage> {
               // dentro do próprio botão — chip quebra para a linha de baixo
               // inteiro, nunca no meio de uma palavra.
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   for (final entry in const [
                     (
@@ -1716,8 +2023,10 @@ class _CollagePageState extends State<CollagePage> {
                     ),
                   ])
                     ChoiceChip(
-                      avatar: Icon(entry.$3, size: 18),
+                      avatar: Icon(entry.$3, size: 15),
                       label: Text(entry.$2),
+                      visualDensity: VisualDensity.compact,
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
                       selected: background.mode == entry.$1,
                       onSelected: (_) =>
                           _applyBackground(background.copyWith(mode: entry.$1)),
@@ -1902,7 +2211,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Ajustar cor'),
         ColorAdjustPanel(
           hasAdjustments: _settings.cells.any((c) => c.hasColorAdjustments),
           valueOf: (adjustment) => adjustment.valueOf(reference),
@@ -1960,14 +2268,18 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Stickers'),
+        // Fileira de pastas e miniaturas de sticker bem menores que o
+        // padrão do resto do app — este é o único lugar com tanta coisa
+        // pequena lado a lado, então o tamanho das outras miniaturas
+        // (seletor de fundo, trocar foto) fica como está.
         SizedBox(
-          height: 62,
+          height: 44,
           child: ListView.separated(
+            controller: _folderScrollController,
             scrollDirection: Axis.horizontal,
             // +1 pelo botão de criar pasta, sempre no fim da linha.
             itemCount: _StickerFolder.values.length + _customFolders.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
               if (index < _StickerFolder.values.length) {
                 final folder = _StickerFolder.values[index];
@@ -1996,9 +2308,9 @@ class _CollagePageState extends State<CollagePage> {
             },
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         SizedBox(
-          height: 70,
+          height: 58,
           // Uma fileira só: primeiro a arte embutida da pasta, depois o que
           // foi importado para ela e, no fim, o tile de importar (nas pastas
           // que aceitam importação). Antes eram dois caminhos separados, e
@@ -2009,22 +2321,36 @@ class _CollagePageState extends State<CollagePage> {
                 bundledStickers.length +
                 imported.length +
                 (showsImports ? 1 : 0),
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               if (index < bundledStickers.length) {
                 final sticker = bundledStickers[index];
-                return GestureDetector(
-                  onTap: () => _addBundledSticker(sticker),
-                  child: _bundledStickerThumb(sticker),
+                // `Center`: dentro de um `ListView` horizontal, o filho
+                // direto é estirado para a altura inteira da fileira,
+                // ignorando a altura que o `Container` pede — sem isto a
+                // miniatura saía do tamanho da fileira (58), não dos 36
+                // pedidos.
+                return Center(
+                  child: GestureDetector(
+                    onTap: () => _addBundledSticker(sticker),
+                    child: _bundledStickerThumb(sticker, size: 44, height: 36),
+                  ),
                 );
               }
               final importedIndex = index - bundledStickers.length;
               if (importedIndex < imported.length) {
                 final asset = imported[importedIndex];
-                return GestureDetector(
-                  onTap: () => _addStickerFromAsset(asset),
-                  onLongPress: () => _confirmRemoveSticker(asset),
-                  child: _assetThumb(asset, selected: false),
+                return Center(
+                  child: GestureDetector(
+                    onTap: () => _addStickerFromAsset(asset),
+                    onLongPress: () => _confirmRemoveSticker(asset),
+                    child: _assetThumb(
+                      asset,
+                      selected: false,
+                      size: 44,
+                      height: 36,
+                    ),
+                  ),
                 );
               }
               return _importTile(
@@ -2036,6 +2362,8 @@ class _CollagePageState extends State<CollagePage> {
                       : _stickerFolderId,
                 ),
                 label: 'Importar',
+                size: 44,
+                height: 36,
               );
             },
           ),
@@ -2056,6 +2384,17 @@ class _CollagePageState extends State<CollagePage> {
     setState(() {
       _customFolders = [..._customFolders, folder];
       _stickerFolderId = folder.id;
+    });
+    // A pasta nova nasce perto do fim da fileira (antes só de "Nova
+    // pasta"), fora da parte já visível se houver muitas pastas — sem
+    // rolar até lá, ela ficava fora da vista logo depois de criada.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_folderScrollController.hasClients) return;
+      _folderScrollController.animateTo(
+        _folderScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
     });
   }
 
@@ -2161,15 +2500,19 @@ class _CollagePageState extends State<CollagePage> {
     });
   }
 
-  Widget _bundledStickerThumb((String path, String label) sticker) {
+  Widget _bundledStickerThumb(
+    (String path, String label) sticker, {
+    double size = 62,
+    double height = 46,
+  }) {
     final theme = Theme.of(context);
     return Container(
-      width: 62,
-      height: 46,
-      padding: const EdgeInsets.all(8),
+      width: size,
+      height: height,
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
@@ -2274,7 +2617,6 @@ class _CollagePageState extends State<CollagePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _panelHeader('Texto'),
         _textComposer(),
         // Os controles de estilo só fazem sentido com um texto selecionado —
         // eles mexem naquele texto, não em todos.
@@ -2295,6 +2637,25 @@ class _CollagePageState extends State<CollagePage> {
               'Cor do fundo do texto',
               selected.backgroundColor!,
               () => _pickTextBackgroundColor(selected.id),
+            ),
+            const SizedBox(height: 4),
+            _sliderRow(
+              label: 'Opacidade do fundo',
+              value: selected.backgroundColor!.a,
+              min: 0,
+              max: 1,
+              display: '${(selected.backgroundColor!.a * 100).round()}%',
+              onChanged: (v) => _update(
+                _settings.replacingText(
+                  selected.id,
+                  selected.copyWith(
+                    backgroundColor: selected.backgroundColor!.withValues(
+                      alpha: v,
+                    ),
+                  ),
+                ),
+                pushUndo: false,
+              ),
             ),
             const SizedBox(height: 4),
             _sliderRow(
@@ -2326,8 +2687,7 @@ class _CollagePageState extends State<CollagePage> {
         id,
         on
             ? item.copyWith(
-                backgroundColor:
-                    item.backgroundColor ?? const Color(0xFF000000),
+                backgroundColor: item.backgroundColor ?? defaultBackgroundColor,
               )
             : item.copyWith(clearBackgroundColor: true),
       ),
@@ -2344,7 +2704,7 @@ class _CollagePageState extends State<CollagePage> {
   void _pickTextBackgroundColor(String id) => _pickOverlayTextColor(
     id: id,
     title: 'Cor do fundo do texto',
-    current: (item) => item.backgroundColor ?? const Color(0xFF000000),
+    current: (item) => item.backgroundColor ?? defaultBackgroundColor,
     apply: (item, color) => item.copyWith(backgroundColor: color),
   );
 
@@ -2584,20 +2944,25 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
-  Widget _importTile({required VoidCallback onTap, required String label}) {
+  Widget _importTile({
+    required VoidCallback onTap,
+    required String label,
+    double size = 62,
+    double height = 46,
+  }) {
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
-        width: 62,
+        width: size,
         child: Column(
           children: [
             Container(
-              width: 62,
-              height: 46,
+              width: size,
+              height: height,
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: theme.colorScheme.outlineVariant.withValues(
                     alpha: 0.5,
@@ -2607,6 +2972,7 @@ class _CollagePageState extends State<CollagePage> {
               child: Icon(
                 Icons.add_photo_alternate_outlined,
                 color: theme.colorScheme.primary,
+                size: 18,
               ),
             ),
             const SizedBox(height: 4),
@@ -2695,15 +3061,20 @@ class _CollagePageState extends State<CollagePage> {
     if (!identical(updated, _settings)) _update(updated);
   }
 
-  Widget _assetThumb(ImportedAsset asset, {required bool selected}) {
+  Widget _assetThumb(
+    ImportedAsset asset, {
+    required bool selected,
+    double size = 62,
+    double height = 46,
+  }) {
     final theme = Theme.of(context);
     return Container(
-      width: 62,
-      height: 46,
+      width: size,
+      height: height,
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: selected
               ? theme.colorScheme.primary

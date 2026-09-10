@@ -173,17 +173,22 @@ class OptionChips<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 6,
+      runSpacing: 6,
       children: options.map((option) {
         final isSelected = option == selected;
         final enabled = isEnabled?.call(option) ?? true;
         return ChoiceChip(
           label: Text(labelBuilder(option)),
+          // Compacto de propósito: são chips que só carregam um número ou
+          // uma palavra curta (proporção, resolução, fps...), e o padding
+          // padrão do Material sobrava em cada um deles.
+          visualDensity: VisualDensity.compact,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 6),
           selected: isSelected,
           showCheckmark: true,
           onSelected: enabled ? (_) => onSelected(option) : null,
-          avatar: isSelected ? const Icon(Icons.check, size: 16) : null,
+          avatar: isSelected ? const Icon(Icons.check, size: 14) : null,
         );
       }).toList(),
     );

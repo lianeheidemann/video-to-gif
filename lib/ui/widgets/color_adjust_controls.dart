@@ -32,16 +32,16 @@ class ColorAdjustButton extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       onDoubleTap: onDoubleTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(14),
       child: SizedBox(
-        width: 76,
+        width: 60,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             Container(
-              width: 46,
-              height: 46,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: selected
                     ? theme.colorScheme.primary
@@ -53,13 +53,13 @@ class ColorAdjustButton extends StatelessWidget {
               ),
               child: Icon(
                 adjustment.icon,
-                size: 22,
+                size: 18,
                 color: selected
                     ? theme.colorScheme.onPrimary
                     : theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             Text(
               adjustment.label,
               maxLines: 1,
@@ -69,6 +69,56 @@ class ColorAdjustButton extends StatelessWidget {
                     ? theme.colorScheme.primary
                     : theme.colorScheme.onSurfaceVariant,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botão de zerar todos os ajustes de uma vez, no fim da fileira de
+/// ícones — depois das opções, e não acima delas como antes. Mesma forma de
+/// [ColorAdjustButton] (círculo + rótulo embaixo), só com o ícone de
+/// "redefinir" em vez de um ajuste, para entrar na fileira sem destoar.
+class _ResetAllButton extends StatelessWidget {
+  const _ResetAllButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        width: 60,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 5),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.refresh_rounded,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Redefinir',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -138,24 +188,13 @@ class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.title != null || widget.hasAdjustments)
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.title ?? '',
-                  style: theme.textTheme.titleMedium,
-                ),
-              ),
-              if (widget.hasAdjustments)
-                TextButton(
-                  onPressed: widget.onReset,
-                  child: const Text('Redefinir'),
-                ),
-            ],
+        if (widget.title != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(widget.title!, style: theme.textTheme.titleMedium),
           ),
         SizedBox(
-          height: 84,
+          height: 66,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
@@ -187,6 +226,10 @@ class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
                     );
                   },
                 ),
+              // Depois das opções, não acima delas — mesmo lugar em botão
+              // que "Zerar margens" ocupa na aba "Margem". Só aparece
+              // havendo algo para zerar.
+              if (widget.hasAdjustments) _ResetAllButton(onTap: widget.onReset),
             ],
           ),
         ),
@@ -277,7 +320,7 @@ class _IntensityRulerState extends State<IntensityRuler> {
                 widget.onChanged(0);
               },
               child: SizedBox(
-                height: 56,
+                height: 46,
                 width: width,
                 child: CustomPaint(
                   painter: _RulerPainter(
@@ -328,7 +371,7 @@ class _RulerPainter extends CustomPainter {
       if (x < 0 || x > size.width) continue;
       // Um tracinho a cada 5 é mais alto, para dar noção de escala.
       final tall = (i - (ticks - 1) ~/ 2) % 5 == 0;
-      final half = tall ? 14.0 : 8.0;
+      final half = tall ? 12.0 : 7.0;
       canvas.drawLine(
         Offset(x, size.height / 2 - half),
         Offset(x, size.height / 2 + half),
@@ -337,8 +380,8 @@ class _RulerPainter extends CustomPainter {
     }
 
     canvas.drawLine(
-      Offset(size.width / 2, size.height / 2 - 18),
-      Offset(size.width / 2, size.height / 2 + 18),
+      Offset(size.width / 2, size.height / 2 - 15),
+      Offset(size.width / 2, size.height / 2 + 15),
       Paint()
         ..color = markerColor
         ..strokeWidth = 3

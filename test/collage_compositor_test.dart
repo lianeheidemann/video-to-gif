@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
 import 'package:video_to_gif/models/collage_layout.dart';
+import 'package:video_to_gif/models/crop_rect.dart';
 import 'package:video_to_gif/models/collage_settings.dart';
 import 'package:video_to_gif/models/collage_text.dart';
 import 'package:video_to_gif/services/collage_compositor.dart';
@@ -724,6 +725,56 @@ void main() {
         greaterThan(200),
         reason: 'o texto branco deveria cobrir o centro do canvas',
       );
+    },
+  );
+
+  test(
+    '"encaixar" recorta de verdade em vez de achatar a foto inteira',
+    () async {
+      // Foto 100×100: vermelha, com uma faixa verde só em x ∈ [60,100). O
+      // recorte manual pega só essa faixa (40×100) — se "encaixar" recortar
+      // de verdade, o que aparece é 100% verde, do começo ao fim; se, como
+      // no bug, a foto INTEIRA (vermelho+verde) for só espremida dentro da
+      // caixa do tamanho do recorte, o centro da caixa ainda cai na parte
+      // vermelha (a faixa verde ocupa os 40% finais da largura original,
+      // então o meio da caixa mapeia para x≈50 da foto original — vermelho).
+      final photoPath = '${tempDir.path}/faixa.png';
+      await _writeBandedPng(photoPath, 100, 100, 60, 100);
+
+      final settings = CollageSettings(
+        layout: CollageLayout.row(1),
+        aspectRatio: 1.0,
+        outerMarginRatio: 0,
+        innerMarginRatio: 0,
+        cells: [
+          CollageCellSettings(
+            photoPath: photoPath,
+            photoWidth: 100,
+            photoHeight: 100,
+            fitMode: CollageCellFitMode.contain,
+            manualCrop: const CropRect(x: 60, y: 0, width: 40, height: 100),
+          ),
+        ],
+      );
+
+      const outputWidth = 400;
+      final bytes = await composeCollage(
+        settings: settings,
+        outputWidth: outputWidth,
+      );
+
+      // Canvas 400×400, sem margem: o recorte 40×100 "ajustado" (escala 4×)
+      // ocupa 160×400, centralizado — de x=120 a x=280. O centro do canvas
+      // (200,200) cai bem no meio dessa faixa.
+      final centerPixel = await _decodePixel(bytes, outputWidth, 200, 200);
+      expect(
+        centerPixel[1],
+        greaterThan(200),
+        reason:
+            'o recorte manual (só a faixa verde) devia aparecer inteiro, '
+            'não a foto toda espremida',
+      );
+      expect(centerPixel[0], lessThan(60));
     },
   );
 }
