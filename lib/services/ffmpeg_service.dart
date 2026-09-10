@@ -679,6 +679,17 @@ class FfmpegService {
   /// suportar 1 bit de alfa —, o `libwebp` aceita cor cheia e alfa real em
   /// 8 bits direto do grafo de composição (o mesmo usado pelo GIF). Por
   /// isso [hasAlpha] só decide o `-pix_fmt` final, nada mais.
+  ///
+  /// `-compression_level 2` (em vez do padrão `4` do próprio `libwebp`): essa
+  /// opção é o "method" do libwebp — quanto o codificador se esforça
+  /// procurando a melhor compressão. Não muda a qualidade visual (isso é só
+  /// `-quality`, acima), só troca tempo de CPU por tamanho de arquivo. Nunca
+  /// tinha sido ajustada de propósito aqui (diferente do caminho da
+  /// sequência de quadros da montagem, que sobe pra `6` com uma troca
+  /// documentada) — 4 era só o que sobrava de não setar nada. Baixar pra 2
+  /// acelera bastante a conversão, principalmente a montagem final do
+  /// contêiner WebP (`WebPAnimEncoderAssemble`), que roda tudo de uma vez no
+  /// final e é onde a demora "trava" mais se sente.
   List<String> _webpEncodeArgs(
     ConversionSettings settings, {
     required bool hasAlpha,
@@ -693,7 +704,7 @@ class FfmpegService {
       '-quality',
       '${settings.webpQuality}',
       '-compression_level',
-      '4',
+      '2',
       '-pix_fmt',
       hasAlpha ? 'yuva420p' : 'yuv420p',
       '-loop',
@@ -1238,8 +1249,20 @@ class FfmpegService {
     }
   }
 
-  double _ratio(double ms, double totalMs) =>
-      totalMs <= 0 ? 0 : (ms / totalMs).clamp(0.0, 1.0).toDouble();
+  /// Teto abaixo de 100% enquanto a sessão do FFmpeg ainda não terminou de
+  /// verdade — sobretudo no WebP, o `-f webp` do FFmpeg relata os quadros
+  /// (o que move essa razão via `onTimeMs`) bem antes da compressão de
+  /// verdade + montagem do contêiner (`WebPAnimEncoderAssemble`) acabarem,
+  /// numa chamada só, bloqueante, no final. Sem este teto a barra parecia
+  /// chegar em ~100% e travar/arrastar. O salto pra 100% de verdade
+  /// acontece só depois, no `onProgress?.call(1.0)` que já existe logo após
+  /// cada `_run` (ver `convert`) — este teto não muda o tempo real nenhum,
+  /// só evita que a barra "minta" que já terminou antes de terminar.
+  static const _inProgressCeiling = 0.92;
+
+  double _ratio(double ms, double totalMs) => totalMs <= 0
+      ? 0
+      : (ms / totalMs).clamp(0.0, _inProgressCeiling).toDouble();
 
   Future<void> _run(
     List<String> arguments, {
