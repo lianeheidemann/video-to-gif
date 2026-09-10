@@ -171,7 +171,6 @@ class _CollagePageState extends State<CollagePage> {
   ];
   static const _stickerFolderEffects = <(String path, String label)>[
     ('assets/sticker/sparkle.svg', 'Brilho'),
-    ('assets/sticker/fire.svg', 'Fogo'),
     ('assets/sticker/boom.svg', 'Explosão'),
     ('assets/sticker/confetti.svg', 'Confete'),
     ('assets/sticker/whoosh.svg', 'Rastro de velocidade'),

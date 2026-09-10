@@ -223,8 +223,9 @@ void main() {
       }
       expect(find.text('Importar'), findsNothing);
 
-      // Cada pasta embutida mostra 6 stickers — os ícones não têm rótulo
-      // visível, então a checagem é pela contagem de SVGs.
+      // Pasta embutida (Reações, aberta por padrão) mostra 6 stickers — os
+      // ícones não têm rótulo visível, então a checagem é pela contagem de
+      // SVGs.
       expect(find.byType(SvgPicture), findsNWidgets(6));
 
       await tester.tap(find.widgetWithText(FolderTab, 'Símbolos'));
@@ -233,7 +234,9 @@ void main() {
 
       await tester.tap(find.widgetWithText(FolderTab, 'Efeitos'));
       await tester.pumpAndSettle();
-      expect(find.byType(SvgPicture), findsNWidgets(6));
+      // 5, não 6: "Fogo" saiu da lista depois que assets/sticker/fire.svg
+      // foi removido.
+      expect(find.byType(SvgPicture), findsNWidgets(5));
 
       await tester.tap(find.widgetWithText(FolderTab, 'Importados'));
       await tester.pumpAndSettle();
