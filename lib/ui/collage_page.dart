@@ -146,10 +146,9 @@ class _CollagePageState extends State<CollagePage> {
   static const _folderStore = StickerFolderStore();
   static const _fontStore = ImportedFontStore();
 
-  /// Da fileira de pastas da aba "Stickers" — usado só para rolar até o
-  /// fim ao criar uma pasta nova, que nasce perto de "Nova pasta", no fim
-  /// da lista (ver [_createStickerFolder]).
-  final _folderScrollController = ScrollController();
+  /// Id da pasta recém-criada que ainda precisa ficar visível na fileira —
+  /// ver [_createStickerFolder]. `null` quando não há rolagem pendente.
+  String? _pendingFolderScrollId;
 
   /// Stickers prontos, embutidos no app (`assets/sticker/`), agrupados por
   /// pasta temática na seção "Stickers" — ver [_StickerFolder].
@@ -393,7 +392,6 @@ class _CollagePageState extends State<CollagePage> {
     _textController.dispose();
     _textFocus.dispose();
     _exportProgress.dispose();
-    _folderScrollController.dispose();
     super.dispose();
   }
 
@@ -2283,7 +2281,6 @@ class _CollagePageState extends State<CollagePage> {
         SizedBox(
           height: 44,
           child: ListView.separated(
-            controller: _folderScrollController,
             scrollDirection: Axis.horizontal,
             // +1 pelo botão de criar pasta, sempre no fim da linha.
             itemCount: _StickerFolder.values.length + _customFolders.length + 1,
@@ -2300,11 +2297,38 @@ class _CollagePageState extends State<CollagePage> {
               final customIndex = index - _StickerFolder.values.length;
               if (customIndex < _customFolders.length) {
                 final folder = _customFolders[customIndex];
-                return FolderTab(
-                  label: folder.name,
-                  selected: folder.id == _stickerFolderId,
-                  onTap: () => setState(() => _stickerFolderId = folder.id),
-                  onLongPress: () => _openFolderMenu(folder),
+                // A pasta recém-criada rola até ficar visível sozinha (ver
+                // [_createStickerFolder]) — igual ao ícone de ajuste
+                // selecionado em [ColorAdjustPanel], um `Builder` dá a este
+                // item específico o próprio `BuildContext`, que
+                // `Scrollable.ensureVisible` usa para centralizar exatamente
+                // ele na fileira. Calcular a posição na mão (por
+                // `maxScrollExtent`) dependia do layout já estar pronto no
+                // frame seguinte; isto usa a posição real do item, então
+                // funciona mesmo se o painel ainda estiver se ajustando
+                // (ex.: o teclado fechando ao mesmo tempo).
+                return Builder(
+                  builder: (itemContext) {
+                    if (_pendingFolderScrollId == folder.id) {
+                      _pendingFolderScrollId = null;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!itemContext.mounted) return;
+                        Scrollable.ensureVisible(
+                          itemContext,
+                          alignment: 0.5,
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOut,
+                        );
+                      });
+                    }
+                    return FolderTab(
+                      label: folder.name,
+                      selected: folder.id == _stickerFolderId,
+                      onTap: () =>
+                          setState(() => _stickerFolderId = folder.id),
+                      onLongPress: () => _openFolderMenu(folder),
+                    );
+                  },
                 );
               }
               return FolderTab(
@@ -2387,23 +2411,24 @@ class _CollagePageState extends State<CollagePage> {
       maxLines: 1,
     );
     if (name == null || name.trim().isEmpty) return;
-    final folder = await _folderStore.create(name);
-    if (!mounted) return;
-    setState(() {
-      _customFolders = [..._customFolders, folder];
-      _stickerFolderId = folder.id;
-    });
-    // A pasta nova nasce perto do fim da fileira (antes só de "Nova
-    // pasta"), fora da parte já visível se houver muitas pastas — sem
-    // rolar até lá, ela ficava fora da vista logo depois de criada.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_folderScrollController.hasClients) return;
-      _folderScrollController.animateTo(
-        _folderScrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    });
+    try {
+      final folder = await _folderStore.create(name);
+      if (!mounted) return;
+      setState(() {
+        _customFolders = [..._customFolders, folder];
+        _stickerFolderId = folder.id;
+        // A pasta nova nasce perto do fim da fileira (antes só de "Nova
+        // pasta"), fora da parte já visível se houver muitas pastas — o
+        // item dela mesma, ao entrar na árvore, pede pra rolar até si (ver
+        // o `Builder` em `_stickersPanelContent`).
+        _pendingFolderScrollId = folder.id;
+      });
+    } catch (e) {
+      // Uma pasta que falha ao salvar não pode desaparecer em silêncio —
+      // sem isto, tocar "Nova pasta" simplesmente não fazia nada visível.
+      if (!mounted) return;
+      _message('Não deu para criar a pasta: $e');
+    }
   }
 
   /// Menu de segurar uma pasta criada — as embutidas não passam
