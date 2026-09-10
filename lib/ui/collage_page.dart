@@ -155,14 +155,27 @@ class _CollagePageState extends State<CollagePage> {
   /// pasta temática na seção "Stickers" — ver [_StickerFolder].
   static const _stickerFolderReactions = <(String path, String label)>[
     ('assets/sticker/thumbs_up.svg', 'Joinha'),
+    ('assets/sticker/thumbs_down.svg', 'Joinha para baixo'),
     ('assets/sticker/smiley.svg', 'Sorriso'),
+    ('assets/sticker/laughing.svg', 'Risada'),
+    ('assets/sticker/surprised.svg', 'Surpresa'),
+    ('assets/sticker/sad.svg', 'Triste'),
   ];
   static const _stickerFolderSymbols = <(String path, String label)>[
     ('assets/sticker/heart.svg', 'Coração'),
     ('assets/sticker/star.svg', 'Estrela'),
+    ('assets/sticker/lightning.svg', 'Raio'),
+    ('assets/sticker/sun.svg', 'Sol'),
+    ('assets/sticker/moon.svg', 'Lua'),
+    ('assets/sticker/check.svg', 'Confirmado'),
   ];
   static const _stickerFolderEffects = <(String path, String label)>[
     ('assets/sticker/sparkle.svg', 'Brilho'),
+    ('assets/sticker/fire.svg', 'Fogo'),
+    ('assets/sticker/boom.svg', 'Explosão'),
+    ('assets/sticker/confetti.svg', 'Confete'),
+    ('assets/sticker/whoosh.svg', 'Rastro de velocidade'),
+    ('assets/sticker/rainbow.svg', 'Arco-íris'),
   ];
 
   /// Pasta "GitHub": arte enviada pela Liane, guardada em

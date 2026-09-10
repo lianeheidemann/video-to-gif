@@ -223,18 +223,17 @@ void main() {
       }
       expect(find.text('Importar'), findsNothing);
 
-      // "Reações" (padrão) mostra 2 stickers (Joinha, Sorriso) — os
-      // ícones não têm rótulo visível, então a checagem é pela contagem
-      // de SVGs.
-      expect(find.byType(SvgPicture), findsNWidgets(2));
+      // Cada pasta embutida mostra 6 stickers — os ícones não têm rótulo
+      // visível, então a checagem é pela contagem de SVGs.
+      expect(find.byType(SvgPicture), findsNWidgets(6));
 
       await tester.tap(find.widgetWithText(FolderTab, 'Símbolos'));
       await tester.pumpAndSettle();
-      expect(find.byType(SvgPicture), findsNWidgets(2));
+      expect(find.byType(SvgPicture), findsNWidgets(6));
 
       await tester.tap(find.widgetWithText(FolderTab, 'Efeitos'));
       await tester.pumpAndSettle();
-      expect(find.byType(SvgPicture), findsNWidgets(1));
+      expect(find.byType(SvgPicture), findsNWidgets(6));
 
       await tester.tap(find.widgetWithText(FolderTab, 'Importados'));
       await tester.pumpAndSettle();
