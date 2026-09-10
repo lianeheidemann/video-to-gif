@@ -455,7 +455,7 @@ class FfmpegService {
     VideoInfo video, {
     required String input,
     required String artInput,
-    String? areaMaskInput,
+    bool needsAreaMask = false,
     required String output,
   }) {
     final contentFilter = buildVideoFilter(settings, video);
@@ -523,7 +523,7 @@ class FfmpegService {
     // continua repetindo o último quadro do vídeo para sempre e a conversão
     // de molduras de imagem fica presa em 0%. O vídeo é a entrada principal,
     // portanto ele também define o fim da composição.
-    if (areaMaskInput == null) {
+    if (!needsAreaMask) {
       parts.add('[base][art]overlay=0:0:shortest=1:repeatlast=0[$output]');
       return parts.join(';');
     }
@@ -535,8 +535,21 @@ class FfmpegService {
     parts.add(
       '[$artInput]alphaextract,format=gray,setpts=PTS-STARTPTS[art_alpha]',
     );
+    // Cor sólida do tamanho da área de conteúdo, gerada como filtro
+    // (`libavfilter`) dentro do próprio grafo — não como uma entrada
+    // `-f lavfi` separada. Essa entrada depende do dispositivo de entrada
+    // `lavfi` do `libavdevice`, que builds de FFmpeg para celular (o
+    // `ffmpeg_kit_flutter_new_video` usado aqui incluso) costumam remover —
+    // sem faz sentido nenhum dos dispositivos de captura de tela/áudio de
+    // desktop num app de celular. Isso fazia a exportação falhar direto na
+    // abertura das entradas, com "Unknown input format: 'lavfi'", sempre que
+    // "Fundo transparente" estava ligado (o padrão).
     parts.add(
-      '[$areaMaskInput]pad=$canvasWidth:$canvasHeight:$areaX:$areaY:'
+      'color=white:size=${areaWidth}x$areaHeight:rate=${settings.fps}'
+      '[area_src]',
+    );
+    parts.add(
+      '[area_src]pad=$canvasWidth:$canvasHeight:$areaX:$areaY:'
       'color=black,format=gray,setpts=PTS-STARTPTS[area_mask]',
     );
     parts.add('[art_alpha][area_mask]blend=all_mode=lighten[final_mask]');
@@ -589,11 +602,15 @@ class FfmpegService {
   ///
   /// Com "Fundo transparente" ligado segue o caminho com alfa (paleta com
   /// `reserve_transparent=1` + `paletteuse ... alpha_threshold=128`, mesmo
-  /// padrão de [_transparentGifArgs], mas a partir de [_imageFramedGraph]) e
-  /// precisa da terceira entrada, a máscara da área de conteúdo. Desligado,
-  /// o GIF é opaco: essa entrada não existe e a paleta é a comum, sem cor
-  /// reservada para transparência.
-  List<String> _imageFramedGifArgs({
+  /// padrão de [_transparentGifArgs], mas a partir de [_imageFramedGraph],
+  /// que gera a máscara da área de conteúdo como filtro dentro do próprio
+  /// grafo). Desligado, o GIF é opaco: sem máscara nenhuma, e a paleta é a
+  /// comum, sem cor reservada para transparência.
+  ///
+  /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
+  /// [convert] continua sendo o único ponto de entrada em uso normal.
+  @visibleForTesting
+  List<String> imageFramedGifArgs({
     required VideoInfo video,
     required ConversionSettings settings,
     required String artPath,
@@ -601,15 +618,12 @@ class FfmpegService {
     int? frameLimit,
   }) {
     final transparent = settings.frame.transparentBackground;
-    final (_, _, areaWidth, areaHeight) = settings.imageFrameContentAreaPx(
-      video,
-    );
     final graph = _imageFramedGraph(
       settings,
       video,
       input: '0:v',
       artInput: '1:v',
-      areaMaskInput: transparent ? '2:v' : null,
+      needsAreaMask: transparent,
       output: 'framed',
     );
     final newPalette = settings.palette == PaletteMode.perFrame ? ':new=1' : '';
@@ -630,12 +644,6 @@ class FfmpegService {
       '${settings.fps}',
       '-i',
       artPath,
-      if (transparent) ...[
-        '-f',
-        'lavfi',
-        '-i',
-        'color=white:size=${areaWidth}x$areaHeight:rate=${settings.fps}',
-      ],
       '-lavfi',
       '$graph;'
           '[framed]split=2[palette_source][gif_source];'
@@ -785,10 +793,10 @@ class FfmpegService {
   /// `alphamerge` quando "Fundo transparente" está ligado — e, como em
   /// [webpArgs], dispensa paleta: o grafo vai direto para o `libwebp`.
   ///
-  /// Mantém o `-shortest` global que o [_imageFramedGifArgs] também usa: a
-  /// arte e a máscara da área de conteúdo são entradas infinitas (`-loop 1`),
-  /// e por segurança (builds de FFmpeg que não propagam EOF por todos os
-  /// filtros complexos) a saída é encerrada junto com o fluxo de vídeo.
+  /// Mantém o `-shortest` global que o [imageFramedGifArgs] também usa: a
+  /// arte é uma entrada infinita (`-loop 1`), e por segurança (builds de
+  /// FFmpeg que não propagam EOF por todos os filtros complexos) a saída é
+  /// encerrada junto com o fluxo de vídeo.
   ///
   /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
   /// [convert] continua sendo o único ponto de entrada em uso normal.
@@ -801,15 +809,12 @@ class FfmpegService {
     int? frameLimit,
   }) {
     final transparent = settings.frame.transparentBackground;
-    final (_, _, areaWidth, areaHeight) = settings.imageFrameContentAreaPx(
-      video,
-    );
     final graph = _imageFramedGraph(
       settings,
       video,
       input: '0:v',
       artInput: '1:v',
-      areaMaskInput: transparent ? '2:v' : null,
+      needsAreaMask: transparent,
       output: 'out',
     );
 
@@ -827,12 +832,6 @@ class FfmpegService {
       '${settings.fps}',
       '-i',
       artPath,
-      if (transparent) ...[
-        '-f',
-        'lavfi',
-        '-i',
-        'color=white:size=${areaWidth}x$areaHeight:rate=${settings.fps}',
-      ],
       '-lavfi',
       graph,
       ..._webpEncodeArgs(
@@ -1125,7 +1124,7 @@ class FfmpegService {
                   artPath: frameArtPath!,
                   outputPath: outputPath,
                 )
-              : _imageFramedGifArgs(
+              : imageFramedGifArgs(
                   video: video,
                   settings: settings,
                   artPath: frameArtPath!,
@@ -1451,7 +1450,7 @@ class FfmpegService {
         try {
           if (frameArtPath != null) {
             await _run(
-              _imageFramedGifArgs(
+              imageFramedGifArgs(
                 video: video,
                 settings: sample,
                 artPath: frameArtPath,
@@ -1460,7 +1459,7 @@ class FfmpegService {
               step: 'medição',
             );
             await _run(
-              _imageFramedGifArgs(
+              imageFramedGifArgs(
                 video: video,
                 settings: sample,
                 artPath: frameArtPath,
