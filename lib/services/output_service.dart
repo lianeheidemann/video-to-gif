@@ -11,9 +11,13 @@ class OutputService {
 
   /// Salva na galeria do aparelho, pedindo permissão se ainda não tiver.
   ///
+  /// [asVideo] usa `Gal.putVideo` em vez de `Gal.putImage` — necessário para
+  /// os formatos de vídeo de verdade (MP4/WebM/MOV) que "Converter formato"
+  /// também gera, além do GIF/WebP animados de sempre.
+  ///
   /// Lança [OutputException] com uma mensagem em português quando o usuário
   /// nega o acesso — é o erro que mais aparece na prática.
-  Future<void> saveToGallery(File gif) async {
+  Future<void> saveToGallery(File gif, {bool asVideo = false}) async {
     if (!await Gal.hasAccess()) {
       final granted = await Gal.requestAccess();
       if (!granted) {
@@ -25,7 +29,11 @@ class OutputService {
     }
 
     try {
-      await Gal.putImage(gif.path, album: _albumName);
+      if (asVideo) {
+        await Gal.putVideo(gif.path, album: _albumName);
+      } else {
+        await Gal.putImage(gif.path, album: _albumName);
+      }
     } on GalException catch (e) {
       throw OutputException(
         'Não foi possível salvar na galeria: ${e.type.message}',

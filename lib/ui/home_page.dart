@@ -12,6 +12,7 @@ import 'widgets/gif_weight_help_sheet.dart';
 import 'collage_page.dart';
 import 'editor_page.dart';
 import 'photo_frame_page.dart';
+import 'quick_convert_pick_page.dart';
 
 /// Tela inicial: apresenta o app e deixa o usuário escolher um vídeo para
 /// começar a edição.
@@ -321,6 +322,18 @@ class _HomePageState extends State<HomePage> {
                   onPressed: _loading ? null : _pickPhotosForCollage,
                   icon: const Icon(Icons.dashboard_customize_outlined),
                   label: const Text('Montagem'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _loading
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const QuickConvertPickPage(),
+                          ),
+                        ),
+                  icon: const Icon(Icons.cached_outlined),
+                  label: const Text('Converter formato'),
                 ),
                 const SizedBox(height: 28),
                 const _StepsCard(),

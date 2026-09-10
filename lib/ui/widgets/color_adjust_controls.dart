@@ -78,10 +78,13 @@ class ColorAdjustButton extends StatelessWidget {
   }
 }
 
-/// Botão de zerar todos os ajustes de uma vez, abaixo da régua de
-/// intensidade — fora da fileira de ícones, para não competir com os
-/// ajustes em si. Mesma forma de [ColorAdjustButton] (círculo + rótulo
-/// embaixo), só com o ícone de "redefinir" em vez de um ajuste.
+/// Botão de zerar todos os ajustes de uma vez, no fim da fileira de ícones
+/// (depois de "Temperatura"). Mesmo formato de [ColorAdjustButton] (círculo +
+/// rótulo embaixo, mesmo tamanho de alvo de toque) para ficar na mesma
+/// fileira sem quebrar o alinhamento, mas com um círculo **contornado** em
+/// vez de preenchido — nenhum ajuste de cor jamais aparece assim (só preenchido,
+/// em roxo quando selecionado ou em cinza quando não) — para não parecer só
+/// mais uma opção de ajuste na mesma sequência.
 class _ResetAllButton extends StatelessWidget {
   const _ResetAllButton({required this.onTap});
 
@@ -103,8 +106,8 @@ class _ResetAllButton extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
                 shape: BoxShape.circle,
+                border: Border.all(color: theme.colorScheme.outline),
               ),
               child: Icon(
                 Icons.refresh_rounded,
@@ -226,6 +229,20 @@ class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
                     );
                   },
                 ),
+              // Depois de "Temperatura", na mesma fileira — mas o contorno
+              // (em vez de preenchido) de _ResetAllButton e o traço separador
+              // antes dele deixam claro que essa bolinha é uma ação
+              // diferente, não mais um ajuste de cor na sequência.
+              if (widget.hasAdjustments) ...[
+                Container(
+                  width: 1,
+                  margin: const EdgeInsets.symmetric(vertical: 18),
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.6,
+                  ),
+                ),
+                _ResetAllButton(onTap: widget.onReset),
+              ],
             ],
           ),
         ),
@@ -237,15 +254,6 @@ class _ColorAdjustPanelState extends State<ColorAdjustPanel> {
           onChangeStart: widget.onChangeStart,
           onChanged: (value) => widget.onChanged(_current, value),
         ),
-        // Abaixo da régua, não na fileira de ícones — deixa a fileira só com
-        // os ajustes em si, e dá espaço ao alcance do polegar.
-        if (widget.hasAdjustments) ...[
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: _ResetAllButton(onTap: widget.onReset),
-          ),
-        ],
       ],
     );
   }

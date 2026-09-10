@@ -16,6 +16,7 @@ import '../models/color_adjustments.dart';
 import '../models/conversion_settings.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
+import '../models/quick_convert_format.dart';
 import '../models/size_estimate.dart';
 import '../models/video_info.dart';
 import '../ui/widgets/frame_painter.dart';
@@ -679,6 +680,17 @@ class FfmpegService {
   /// suportar 1 bit de alfa —, o `libwebp` aceita cor cheia e alfa real em
   /// 8 bits direto do grafo de composição (o mesmo usado pelo GIF). Por
   /// isso [hasAlpha] só decide o `-pix_fmt` final, nada mais.
+  ///
+  /// `-compression_level 2` (em vez do padrão `4` do próprio `libwebp`): essa
+  /// opção é o "method" do libwebp — quanto o codificador se esforça
+  /// procurando a melhor compressão. Não muda a qualidade visual (isso é só
+  /// `-quality`, acima), só troca tempo de CPU por tamanho de arquivo. Nunca
+  /// tinha sido ajustada de propósito aqui (diferente do caminho da
+  /// sequência de quadros da montagem, que sobe pra `6` com uma troca
+  /// documentada) — 4 era só o que sobrava de não setar nada. Baixar pra 2
+  /// acelera bastante a conversão, principalmente a montagem final do
+  /// contêiner WebP (`WebPAnimEncoderAssemble`), que roda tudo de uma vez no
+  /// final e é onde a demora "trava" mais se sente.
   List<String> _webpEncodeArgs(
     ConversionSettings settings, {
     required bool hasAlpha,
@@ -693,7 +705,7 @@ class FfmpegService {
       '-quality',
       '${settings.webpQuality}',
       '-compression_level',
-      '4',
+      '2',
       '-pix_fmt',
       hasAlpha ? 'yuva420p' : 'yuv420p',
       '-loop',
@@ -1238,8 +1250,130 @@ class FfmpegService {
     }
   }
 
-  double _ratio(double ms, double totalMs) =>
-      totalMs <= 0 ? 0 : (ms / totalMs).clamp(0.0, 1.0).toDouble();
+  /// Converte [video] para [format], sem nenhuma configuração exposta —
+  /// usado pela tela "Converter formato" (`quick_convert_*`), que é um
+  /// recurso à parte de "Editar GIF": só troca de formato, arquivo inteiro,
+  /// sem corte/moldura/qualidade.
+  ///
+  /// GIF/WebP: monta um [ConversionSettings] fixo (arquivo inteiro, largura
+  /// escolhida do mesmo jeito que [ConversionSettings.recommendedFor], sem
+  /// ampliar) e reaproveita [convert] — mesmo pipeline de paleta/WebP já
+  /// usado por "Editar GIF" (com a mesma correção de velocidade do WebP).
+  ///
+  /// MP4/MOV/WebM: linha de comando própria e simples — só limita a largura
+  /// (mesmo teto de [ConversionSettings.recommendedFor], nunca amplia) e
+  /// codifica o áudio quando existir. Sem `-map` explícito, o FFmpeg já
+  /// escolhe sozinho o melhor stream de vídeo e (se houver) de áudio — se a
+  /// fonte não tiver áudio (ex.: veio de um GIF), as flags de áudio
+  /// simplesmente não têm efeito, sem precisar detectar isso antes.
+  Future<File> quickConvert({
+    required VideoInfo video,
+    required QuickConvertFormat format,
+    void Function(double progress)? onProgress,
+  }) async {
+    if (format.isAnimatedImage) {
+      final settings = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: video.durationSeconds,
+        targetWidth: ConversionSettings.recommendedFor(video).targetWidth,
+        format: format == QuickConvertFormat.gif
+            ? OutputFormat.gif
+            : OutputFormat.webp,
+      );
+      final result = await convert(
+        video: video,
+        settings: settings,
+        onProgress: onProgress,
+      );
+      return result.file;
+    }
+
+    _cancelled = false;
+    final dir = await getTemporaryDirectory();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final outputPath =
+        '${dir.path}/${format.extension}_$stamp.${format.extension}';
+    final width = ConversionSettings.recommendedFor(video).targetWidth;
+    final totalMs = video.durationSeconds * 1000;
+
+    try {
+      await _run(
+        quickConvertVideoArgs(
+          video: video,
+          format: format,
+          width: width,
+          outputPath: outputPath,
+        ),
+        onTimeMs: (ms) => onProgress?.call(_ratio(ms, totalMs)),
+        step: 'conversão para ${format.label}',
+      );
+      onProgress?.call(1.0);
+
+      final output = File(outputPath);
+      if (!output.existsSync() || output.lengthSync() == 0) {
+        throw FfmpegException('O arquivo saiu vazio.');
+      }
+      return output;
+    } finally {
+      _activeSessionId = null;
+    }
+  }
+
+  /// Linha de comando de conversão para MP4/MOV/WebM, usada por
+  /// [quickConvert]. Público (sem `_`) só para os testes de unidade.
+  @visibleForTesting
+  List<String> quickConvertVideoArgs({
+    required VideoInfo video,
+    required QuickConvertFormat format,
+    required int width,
+    required String outputPath,
+  }) {
+    final codecArgs = format == QuickConvertFormat.webm
+        ? ['-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-c:a', 'libopus']
+        : [
+            '-c:v',
+            'libx264',
+            '-preset',
+            'veryfast',
+            '-crf',
+            '23',
+            '-pix_fmt',
+            'yuv420p',
+            '-c:a',
+            'aac',
+            '-b:a',
+            '128k',
+            '-movflags',
+            '+faststart',
+          ];
+
+    return [
+      '-y',
+      '-i',
+      video.path,
+      '-vf',
+      'scale=$width:-2:flags=lanczos',
+      ...codecArgs,
+      '-f',
+      format.extension,
+      outputPath,
+    ];
+  }
+
+  /// Teto abaixo de 100% enquanto a sessão do FFmpeg ainda não terminou de
+  /// verdade — sobretudo no WebP, o `-f webp` do FFmpeg relata os quadros
+  /// (o que move essa razão via `onTimeMs`) bem antes da compressão de
+  /// verdade + montagem do contêiner (`WebPAnimEncoderAssemble`) acabarem,
+  /// numa chamada só, bloqueante, no final. Sem este teto a barra parecia
+  /// chegar em ~100% e travar/arrastar. O salto pra 100% de verdade
+  /// acontece só depois, no `onProgress?.call(1.0)` que já existe logo após
+  /// cada `_run` (ver `convert`) — este teto não muda o tempo real nenhum,
+  /// só evita que a barra "minta" que já terminou antes de terminar.
+  static const _inProgressCeiling = 0.92;
+
+  double _ratio(double ms, double totalMs) => totalMs <= 0
+      ? 0
+      : (ms / totalMs).clamp(0.0, _inProgressCeiling).toDouble();
 
   Future<void> _run(
     List<String> arguments, {
@@ -1311,10 +1445,15 @@ class FfmpegService {
         loop: loop,
       ),
       step: 'exportação da montagem',
+      // Mesmo teto de [_ratio] usado por [convert] — sem ele a barra também
+      // parece travar perto do fim no WebP da montagem, pelo mesmo motivo
+      // (a montagem do contêiner WebPAnimEncoderAssemble roda numa chamada
+      // bloqueante só, depois do último quadro já ter sido "reportado").
       onTimeMs: onProgress == null || totalMs <= 0
           ? null
-          : (ms) => onProgress((ms / totalMs).clamp(0.0, 1.0)),
+          : (ms) => onProgress(_ratio(ms, totalMs)),
     );
+    onProgress?.call(1.0);
 
     final output = File(outputPath);
     if (!output.existsSync() || output.lengthSync() == 0) {
@@ -1340,13 +1479,18 @@ class FfmpegService {
         ...input,
         '-c:v',
         'libwebp',
-        // 92/6 no lugar de 85/4: a montagem costuma ter arte com linhas
-        // finas e texto, onde 85 deixava halo visível em volta das bordas.
-        // O nível de compressão mais alto custa tempo de CPU, não tamanho.
+        // 92 no lugar de 85: a montagem costuma ter arte com linhas finas e
+        // texto, onde 85 deixava halo visível em volta das bordas. Quem
+        // resolve isso é só o -quality — o -compression_level (o "method"
+        // do libwebp) não muda qualidade visual nenhuma, só troca tempo de
+        // CPU por tamanho de arquivo (mesmo comentário em
+        // [_webpEncodeArgs]), por isso fica no mesmo 2 do caminho principal
+        // em vez de um 6 que só deixava a montagem final do contêiner WebP
+        // mais lenta sem ganho nenhum.
         '-quality',
         '92',
         '-compression_level',
-        '6',
+        '2',
         '-pix_fmt',
         'yuva420p',
         '-loop',

@@ -48,6 +48,11 @@ void main() {
     expect(list, containsAllInOrder(['-c:v', 'libwebp']));
     expect(list, containsAllInOrder(['-pix_fmt', 'yuva420p']));
     expect(list, containsAllInOrder(['-quality', '92']));
+    // -compression_level 2 (não 6): essa opção não muda qualidade visual,
+    // só troca tempo de CPU por tamanho — 6 só deixava a montagem final do
+    // contêiner WebP mais lenta sem ganho nenhum (ver comentário em
+    // collageSequenceArgs).
+    expect(list, containsAllInOrder(['-compression_level', '2']));
     expect(list, containsAllInOrder(['-loop', '0']));
     expect(list.join(' '), isNot(contains('palettegen')));
     expect(list.join(' '), isNot(contains('paletteuse')));
