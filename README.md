@@ -21,14 +21,16 @@
 
 ## About
 
-Android app built with Flutter with three tools that share the same editor,
-the same frame library and the same on-device export pipeline:
+Android app built with Flutter with three editors that share the same
+editor shell, the same frame library and the same on-device export
+pipeline, plus a fourth, no-settings tool for quick format swaps:
 
 | Tool | What it does |
 |---|---|
 | **Video to GIF/WebP** | Converts MP4, MOV, AVI, MKV, WebM and 3GP to **GIF or animated WebP** — trim, crop, speed, resolution, frame rate, colors and a decorative frame. For GIF it also **estimates the final file size before converting**. |
 | **Frame on a photo** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes, color adjustment and a transparent or colored background. |
 | **Photo collage** | Assembles several photos into one composition — layouts, margins, per-photo borders and backgrounds, stickers (in folders you create), text with imported fonts, crop and color adjustment. If any photo is an animated GIF/WebP, the whole collage can be exported **animated**. |
+| **Convert format** | Picks any video, GIF or WebP and re-encodes it straight to GIF, animated WebP, MP4, WebM or MOV — no trimming, quality or preview settings, just a source file and a target format. |
 
 <img src="assets/image/interface-v7.webp"/>
 
@@ -142,6 +144,16 @@ matrix drives both the live preview and the export (through FFmpeg's `eq` and
   montage exports as PNG, GIF or WebP, matching the longest or the shortest
   animation, with a progress dialog and cancel
 
+### Convert format
+
+- **Any input FFmpeg can read** — video, GIF or animated WebP — picked from
+  the system media gallery, with static photos rejected up front since
+  there's already a dedicated tool for those
+- **Five output formats** — GIF, animated WebP, MP4, WebM or MOV — with the
+  source's own format disabled in the picker
+- **No configuration**: no trim, crop, quality or preview, just the source
+  file and the target format, then convert
+
 ## How to run it
 
 Requires Flutter 3.44+ (Dart 3.12+) and the Android SDK (API 36) with NDK
@@ -188,7 +200,7 @@ lib/
 ├── services/   # size estimation, FFmpeg, compositing and the import stores
 └── ui/         # the three editors, the crop screen and the shared widgets
 
-test/           # 235 tests, see "Quality" below
+test/           # 252 tests, see "Quality" below
 tool/           # icon generation and the accuracy measurement script
 
 .github/workflows/
@@ -203,9 +215,10 @@ call into it, so the two can never drift apart.
 
 ## Quality
 
-**235 automated tests** cover the estimation model (including 7 that compare
+**252 automated tests** cover the estimation model (including 7 that compare
 the prediction against files FFmpeg actually generated), the size and WebP
-panels, frame and crop geometry, the WebP export arguments, and the
+panels, frame and crop geometry, the WebP and quick-convert export
+arguments, the imported-font and sticker-folder stores, and the
 collage — cell framing and color matrices, layout, compositing against golden
 pixels, the animation timeline and the editor itself.
 
