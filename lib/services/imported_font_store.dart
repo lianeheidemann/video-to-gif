@@ -123,8 +123,7 @@ class ImportedFontStore {
     for (final entry in raw) {
       final font = _decode(entry);
       if (font != null && font.id == id) {
-        final file = File(font.filePath);
-        if (file.existsSync()) await file.delete();
+        await _deleteQuietly(font.filePath);
         continue;
       }
       kept.add(entry);
@@ -165,6 +164,18 @@ class ImportedFontStore {
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Apaga [path] se existir, de melhor esforço: o arquivo pode já ter
+  /// sumido por uma condição de corrida, e isso não deve impedir o
+  /// metadado de ser limpo em [remove].
+  Future<void> _deleteQuietly(String path) async {
+    try {
+      final file = File(path);
+      if (file.existsSync()) await file.delete();
+    } on FileSystemException {
+      // Melhor esforço — segue sem o arquivo.
     }
   }
 }

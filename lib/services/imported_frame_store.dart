@@ -148,8 +148,7 @@ class ImportedFrameStore {
     for (final entry in raw) {
       final asset = _decode(entry);
       if (asset != null && asset.id == id) {
-        final file = File(asset.imageFilePath!);
-        if (file.existsSync()) await file.delete();
+        await _deleteQuietly(asset.imageFilePath!);
         continue;
       }
       kept.add(entry);
@@ -340,5 +339,17 @@ class ImportedFrameStore {
       bboxWidth / sw,
       bboxHeight / sh,
     );
+  }
+
+  /// Apaga [path] se existir, de melhor esforço: o arquivo pode já ter
+  /// sumido por uma condição de corrida, e isso não deve impedir o
+  /// metadado de ser limpo em [remove].
+  Future<void> _deleteQuietly(String path) async {
+    try {
+      final file = File(path);
+      if (file.existsSync()) await file.delete();
+    } on FileSystemException {
+      // Melhor esforço — segue sem o arquivo.
+    }
   }
 }

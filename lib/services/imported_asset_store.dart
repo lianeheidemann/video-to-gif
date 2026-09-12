@@ -143,8 +143,7 @@ class ImportedAssetStore {
     for (final entry in raw) {
       final asset = _decode(entry);
       if (asset != null && asset.id == id) {
-        final file = File(asset.filePath);
-        if (file.existsSync()) await file.delete();
+        await _deleteQuietly(asset.filePath);
         continue;
       }
       kept.add(entry);
@@ -261,5 +260,17 @@ class ImportedAssetStore {
     final dot = path.lastIndexOf('.');
     if (dot < 0 || dot == path.length - 1) return 'png';
     return path.substring(dot + 1).toLowerCase();
+  }
+
+  /// Apaga [path] se existir, de melhor esforço: o arquivo pode já ter
+  /// sumido por uma condição de corrida (ex.: removido por fora do app), e
+  /// isso não deve impedir o metadado de ser limpo em [remove].
+  Future<void> _deleteQuietly(String path) async {
+    try {
+      final file = File(path);
+      if (file.existsSync()) await file.delete();
+    } on FileSystemException {
+      // Melhor esforço — segue sem o arquivo.
+    }
   }
 }
