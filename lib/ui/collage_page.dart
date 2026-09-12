@@ -1232,25 +1232,36 @@ class _CollagePageState extends State<CollagePage> {
   }) {
     final theme = Theme.of(context);
     const diameter = 24.0;
+    // A área de toque é maior que o círculo visual (48dp, o mínimo
+    // recomendado) para não ficar difícil de acertar a alça em telas
+    // pequenas ou com dedos maiores — o círculo continua do mesmo tamanho e
+    // no mesmo ponto de antes, só centralizado numa área de toque maior.
+    const tapSize = 48.0;
     return Positioned(
-      left: center.dx - diameter / 2,
-      top: center.dy - diameter / 2,
+      left: center.dx - tapSize / 2,
+      top: center.dy - tapSize / 2,
       child: Listener(
         behavior: HitTestBehavior.opaque,
         onPointerDown: onPointerDown,
         onPointerMove: onPointerMove,
-        child: Container(
-          width: diameter,
-          height: diameter,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary,
-            shape: BoxShape.circle,
-            border: Border.all(color: theme.colorScheme.surface, width: 2),
-          ),
-          child: Icon(
-            icon,
-            size: icon == Icons.rotate_right_rounded ? 14 : 12,
-            color: theme.colorScheme.onPrimary,
+        child: SizedBox(
+          width: tapSize,
+          height: tapSize,
+          child: Center(
+            child: Container(
+              width: diameter,
+              height: diameter,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: theme.colorScheme.surface, width: 2),
+              ),
+              child: Icon(
+                icon,
+                size: icon == Icons.rotate_right_rounded ? 14 : 12,
+                color: theme.colorScheme.onPrimary,
+              ),
+            ),
           ),
         ),
       ),

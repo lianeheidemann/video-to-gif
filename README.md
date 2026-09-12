@@ -151,8 +151,6 @@ matrix drives both the live preview and the export (through FFmpeg's `eq` and
   there's already a dedicated tool for those
 - **Five output formats** — GIF, animated WebP, MP4, WebM or MOV — with the
   source's own format disabled in the picker
-- **No configuration**: no trim, crop, quality or preview, just the source
-  file and the target format, then convert
 
 ## How to run it
 
