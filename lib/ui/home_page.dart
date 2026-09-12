@@ -255,36 +255,36 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Image.asset(
                   'assets/icon/icon-v4.png',
-                  width: 96,
-                  height: 96,
+                  width: 72,
+                  height: 72,
                   fit: BoxFit.contain,
                   semanticLabel: 'Ícone do conversor de vídeo para GIF',
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 Text(
                   'Video to GIF',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineMedium?.copyWith(
+                  style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Text(
                   'Corte, ajuste o tamanho e a velocidade — e veja quanto o '
                   'GIF vai pesar antes de converter.',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyLarge?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
                 if (_error != null) ...[
                   Card(
                     color: theme.colorScheme.errorContainer,
@@ -301,6 +301,9 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 16),
                 ],
                 FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
                   onPressed: _loading ? null : _pickVideo,
                   icon: _loading
                       ? const SizedBox(
@@ -311,20 +314,29 @@ class _HomePageState extends State<HomePage> {
                       : const Icon(Icons.video_library_outlined),
                   label: Text(_loading ? 'Abrindo…' : 'Escolher vídeo'),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
                   onPressed: _loading ? null : _pickPhoto,
                   icon: const Icon(Icons.photo_filter_outlined),
                   label: const Text('Editar imagem'),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
                   onPressed: _loading ? null : _pickPhotosForCollage,
                   icon: const Icon(Icons.dashboard_customize_outlined),
                   label: const Text('Montagem'),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
                   onPressed: _loading
                       ? null
                       : () => Navigator.of(context).push(
@@ -335,7 +347,7 @@ class _HomePageState extends State<HomePage> {
                   icon: const Icon(Icons.cached_outlined),
                   label: const Text('Converter formato'),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
                 const _StepsCard(),
               ],
             ),
@@ -346,7 +358,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-const _kStepCircleSize = 56.0;
+const _kStepCircleSize = 44.0;
 
 /// Etapas do fluxo de conversão, exibidas como um pequeno guia visual.
 class _StepsCard extends StatelessWidget {
@@ -362,7 +374,7 @@ class _StepsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -396,7 +408,7 @@ class _StepIcon extends StatelessWidget {
             shape: BoxShape.circle,
             color: theme.colorScheme.primary.withValues(alpha: 0.12),
           ),
-          child: Icon(icon, color: theme.colorScheme.primary, size: 24),
+          child: Icon(icon, color: theme.colorScheme.primary, size: 20),
         ),
         const SizedBox(height: 8),
         Text(
@@ -421,8 +433,8 @@ class _StepConnector extends StatelessWidget {
         children: [
           const Expanded(child: _DashedLine()),
           Container(
-            width: 26,
-            height: 26,
+            width: 22,
+            height: 22,
             margin: const EdgeInsets.symmetric(horizontal: 2),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
@@ -430,7 +442,7 @@ class _StepConnector extends StatelessWidget {
             ),
             child: Icon(
               Icons.arrow_forward_rounded,
-              size: 15,
+              size: 13,
               color: theme.colorScheme.onPrimary,
             ),
           ),
