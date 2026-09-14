@@ -69,10 +69,7 @@ per attempt.
 This app estimates the size **while you adjust the controls**, without
 converting anything. The **Measure** button converts two clips of up to one
 second with the chosen settings and uses their real size to calibrate the
-calculation, narrowing the displayed range from ±40–55% to ±15%. A
-**destination traffic light** shows whether the GIF fits within WhatsApp's,
-X/Twitter's and Discord's limits, and one tap adjusts the settings so it
-does.
+calculation, narrowing the displayed range from ±40–55% to ±15%.
 
 > [!WARNING]
 > **The estimate is still being refined.** Before measuring it relies on
