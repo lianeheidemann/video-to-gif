@@ -4,10 +4,14 @@
 
 # Video to GIF
 
-<img width="550" src="assets/badge/video-to-gif-badges-v1.png"/><br>
 
+![Flutter](https://img.shields.io/badge/Flutter-3.44%2B-b79cf2?style=flat-square&logo=flutter&logoColor=white&labelColor=372b4d)
+![Dart](https://img.shields.io/badge/Dart-3.12%2B-7c53c9?style=flat-square&logo=dart&logoColor=white&labelColor=372b4d)
+![Android](https://img.shields.io/badge/Android-7.0%2B-d68fe0?style=flat-square&logo=android&logoColor=white&labelColor=372b4d)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-LGPL-b79cf2?style=flat-square&logo=ffmpeg&logoColor=white&labelColor=372b4d)
+<br>
 [![CI](https://img.shields.io/github/actions/workflow/status/lianeheidemann/video-to-gif/ci.yml?branch=main&style=flat-square&label=CI&logo=github&logoColor=white&labelColor=372b4d)](https://github.com/lianeheidemann/video-to-gif/actions/workflows/ci.yml)
-[![Release](https://github.com/lianeheidemann/video-to-gif/actions/workflows/release.yml/badge.svg)](https://github.com/lianeheidemann/video-to-gif/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/lianeheidemann/video-to-gif/release.yml?branch=main&style=flat-square&label=Release&logo=github&logoColor=white&labelColor=372b4d)](https://github.com/lianeheidemann/video-to-gif/actions/workflows/release.yml)
 
 **Turn videos and photos into animated GIF or WebP<br>
 directly on Android — privately and offline.**
@@ -249,7 +253,7 @@ on any device.
 
 ## License
 
-App code: [MIT](LICENSE).
+App code: Proprietary — all rights reserved (see [LICENSE](LICENSE)).
 FFmpeg: LGPL-2.1-or-later — attribution in [`NOTICE`](NOTICE), details and
 obligations in [`docs/en/LICENSES.md`](docs/en/LICENSES.md).
 
