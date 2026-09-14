@@ -43,16 +43,6 @@ Choose the format that best fits your destination:
 > **[⬇ Download the APK](https://github.com/lianeheidemann/video-to-gif/releases/latest)**
 > — installs straight onto Android, no store needed.
 
-<br>
-
-## Gif
-
-<div align="left">
-
-<img width="40%" src="assets/gif/demonstracao-v7.webp"/>
-
-</div>
-
 ## The problem it solves
 
 Converting video to GIF is slow, and the output size is unpredictable: the
