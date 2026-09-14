@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#29292E"/>
+      <stop offset="1" stop-color="#1B1B20"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Moldura compacta com área interna realmente transparente. -->
+  <path fill="url(#chrome)" fill-rule="evenodd" d="
+    M 30 0 H 1890 A 30 30 0 0 1 1920 30
+    V 1050 A 30 30 0 0 1 1890 1080
+    H 30 A 30 30 0 0 1 0 1050
+    V 30 A 30 30 0 0 1 30 0 Z
+
+    M 34 132 H 1886 A 10 10 0 0 1 1896 142
+    V 1054 A 10 10 0 0 1 1886 1064
+    H 34 A 10 10 0 0 1 24 1054
+    V 142 A 10 10 0 0 1 34 132 Z
+  "/>
+
+  <rect x="2" y="2" width="1916" height="1076" rx="28"
+        fill="none" stroke="#4A4A54" stroke-width="4"/>
+
+  <!-- Controles da janela -->
+  <circle cx="35" cy="30" r="13" fill="#FF5F57" stroke="#DD4540" stroke-width="1.5"/>
+  <circle cx="77" cy="30" r="13" fill="#FEBC2E" stroke="#D99B18" stroke-width="1.5"/>
+  <circle cx="119" cy="30" r="13" fill="#28C840" stroke="#18A62D" stroke-width="1.5"/>
+
+  <!-- Aba ativa compacta -->
+  <path fill="#38383F" d="M165 10H535A14 14 0 0 1 549 24V62H151V24A14 14 0 0 1 165 10Z"/>
+  <circle cx="181" cy="36" r="7" fill="#9A8CFF"/>
+  <rect x="199" y="30" width="218" height="11" rx="5.5" fill="#D7D7DE" opacity="0.85"/>
+  <path d="M514 31L524 41M524 31L514 41" stroke="#A9A9B2" stroke-width="3" stroke-linecap="round"/>
+  <path d="M579 35H601M590 24V46" stroke="#B8B8C1" stroke-width="3" stroke-linecap="round"/>
+  <path d="M0 63H1920" stroke="#111115" stroke-width="2"/>
+
+  <!-- Navegação -->
+  <path d="M34 98H57M34 98L44 88M34 98L44 108"
+        fill="none" stroke="#B7B7C0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M77 98H100M100 98L90 88M100 98L90 108"
+        fill="none" stroke="#686870" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Recarregar: arco e ponta separados para permanecer legível ao reduzir. -->
+  <path d="M153 103A16 16 0 1 1 149 86"
+        fill="none" stroke="#B7B7C0" stroke-width="4"
+        stroke-linecap="round"/>
+  <path d="M149 77V91H135Z" fill="#B7B7C0"/>
+
+  <!-- Campo de endereço -->
+  <rect x="174" y="75" width="1540" height="46" rx="23"
+        fill="#101014" stroke="#3D3D45" stroke-width="2"/>
+  <path d="M207 95V91A8 8 0 0 1 223 91V95M204 95H226V108H204Z"
+        fill="none" stroke="#8E8E98" stroke-width="2.5" stroke-linejoin="round"/>
+  <rect x="242" y="93" width="390" height="11" rx="5.5" fill="#8A8A94" opacity="0.5"/>
+  <path d="M1676 88L1680 96L1689 98L1683 104L1684 113L1676 109L1668 113L1669 104L1663 98L1672 96Z"
+        fill="none" stroke="#8E8E98" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Menu e perfil -->
+  <circle cx="1753" cy="98" r="4" fill="#B7B7C0"/>
+  <circle cx="1774" cy="98" r="4" fill="#B7B7C0"/>
+  <circle cx="1795" cy="98" r="4" fill="#B7B7C0"/>
+  <circle cx="1857" cy="98" r="17" fill="#8F82F7"/>
+  <circle cx="1857" cy="93" r="5.5" fill="#EFEFFD"/>
+  <path d="M1847 109A11 11 0 0 1 1867 109" fill="#EFEFFD"/>
+</svg>
