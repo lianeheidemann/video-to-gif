@@ -11,7 +11,8 @@
 
 
 ```
-Turn videos and photos into animated GIF or WebP directly on Android — privately and offline.
+Turn videos and photos into animated GIF (or WebP)
+directly on Android — privately and offline.
 ```
 
 </div>
