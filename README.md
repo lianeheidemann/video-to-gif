@@ -253,7 +253,7 @@ on any device.
 
 ## License
 
-App code: [MIT](LICENSE).
+App code: Proprietary — all rights reserved (see [LICENSE](LICENSE)).
 FFmpeg: LGPL-2.1-or-later — attribution in [`NOTICE`](NOTICE), details and
 obligations in [`docs/en/LICENSES.md`](docs/en/LICENSES.md).
 
