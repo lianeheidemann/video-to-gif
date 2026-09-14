@@ -4,9 +4,7 @@
 
 # Video to GIF
 
-
-<img width="500" src="assets/badge/video-to-gif-badges-v1.png"/>
-<br>
+<img width="550" src="assets/badge/video-to-gif-badges-v1.png"/><br>
 
 [![CI](https://img.shields.io/github/actions/workflow/status/lianeheidemann/video-to-gif/ci.yml?branch=main&style=flat-square&label=CI&logo=github&logoColor=white&labelColor=372b4d)](https://github.com/lianeheidemann/video-to-gif/actions/workflows/ci.yml)
 [![Release](https://github.com/lianeheidemann/video-to-gif/actions/workflows/release.yml/badge.svg)](https://github.com/lianeheidemann/video-to-gif/actions/workflows/release.yml)
