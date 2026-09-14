@@ -9,8 +9,11 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/lianeheidemann/video-to-gif/ci.yml?branch=main&style=flat-square&label=CI&logo=github&logoColor=white&labelColor=372b4d)](https://github.com/lianeheidemann/video-to-gif/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/actions/workflow/status/lianeheidemann/video-to-gif/release.yml?branch=main&style=flat-square&label=Release&logo=github&logoColor=white&labelColor=372b4d)](https://github.com/lianeheidemann/video-to-gif/actions/workflows/release.yml)
 
-**Turn videos and photos into animated GIF or WebP<br>
-directly on Android — privately and offline.**
+
+```
+Turn videos and photos into animated GIF or WebP
+directly on Android — privately and offline.
+```
 
 </div>
 
