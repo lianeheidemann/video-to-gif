@@ -557,8 +557,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           max: FrameSettings.maxCropAspectRatio,
           value: currentRatio.toDouble(),
           onChangeStart: (_) => _pushUndoCheckpoint(),
-          onChanged: (v) =>
-              _updateFrame(_frame.copyWith(cropAspectRatio: v), pushUndo: false),
+          onChanged: (v) => _updateFrame(
+            _frame.copyWith(cropAspectRatio: v),
+            pushUndo: false,
+          ),
         ),
         if (custom) ...[
           const SizedBox(height: 8),

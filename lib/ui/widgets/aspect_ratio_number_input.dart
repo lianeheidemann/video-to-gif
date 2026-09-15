@@ -10,8 +10,7 @@ class CustomAspectRatioInput extends StatefulWidget {
   final ValueChanged<double> onApply;
 
   @override
-  State<CustomAspectRatioInput> createState() =>
-      _CustomAspectRatioInputState();
+  State<CustomAspectRatioInput> createState() => _CustomAspectRatioInputState();
 }
 
 class _CustomAspectRatioInputState extends State<CustomAspectRatioInput> {
