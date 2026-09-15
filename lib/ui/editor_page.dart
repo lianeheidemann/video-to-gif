@@ -16,6 +16,7 @@ import '../services/ffmpeg_service.dart';
 import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
 import 'converting_page.dart';
+import 'widgets/checkerboard_background.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/crop_overlay.dart';
@@ -23,6 +24,7 @@ import 'widgets/cropped_view.dart';
 import 'widgets/editor_tabs_footer.dart';
 import 'widgets/frame_painter.dart';
 import 'widgets/labeled_section.dart';
+import 'widgets/preview_settings_panel.dart';
 import 'widgets/size_panel.dart';
 import 'widgets/webp_convert_panel.dart';
 
@@ -283,8 +285,8 @@ class _EditorPageState extends State<EditorPage> {
         value: _settings.frame.transparentBackground ? 'Transparente' : 'Cor',
         builder: (_) => _backgroundSection(),
       ),
-      // Última aba da barra: fecha a edição com o resultado (tamanho
-      // estimado) depois de todos os ajustes, formato/moldura incluídos.
+      // Penúltima aba: fecha os ajustes de conteúdo com o resultado (tamanho
+      // estimado), depois de todos os ajustes, formato/moldura incluídos.
       EditorSection(
         icon: Icons.data_usage_rounded,
         title: 'Estimativa de tamanho',
@@ -301,6 +303,14 @@ class _EditorPageState extends State<EditorPage> {
                 measuring: _measuring,
                 onMeasure: _measure,
               ),
+      ),
+      // Última aba da barra nas três telas de edição (vídeo, foto e
+      // montagem) — configurações gerais, não deste vídeo em si.
+      EditorSection(
+        icon: Icons.settings_rounded,
+        title: 'Configurações',
+        label: 'Ajustes',
+        builder: (_) => const PreviewSettingsPanel(),
       ),
     ];
   }
@@ -342,12 +352,14 @@ class _EditorPageState extends State<EditorPage> {
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                child: Center(
-                  child: RepaintBoundary(
-                    key: _colorPreviewKey,
-                    child: _previewArea(showCropHandles: isCropTabActive),
+              child: PreviewAreaBackground(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                  child: Center(
+                    child: RepaintBoundary(
+                      key: _colorPreviewKey,
+                      child: _previewArea(showCropHandles: isCropTabActive),
+                    ),
                   ),
                 ),
               ),
@@ -2012,7 +2024,7 @@ class _EditorPageState extends State<EditorPage> {
   LabeledSection _aspectSection() {
     final crop = _settings.crop;
     final visiblePresets = <AspectPreset>[
-      ...AspectPreset.presets.take(5),
+      ...AspectPreset.presets,
       _customAspectPreset,
     ];
 

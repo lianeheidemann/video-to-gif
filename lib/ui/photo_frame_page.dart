@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/aspect_preset.dart';
 import '../models/color_adjustments.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
@@ -14,10 +15,13 @@ import '../models/photo_info.dart';
 import '../services/imported_frame_store.dart';
 import '../services/output_service.dart';
 import '../services/photo_frame_compositor.dart';
+import 'widgets/aspect_ratio_number_input.dart';
+import 'widgets/checkerboard_background.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/editor_tabs_footer.dart';
 import 'widgets/frame_painter.dart';
+import 'widgets/preview_settings_panel.dart';
 
 /// Mesmos três modos apresentados ao usuário em `EditorPage` — `fit` só
 /// existe como resultado interno do ajuste automático.
@@ -54,6 +58,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   FrameSettings _frame = const FrameSettings();
   List<ImageFrameAsset> _importedImageFrames = [];
 
+  /// `true` quando o chip "x:y" da aba "Recorte" está escolhido — igual a
+  /// `_CollagePageState._customAspectSelected`, para o chip continuar
+  /// marcado mesmo se o slider passar por cima de um valor de preset.
+  bool _customCropAspectSelected = false;
+
   /// Aba aberta no rodapé (índice em [_sections]) — `null` fecha o painel e
   /// deixa a prévia com o máximo de espaço.
   int? _activeSection = 0;
@@ -79,7 +88,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     setState(() => _importedImageFrames = frames);
   }
 
-  double get _photoAspectRatio => widget.photo.aspectRatio;
+  /// Proporção efetiva da foto depois do recorte da aba "Recorte" — a
+  /// própria proporção nativa quando nenhuma foi escolhida ("Original").
+  double get _photoAspectRatio =>
+      _frame.cropAspectRatio ?? widget.photo.aspectRatio;
 
   /// A foto da prévia, já com o ajuste de cor por cima — o mesmo filtro que
   /// `photo_frame_compositor` aplica na exportação, para a tela mostrar o
@@ -192,6 +204,12 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   /// rolável (mesmo rodapé da tela de montagem).
   List<EditorSection> get _sections => [
     EditorSection(
+      icon: Icons.crop_rounded,
+      title: 'Recorte',
+      value: _cropAspectLabel,
+      builder: (_) => _cropAspectSection(),
+    ),
+    EditorSection(
       icon: Icons.smartphone_rounded,
       title: 'Moldura',
       value: _activeFrameStyle.label,
@@ -224,6 +242,14 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       title: 'Fundo',
       value: _frame.transparentBackground ? 'Transparente' : 'Cor',
       builder: (_) => _backgroundSection(),
+    ),
+    // Última aba da barra nas três telas de edição (vídeo, foto e
+    // montagem) — configurações gerais, não deste recorte/moldura em si.
+    EditorSection(
+      icon: Icons.settings_rounded,
+      title: 'Configurações',
+      label: 'Ajustes',
+      builder: (_) => const PreviewSettingsPanel(),
     ),
   ];
 
@@ -276,12 +302,14 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         child: Column(
           children: [
             Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  child: RepaintBoundary(
-                    key: _colorPreviewKey,
-                    child: _framedPreview(),
+              child: PreviewAreaBackground(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    child: RepaintBoundary(
+                      key: _colorPreviewKey,
+                      child: _framedPreview(),
+                    ),
                   ),
                 ),
               ),
@@ -433,6 +461,124 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         fit: fit,
       ),
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // Seção "Recorte"
+  // ---------------------------------------------------------------------
+
+  /// Rótulo mostrado no cabeçalho da aba "Recorte": o preset que bate com a
+  /// proporção atual (`AspectPreset.presets` já traz "Original" primeiro,
+  /// com `ratio: null`), ou o valor customizado formatado quando nenhum
+  /// bate.
+  String get _cropAspectLabel {
+    final custom = _customCropAspectLabel();
+    if (custom != null) return custom;
+    for (final preset in AspectPreset.presets) {
+      if (_isCropPresetSelected(preset)) return preset.label;
+    }
+    return AspectPreset.presets.first.label;
+  }
+
+  bool _isCropPresetSelected(AspectPreset preset) {
+    final current = _frame.cropAspectRatio;
+    if (preset.ratio == null) return current == null;
+    if (current == null) return false;
+    return (preset.ratio! - current).abs() < 0.001;
+  }
+
+  /// `null` quando a proporção atual bate com um preset (inclusive
+  /// "Original", ratio nulo) — só devolve algo para uma proporção
+  /// customizada pelo slider/campos, sem chip equivalente para mostrá-la.
+  String? _customCropAspectLabel() {
+    final ratio = _frame.cropAspectRatio;
+    if (ratio == null) return null;
+    for (final preset in AspectPreset.presets) {
+      if (preset.ratio != null && (preset.ratio! - ratio).abs() < 0.001) {
+        return null;
+      }
+    }
+    return ratio.toStringAsFixed(2);
+  }
+
+  /// `true` quando o chip "x:y" está escolhido — ou porque o usuário tocou
+  /// nele, ou porque a proporção atual não corresponde a nenhum preset
+  /// (mesma lógica de `_CollagePageState._aspectIsCustom`).
+  bool get _cropAspectIsCustom =>
+      _customCropAspectSelected || _customCropAspectLabel() != null;
+
+  void _selectCropAspect(AspectPreset preset) {
+    setState(() => _customCropAspectSelected = false);
+    _updateFrame(
+      _frame.copyWith(
+        cropAspectRatio: preset.ratio,
+        clearCropAspectRatio: preset.ratio == null,
+      ),
+    );
+  }
+
+  Widget _cropAspectSection() {
+    final custom = _cropAspectIsCustom;
+    final currentRatio = (_frame.cropAspectRatio ?? _photoAspectRatio).clamp(
+      FrameSettings.minCropAspectRatio,
+      FrameSettings.maxCropAspectRatio,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final preset in AspectPreset.presets)
+              ChoiceChip(
+                visualDensity: VisualDensity.compact,
+                labelStyle: Theme.of(context).textTheme.bodySmall,
+                labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                label: Text(preset.label),
+                selected: !custom && _isCropPresetSelected(preset),
+                onSelected: (_) => _selectCropAspect(preset),
+              ),
+            ChoiceChip(
+              visualDensity: VisualDensity.compact,
+              labelStyle: Theme.of(context).textTheme.bodySmall,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+              label: const Text('x:y'),
+              selected: custom,
+              onSelected: (_) =>
+                  setState(() => _customCropAspectSelected = true),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Slider(
+          min: FrameSettings.minCropAspectRatio,
+          max: FrameSettings.maxCropAspectRatio,
+          value: currentRatio.toDouble(),
+          onChangeStart: (_) => _pushUndoCheckpoint(),
+          onChanged: (v) =>
+              _updateFrame(_frame.copyWith(cropAspectRatio: v), pushUndo: false),
+        ),
+        if (custom) ...[
+          const SizedBox(height: 8),
+          CustomAspectRatioInput(
+            onApply: (ratio) {
+              _pushUndoCheckpoint();
+              _updateFrame(
+                _frame.copyWith(
+                  cropAspectRatio: ratio.clamp(
+                    FrameSettings.minCropAspectRatio,
+                    FrameSettings.maxCropAspectRatio,
+                  ),
+                ),
+                pushUndo: false,
+              );
+            },
+          ),
+        ],
+      ],
+    );
   }
 
   // ---------------------------------------------------------------------

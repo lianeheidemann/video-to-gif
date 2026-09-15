@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../models/crop_rect.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
 import '../models/photo_info.dart';
@@ -32,28 +33,37 @@ Future<Uint8List> composeFramedPhoto({
   }
 }
 
-/// Moldura procedural (ou nenhuma): canvas no tamanho nativo da foto. Sem
-/// nenhum passo assíncrono no meio, pode usar [rasterizeCanvas] direto,
-/// igual a [FramePainter.rasterize].
+/// Moldura procedural (ou nenhuma): canvas no tamanho do recorte escolhido na
+/// aba "Recorte" (`frame.cropAspectRatio`), ou no tamanho nativo da foto
+/// quando nenhum foi escolhido ("Original"). Sem nenhum passo assíncrono no
+/// meio, pode usar [rasterizeCanvas] direto, igual a [FramePainter.rasterize].
 Future<Uint8List> _composeProcedural(
   PhotoInfo photo,
   ui.Image image,
   FrameSettings frame,
 ) {
-  return rasterizeCanvas(photo.width, photo.height, (canvas, size) {
+  final ratio = frame.cropAspectRatio;
+  final crop = ratio == null
+      ? CropRect(x: 0, y: 0, width: photo.width, height: photo.height)
+      : CropRect.centeredIn(photo.width, photo.height, ratio);
+
+  return rasterizeCanvas(crop.width, crop.height, (canvas, size) {
     // `paintFrame` já não desenha nada quando o estilo é `none`, e a
     // geometria correspondente cobre o canvas inteiro sem cantos
     // arredondados — então não precisa de um caso especial para "sem
-    // moldura": o recorte abaixo já sai igual à foto original.
+    // moldura": o recorte abaixo já sai igual à foto (já cortada).
     paintFrame(canvas, size, frame);
     final geometry = FrameGeometry.of(size, frame);
     canvas.save();
     canvas.clipRRect(geometry.contentClip);
-    final srcRect = _coverSrcRect(
-      image.width.toDouble(),
-      image.height.toDouble(),
+    final coverSrc = _coverSrcRect(
+      crop.width.toDouble(),
+      crop.height.toDouble(),
       geometry.contentRect.width,
       geometry.contentRect.height,
+    );
+    final srcRect = coverSrc.shift(
+      Offset(crop.x.toDouble(), crop.y.toDouble()),
     );
     canvas.drawImageRect(
       image,
@@ -102,12 +112,20 @@ Future<Uint8List> _composeImageFramed(
     canvas.drawRect(Offset.zero & size, Paint()..color = frame.backgroundColor);
   }
 
-  final fullImageRect = Rect.fromLTWH(
-    0,
-    0,
-    image.width.toDouble(),
-    image.height.toDouble(),
-  );
+  // Região efetiva da foto depois do recorte escolhido na aba "Recorte" —
+  // a imagem inteira quando nenhuma proporção foi escolhida ("Original").
+  final cropRatio = frame.cropAspectRatio;
+  final effectiveRect = cropRatio == null
+      ? Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble())
+      : () {
+          final c = CropRect.centeredIn(image.width, image.height, cropRatio);
+          return Rect.fromLTWH(
+            c.x.toDouble(),
+            c.y.toDouble(),
+            c.width.toDouble(),
+            c.height.toDouble(),
+          );
+        }();
   final paint = Paint()
     ..filterQuality = FilterQuality.high
     // Vale para os três modos de encaixe abaixo; a arte da moldura é
@@ -115,7 +133,7 @@ Future<Uint8List> _composeImageFramed(
     ..colorFilter = frame.adjustments.filter;
   final fit = resolveContentFit(
     frame.contentFit,
-    photo.aspectRatio,
+    effectiveRect.width / effectiveRect.height,
     areaRect.width / areaRect.height,
   );
 
@@ -128,15 +146,15 @@ Future<Uint8List> _composeImageFramed(
     canvas.clipRect(areaRect);
     canvas.drawRect(areaRect, Paint()..color = Colors.black);
     final fitScale = math.min(
-      areaRect.width / image.width,
-      areaRect.height / image.height,
+      areaRect.width / effectiveRect.width,
+      areaRect.height / effectiveRect.height,
     );
     final zoom = frame.effectiveContentZoom;
-    final drawWidth = image.width * fitScale * zoom;
-    final drawHeight = image.height * fitScale * zoom;
+    final drawWidth = effectiveRect.width * fitScale * zoom;
+    final drawHeight = effectiveRect.height * fitScale * zoom;
     canvas.drawImageRect(
       image,
-      fullImageRect,
+      effectiveRect,
       Rect.fromLTWH(
         areaRect.left + (areaRect.width - drawWidth) / 2,
         areaRect.top + (areaRect.height - drawHeight) / 2,
@@ -147,12 +165,13 @@ Future<Uint8List> _composeImageFramed(
     );
     canvas.restore();
   } else if (fit == ContentFitMode.fill) {
-    final srcRect = _coverSrcRect(
-      image.width.toDouble(),
-      image.height.toDouble(),
+    final coverSrc = _coverSrcRect(
+      effectiveRect.width,
+      effectiveRect.height,
       areaRect.width,
       areaRect.height,
     );
+    final srcRect = coverSrc.shift(effectiveRect.topLeft);
     canvas.drawImageRect(image, srcRect, areaRect, paint);
   } else {
     // `auto` resolvido para `fit`: cabe inteira, barras pretas — a arte de
@@ -161,12 +180,8 @@ Future<Uint8List> _composeImageFramed(
     canvas.drawRect(areaRect, Paint()..color = Colors.black);
     canvas.drawImageRect(
       image,
-      fullImageRect,
-      _containDstRect(
-        image.width.toDouble(),
-        image.height.toDouble(),
-        areaRect,
-      ),
+      effectiveRect,
+      _containDstRect(effectiveRect.width, effectiveRect.height, areaRect),
       paint,
     );
   }

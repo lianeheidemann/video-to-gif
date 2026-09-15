@@ -103,6 +103,7 @@ class FrameSettings {
     this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
     this.contentZoom = defaultContentZoom,
     this.adjustments = ColorAdjustments.neutral,
+    this.cropAspectRatio,
   });
 
   final FrameStyle style;
@@ -155,6 +156,14 @@ class FrameSettings {
   /// não o Canvas.
   final ColorAdjustments adjustments;
 
+  /// Proporção em que a foto é recortada antes de entrar na moldura — `null`
+  /// mantém a proporção nativa da foto (aba "Recorte", opção "Original").
+  /// Com moldura de imagem ativa, só afeta como a foto se encaixa na área de
+  /// conteúdo da arte ([ContentFitMode]); sem moldura de imagem, é a própria
+  /// proporção do canvas final — em `PhotoFramePage` e em
+  /// `photo_frame_compositor.dart`.
+  final double? cropAspectRatio;
+
   /// Zoom que realmente deve ser aplicado pela prévia e pela exportação.
   /// Manter o valor escolhido em [contentZoom] permite recuperá-lo quando o
   /// usuário volta para "Expandir sem cortar", sem deixar que ele afete os
@@ -185,6 +194,13 @@ class FrameSettings {
   static const minContentZoom = 0.1;
   static const defaultContentZoom = 1.0;
   static const maxContentZoom = 3.0;
+
+  /// Faixa do slider de proporção customizada ("x:y") da aba "Recorte" —
+  /// mesma faixa de `CollageSettings.minAspectRatio`/`maxAspectRatio`: os
+  /// presets vão de `1:2` (0.5) a `2:1` (2.0), e o slider livre extrapola um
+  /// pouco além dos dois lados.
+  static const minCropAspectRatio = 0.4;
+  static const maxCropAspectRatio = 3.5;
 
   /// Nenhuma moldura: mesmo comportamento do app antes desta funcionalidade.
   factory FrameSettings.none() => const FrameSettings();
@@ -219,6 +235,8 @@ class FrameSettings {
     ImageFrameResolutionMode? frameResolutionMode,
     double? contentZoom,
     ColorAdjustments? adjustments,
+    double? cropAspectRatio,
+    bool clearCropAspectRatio = false,
   }) {
     return FrameSettings(
       style: style ?? this.style,
@@ -233,6 +251,9 @@ class FrameSettings {
       frameResolutionMode: frameResolutionMode ?? this.frameResolutionMode,
       contentZoom: contentZoom ?? this.contentZoom,
       adjustments: adjustments ?? this.adjustments,
+      cropAspectRatio: clearCropAspectRatio
+          ? null
+          : (cropAspectRatio ?? this.cropAspectRatio),
     );
   }
 }
