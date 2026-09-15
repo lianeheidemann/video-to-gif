@@ -3,9 +3,11 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/conversion_settings.dart';
 import '../models/photo_info.dart';
+import '../models/svg_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../theme_controller.dart';
 import 'widgets/gif_weight_help_sheet.dart';
@@ -13,6 +15,7 @@ import 'collage_page.dart';
 import 'editor_page.dart';
 import 'photo_frame_page.dart';
 import 'quick_convert_pick_page.dart';
+import 'svg_edit_page.dart';
 
 /// Tela inicial: apresenta o app e deixa o usuário escolher um vídeo para
 /// começar a edição.
@@ -137,6 +140,72 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           _loading = false;
           _error = 'Não foi possível abrir esta foto.';
+        });
+      }
+    }
+  }
+
+  /// Abre o seletor de arquivos para um SVG e lê o tamanho intrínseco pelo
+  /// próprio `flutter_svg` (`PictureInfo.size`) — nunca reparseado dos
+  /// atributos do XML na mão, que podem ser ausentes ou percentuais. Mesmo
+  /// padrão de `ImportedFrameStore.importFrame()`, que já faz isso para SVGs
+  /// de moldura. Ao contrário da foto, SVG não é `FileType.image` (não é um
+  /// formato raster que `ui.instantiateImageCodec` entenda).
+  Future<void> _pickSvg() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final picked = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['svg'],
+        dialogTitle: 'Escolha um SVG',
+      );
+
+      final path = picked?.path;
+      if (path == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+
+      final PictureInfo pictureInfo;
+      try {
+        pictureInfo = await vg.loadPicture(SvgFileLoader(File(path)), null);
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = 'Não foi possível ler este arquivo como SVG.';
+          });
+        }
+        return;
+      }
+      final size = pictureInfo.size;
+      pictureInfo.picture.dispose();
+      if (size.width <= 0 || size.height <= 0) {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = 'Este SVG não tem um tamanho válido.';
+          });
+        }
+        return;
+      }
+
+      final svg = SvgInfo(path: path, width: size.width, height: size.height);
+      if (!mounted) return;
+
+      setState(() => _loading = false);
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => SvgEditPage(svg: svg)));
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Não foi possível abrir este SVG.';
         });
       }
     }
@@ -322,6 +391,15 @@ class _HomePageState extends State<HomePage> {
                   onPressed: _loading ? null : _pickPhoto,
                   icon: const Icon(Icons.photo_filter_outlined),
                   label: const Text('Editar imagem'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: _loading ? null : _pickSvg,
+                  icon: const Icon(Icons.polyline_outlined),
+                  label: const Text('Editar SVG'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
