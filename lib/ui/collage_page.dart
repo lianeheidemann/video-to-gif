@@ -3747,7 +3747,7 @@ class _CollagePageState extends State<CollagePage> {
   /// esta chamada vive em variáveis locais (`selectedFormat`/`selectedRule`/
   /// `selectedSize`) para não vazar para outra folha que porventura esteja
   /// aberta ao mesmo tempo.
-  Future<(CollageExportFormat format, String name)?> _askExportFormat() async {
+  Future<({CollageExportFormat format, String name})?> _askExportFormat() async {
     final info = await _inspectAnimationCached();
     if (!mounted) return null;
 

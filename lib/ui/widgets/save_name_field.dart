@@ -45,7 +45,11 @@ Future<File> renameForSaving(
 /// sempre pré-preenchido com um nome gerado pelo app (via [controller]), mas
 /// totalmente editável, exibido logo acima do botão de salvar/compartilhar.
 class SaveNameField extends StatelessWidget {
-  const SaveNameField({super.key, required this.controller, this.enabled = true});
+  const SaveNameField({
+  super.key,
+  required this.controller,
+  this.enabled = true,
+});
 
   final TextEditingController controller;
   final bool enabled;
