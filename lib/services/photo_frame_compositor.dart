@@ -33,19 +33,17 @@ Future<Uint8List> composeFramedPhoto({
   }
 }
 
-/// Moldura procedural (ou nenhuma): canvas no tamanho do recorte escolhido na
-/// aba "Recorte" (`frame.cropAspectRatio`), ou no tamanho nativo da foto
-/// quando nenhum foi escolhido ("Original"). Sem nenhum passo assíncrono no
-/// meio, pode usar [rasterizeCanvas] direto, igual a [FramePainter.rasterize].
+/// Moldura procedural (ou nenhuma): canvas no tamanho da janela escolhida na
+/// aba "Recorte" (`frame.crop`), ou no tamanho nativo da foto quando nenhuma
+/// foi escolhida ("Original"). Sem nenhum passo assíncrono no meio, pode usar
+/// [rasterizeCanvas] direto, igual a [FramePainter.rasterize].
 Future<Uint8List> _composeProcedural(
   PhotoInfo photo,
   ui.Image image,
   FrameSettings frame,
 ) {
-  final ratio = frame.cropAspectRatio;
-  final crop = ratio == null
-      ? CropRect(x: 0, y: 0, width: photo.width, height: photo.height)
-      : CropRect.centeredIn(photo.width, photo.height, ratio);
+  final crop =
+      frame.crop ?? CropRect(x: 0, y: 0, width: photo.width, height: photo.height);
 
   return rasterizeCanvas(crop.width, crop.height, (canvas, size) {
     // `paintFrame` já não desenha nada quando o estilo é `none`, e a
@@ -113,19 +111,16 @@ Future<Uint8List> _composeImageFramed(
   }
 
   // Região efetiva da foto depois do recorte escolhido na aba "Recorte" —
-  // a imagem inteira quando nenhuma proporção foi escolhida ("Original").
-  final cropRatio = frame.cropAspectRatio;
-  final effectiveRect = cropRatio == null
+  // a imagem inteira quando nenhuma janela foi escolhida ("Original").
+  final crop = frame.crop;
+  final effectiveRect = crop == null
       ? Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble())
-      : () {
-          final c = CropRect.centeredIn(image.width, image.height, cropRatio);
-          return Rect.fromLTWH(
-            c.x.toDouble(),
-            c.y.toDouble(),
-            c.width.toDouble(),
-            c.height.toDouble(),
-          );
-        }();
+      : Rect.fromLTWH(
+          crop.x.toDouble(),
+          crop.y.toDouble(),
+          crop.width.toDouble(),
+          crop.height.toDouble(),
+        );
   final paint = Paint()
     ..filterQuality = FilterQuality.high
     // Vale para os três modos de encaixe abaixo; a arte da moldura é

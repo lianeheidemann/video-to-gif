@@ -1,6 +1,7 @@
 import 'dart:ui' show Color;
 
 import 'color_adjustments.dart';
+import 'crop_rect.dart';
 import 'default_colors.dart';
 import 'image_frame.dart';
 
@@ -103,7 +104,7 @@ class FrameSettings {
     this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
     this.contentZoom = defaultContentZoom,
     this.adjustments = ColorAdjustments.neutral,
-    this.cropAspectRatio,
+    this.crop,
   });
 
   final FrameStyle style;
@@ -156,13 +157,14 @@ class FrameSettings {
   /// não o Canvas.
   final ColorAdjustments adjustments;
 
-  /// Proporção em que a foto é recortada antes de entrar na moldura — `null`
-  /// mantém a proporção nativa da foto (aba "Recorte", opção "Original").
-  /// Com moldura de imagem ativa, só afeta como a foto se encaixa na área de
-  /// conteúdo da arte ([ContentFitMode]); sem moldura de imagem, é a própria
-  /// proporção do canvas final — em `PhotoFramePage` e em
-  /// `photo_frame_compositor.dart`.
-  final double? cropAspectRatio;
+  /// Janela de recorte da foto, escolhida na aba "Recorte" (arrastando as
+  /// alças ou digitando largura/altura) — `null` mantém a foto inteira, na
+  /// proporção nativa (opção "Original"). Em pixels de exibição da foto,
+  /// mesmo espaço que `CropOverlay`/`CroppedView` usam. Com moldura de
+  /// imagem ativa, só afeta como a foto se encaixa na área de conteúdo da
+  /// arte ([ContentFitMode]); sem moldura de imagem, é a própria janela do
+  /// canvas final — em `PhotoFramePage` e em `photo_frame_compositor.dart`.
+  final CropRect? crop;
 
   /// Zoom que realmente deve ser aplicado pela prévia e pela exportação.
   /// Manter o valor escolhido em [contentZoom] permite recuperá-lo quando o
@@ -194,13 +196,6 @@ class FrameSettings {
   static const minContentZoom = 0.1;
   static const defaultContentZoom = 1.0;
   static const maxContentZoom = 3.0;
-
-  /// Faixa do slider de proporção customizada ("x:y") da aba "Recorte" —
-  /// mesma faixa de `CollageSettings.minAspectRatio`/`maxAspectRatio`: os
-  /// presets vão de `1:2` (0.5) a `2:1` (2.0), e o slider livre extrapola um
-  /// pouco além dos dois lados.
-  static const minCropAspectRatio = 0.4;
-  static const maxCropAspectRatio = 3.5;
 
   /// Nenhuma moldura: mesmo comportamento do app antes desta funcionalidade.
   factory FrameSettings.none() => const FrameSettings();
@@ -235,8 +230,8 @@ class FrameSettings {
     ImageFrameResolutionMode? frameResolutionMode,
     double? contentZoom,
     ColorAdjustments? adjustments,
-    double? cropAspectRatio,
-    bool clearCropAspectRatio = false,
+    CropRect? crop,
+    bool clearCrop = false,
   }) {
     return FrameSettings(
       style: style ?? this.style,
@@ -251,9 +246,7 @@ class FrameSettings {
       frameResolutionMode: frameResolutionMode ?? this.frameResolutionMode,
       contentZoom: contentZoom ?? this.contentZoom,
       adjustments: adjustments ?? this.adjustments,
-      cropAspectRatio: clearCropAspectRatio
-          ? null
-          : (cropAspectRatio ?? this.cropAspectRatio),
+      crop: clearCrop ? null : (crop ?? this.crop),
     );
   }
 }
