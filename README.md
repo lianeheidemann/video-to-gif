@@ -63,8 +63,6 @@ calculation, narrowing the displayed range from ±40–55% to ±15%.
 > actually is, are documented in
 > [`docs/en/HOW_THE_ESTIMATE_WORKS.md`](docs/en/HOW_THE_ESTIMATE_WORKS.md).
 
-## Features
-
 ### Everywhere
 
 The three editors share the same shell: a **bottom tab bar** where each tab
