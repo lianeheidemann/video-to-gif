@@ -9,9 +9,9 @@ import 'quick_convert_format_page.dart';
 
 /// Primeira tela de "Converter formato": só escolhe o arquivo, sem nenhuma
 /// configuração. Aceita qualquer formato que o FFmpeg saiba abrir — vídeo,
-/// GIF ou WebP. Usa `FileType.custom` (navegador de arquivos comum, não o
-/// seletor de mídia estilo galeria — ver `home_page.dart`), validando
-/// depois se o conteúdo pode ser convertido.
+/// GIF ou WebP. Usa o seletor de mídia do sistema (`FileType.media`) para
+/// manter a mesma interface visual de galeria usada em "Escolher vídeo" e
+/// "Colocar moldura", validando depois se o conteúdo pode ser convertido.
 class QuickConvertPickPage extends StatefulWidget {
   const QuickConvertPickPage({super.key});
 
@@ -40,21 +40,6 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
     'tiff',
     'gif',
     'webp',
-  };
-
-  /// Extensões de vídeo aceitas pelo seletor — junto com [_imageExtensions],
-  /// já que esta tela aceita vídeo, GIF ou WebP num seletor só.
-  static const _videoExtensions = {
-    'mp4',
-    'mov',
-    'm4v',
-    'webm',
-    'mkv',
-    'avi',
-    '3gp',
-    'flv',
-    'wmv',
-    'ts',
   };
 
   /// O FFprobe trata uma foto parada (JPG/PNG/...) como um "vídeo" de um
@@ -88,8 +73,7 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
 
     try {
       final picked = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: [..._videoExtensions, ..._imageExtensions],
+        type: FileType.media,
         dialogTitle: 'Escolha um arquivo',
       );
 

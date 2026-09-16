@@ -1,7 +1,6 @@
 import 'dart:ui' show Color;
 
 import 'color_adjustments.dart';
-import 'crop_rect.dart';
 import 'default_colors.dart';
 import 'image_frame.dart';
 
@@ -104,7 +103,6 @@ class FrameSettings {
     this.frameResolutionMode = ImageFrameResolutionMode.matchAjustar,
     this.contentZoom = defaultContentZoom,
     this.adjustments = ColorAdjustments.neutral,
-    this.crop,
   });
 
   final FrameStyle style;
@@ -156,15 +154,6 @@ class FrameSettings {
   /// ajuste mora em `ConversionSettings`, porque lá quem aplica é o FFmpeg e
   /// não o Canvas.
   final ColorAdjustments adjustments;
-
-  /// Janela de recorte da foto, escolhida na aba "Recorte" (arrastando as
-  /// alças ou digitando largura/altura) — `null` mantém a foto inteira, na
-  /// proporção nativa (opção "Original"). Em pixels de exibição da foto,
-  /// mesmo espaço que `CropOverlay`/`CroppedView` usam. Com moldura de
-  /// imagem ativa, só afeta como a foto se encaixa na área de conteúdo da
-  /// arte ([ContentFitMode]); sem moldura de imagem, é a própria janela do
-  /// canvas final — em `PhotoFramePage` e em `photo_frame_compositor.dart`.
-  final CropRect? crop;
 
   /// Zoom que realmente deve ser aplicado pela prévia e pela exportação.
   /// Manter o valor escolhido em [contentZoom] permite recuperá-lo quando o
@@ -230,8 +219,6 @@ class FrameSettings {
     ImageFrameResolutionMode? frameResolutionMode,
     double? contentZoom,
     ColorAdjustments? adjustments,
-    CropRect? crop,
-    bool clearCrop = false,
   }) {
     return FrameSettings(
       style: style ?? this.style,
@@ -246,7 +233,6 @@ class FrameSettings {
       frameResolutionMode: frameResolutionMode ?? this.frameResolutionMode,
       contentZoom: contentZoom ?? this.contentZoom,
       adjustments: adjustments ?? this.adjustments,
-      crop: clearCrop ? null : (crop ?? this.crop),
     );
   }
 }

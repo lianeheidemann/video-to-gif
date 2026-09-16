@@ -44,14 +44,7 @@ class ColorAdjustments {
       hue != 0 ||
       temperature != 0;
 
-  ColorFilter get filter => ColorFilter.matrix(matrix4x5);
-
-  /// A matriz 4x5 (formato de [ColorFilter.matrix]) combinando os oito
-  /// ajustes — a mesma conta de [filter], exposta como lista crua para
-  /// `svg_xml_editor.dart` gerar um `<feColorMatrix type="matrix">` nativo
-  /// equivalente sem duplicar a fórmula (mesmo motivo de [lumR]/[lumG]/
-  /// [lumB] serem públicos).
-  List<double> get matrix4x5 => buildAdjustmentColorFilterMatrix(
+  ColorFilter get filter => buildAdjustmentColorFilter(
     brightness: brightness,
     exposure: exposure,
     contrast: contrast,
@@ -143,30 +136,6 @@ ColorFilter buildAdjustmentColorFilter({
   required double saturation,
   double hue = 0,
   double temperature = 0,
-}) => ColorFilter.matrix(
-  buildAdjustmentColorFilterMatrix(
-    brightness: brightness,
-    exposure: exposure,
-    contrast: contrast,
-    highlights: highlights,
-    shadows: shadows,
-    saturation: saturation,
-    hue: hue,
-    temperature: temperature,
-  ),
-);
-
-/// A lista crua por trás de [buildAdjustmentColorFilter] — ver ali a ordem
-/// de composição.
-List<double> buildAdjustmentColorFilterMatrix({
-  required double brightness,
-  double exposure = 0,
-  required double contrast,
-  double highlights = 0,
-  double shadows = 0,
-  required double saturation,
-  double hue = 0,
-  double temperature = 0,
 }) {
   var m = _identity4x5();
   m = _multiply4x5(_exposureMatrix(exposure), m);
@@ -177,7 +146,7 @@ List<double> buildAdjustmentColorFilterMatrix({
   m = _multiply4x5(_saturationMatrix(saturation), m);
   m = _multiply4x5(_hueMatrix(hue), m);
   m = _multiply4x5(_temperatureMatrix(temperature), m);
-  return m;
+  return ColorFilter.matrix(m);
 }
 
 List<double> _identity4x5() => [
@@ -234,7 +203,7 @@ List<double> _shadowsMatrix(double shadows) {
 
 /// Matiz: gira a roda de cores em até 180° para cada lado, mantendo a luma
 /// (a fórmula clássica de rotação de hue em espaço RGB, com os pesos de
-/// [lumR]/[lumG]/[lumB]).
+/// [_lumR]/[_lumG]/[_lumB]).
 List<double> _hueMatrix(double hue) {
   final angle = hue.clamp(-1.0, 1.0) * math.pi;
   if (angle == 0) return _identity4x5();
@@ -243,17 +212,17 @@ List<double> _hueMatrix(double hue) {
   double m(double weight, double cosPart, double sinPart) =>
       weight + c * cosPart + s * sinPart;
   return [
-    m(lumR, 1 - lumR, -lumR),
-    m(lumG, -lumG, -lumG),
-    m(lumB, -lumB, 1 - lumB),
+    m(_lumR, 1 - _lumR, -_lumR),
+    m(_lumG, -_lumG, -_lumG),
+    m(_lumB, -_lumB, 1 - _lumB),
     0, 0, //
-    m(lumR, -lumR, 0.143),
-    m(lumG, 1 - lumG, 0.140),
-    m(lumB, -lumB, -0.283),
+    m(_lumR, -_lumR, 0.143),
+    m(_lumG, 1 - _lumG, 0.140),
+    m(_lumB, -_lumB, -0.283),
     0, 0, //
-    m(lumR, -lumR, -(1 - lumR)),
-    m(lumG, -lumG, lumG),
-    m(lumB, 1 - lumB, lumB),
+    m(_lumR, -_lumR, -(1 - _lumR)),
+    m(_lumG, -_lumG, _lumG),
+    m(_lumB, 1 - _lumB, _lumB),
     0, 0, //
     0, 0, 0, 1, 0, //
   ];
@@ -276,19 +245,16 @@ List<double> _temperatureMatrix(double temperature) {
 
 // Pesos de luma do Rec. 709 (o espaço de cor de sRGB, que é o que a foto
 // decodificada já está usando) — o comentário anterior dizia Rec. 601, mas os
-// coeficientes sempre foram estes. Públicos porque `svg_xml_editor.dart`
-// reaproveita os mesmos números para o filtro "Preto e branco" do editor de
-// SVG (via `<feColorMatrix type="saturate">`), para as duas telas nunca
-// divergirem no resultado.
-const lumR = 0.2126;
-const lumG = 0.7152;
-const lumB = 0.0722;
+// coeficientes sempre foram estes.
+const _lumR = 0.2126;
+const _lumG = 0.7152;
+const _lumB = 0.0722;
 
 List<double> _saturationMatrix(double saturation) {
   final s = (saturation + 1).clamp(0.0, 2.0);
-  final sr = (1 - s) * lumR;
-  final sg = (1 - s) * lumG;
-  final sb = (1 - s) * lumB;
+  final sr = (1 - s) * _lumR;
+  final sg = (1 - s) * _lumG;
+  final sb = (1 - s) * _lumB;
   return [
     sr + s, sg, sb, 0, 0, //
     sr, sg + s, sb, 0, 0, //

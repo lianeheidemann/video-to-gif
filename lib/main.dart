@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'licenses.dart';
-import 'preview_background_controller.dart';
 import 'theme.dart';
 import 'theme_controller.dart';
 import 'ui/home_page.dart';
@@ -11,7 +10,6 @@ Future<void> main() async {
   // Exigência da LGPL do FFmpeg: o aviso precisa estar acessível no app.
   registerThirdPartyLicenses();
   await loadThemeMode();
-  await loadPreviewCheckerboardPreference();
   runApp(const VideoToGifApp());
 }
 

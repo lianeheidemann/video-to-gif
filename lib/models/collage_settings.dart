@@ -1,6 +1,5 @@
 import 'dart:ui' show Color;
 
-import 'aspect_preset.dart';
 import 'collage_background.dart';
 import 'collage_cell.dart';
 import 'collage_layout.dart';
@@ -70,13 +69,20 @@ class CollageSettings {
   static const maxAspectRatio = 3.5;
 
   /// Presets de proporção comuns em redes sociais e impressão, além do
-  /// slider livre — os mesmos [AspectPreset.presets] usados nos outros
-  /// recortes do app (vídeo e foto), sem o "Original" (a montagem não tem
-  /// uma proporção nativa: ela é definida por quem monta).
-  static final aspectPresets = AspectPreset.presets
-      .where((preset) => preset.ratio != null)
-      .map((preset) => (preset.label, preset.ratio!))
-      .toList(growable: false);
+  /// slider livre.
+  static const aspectPresets = <(String label, double ratio)>[
+    ('1:1', 1.0),
+    ('4:5', 4 / 5),
+    ('5:4', 5 / 4),
+    ('2:3', 2 / 3),
+    ('3:2', 3 / 2),
+    ('3:4', 3 / 4),
+    ('4:3', 4 / 3),
+    ('9:16', 9 / 16),
+    ('16:9', 16 / 9),
+    ('2:1', 2.0),
+    ('1:2', 0.5),
+  ];
 
   double borderThicknessFor(double canvasWidth) {
     if (canvasWidth <= 0) return borderThicknessAtReference;

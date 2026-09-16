@@ -3,7 +3,6 @@ import 'crop_rect.dart';
 import 'frame_settings.dart';
 import 'video_info.dart';
 
-export 'aspect_preset.dart' show AspectPreset;
 export 'crop_rect.dart' show CropRect;
 
 /// Como o GIF distribui o erro de cor ao reduzir a imagem para 256 cores.
@@ -80,6 +79,26 @@ enum OutputFormat {
 
   /// Texto curto, usado em mensagens ("GIF salvo...", "WebP pronto").
   final String shortLabel;
+}
+
+/// Proporções oferecidas na tela de recorte.
+class AspectPreset {
+  const AspectPreset(this.label, this.ratio, {this.hint = ''});
+
+  final String label;
+  final double? ratio; // null = manter a proporção original
+  final String hint;
+
+  static const presets = <AspectPreset>[
+    AspectPreset('Original', null),
+    AspectPreset('1:1', 1.0, hint: 'Quadrado'),
+    AspectPreset('4:5', 4 / 5, hint: 'Retrato'),
+    AspectPreset('9:16', 9 / 16, hint: 'Stories'),
+    AspectPreset('16:9', 16 / 9, hint: 'Paisagem'),
+    // Mantidos para compatibilidade com configurações/recortes existentes.
+    AspectPreset('4:3', 4 / 3, hint: 'Clássico'),
+    AspectPreset('3:2', 3 / 2, hint: 'Foto'),
+  ];
 }
 
 /// Todos os parâmetros que o usuário controla antes de converter.

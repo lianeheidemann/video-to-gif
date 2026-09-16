@@ -26,11 +26,6 @@ int _evenFloor(int value) {
 /// Redimensiona o recorte movendo só o canto/lado arrastado, sem travar a
 /// proporção (usado no preset "Personalizado" do vídeo; não usado pelo
 /// recorte de foto da montagem, que é sempre travado).
-///
-/// [minSize] é 32 por padrão (o suficiente pra não sumir numa tela de
-/// vídeo/foto, que nunca é menor que isso) — o editor de SVG passa um valor
-/// menor, calculado a partir do tamanho do próprio SVG, porque um ícone de
-/// 24x24 nunca caberia numa janela mínima de 32.
 CropRect resizeFreeCrop(
   CropRect crop,
   CropHandle handle,
@@ -38,8 +33,8 @@ CropRect resizeFreeCrop(
   double dy, {
   required int boundsWidth,
   required int boundsHeight,
-  double minSize = 32,
 }) {
+  const minSize = 32;
   var left = crop.x.toDouble();
   var top = crop.y.toDouble();
   var right = (crop.x + crop.width).toDouble();
@@ -98,9 +93,6 @@ CropRect resizeFreeCrop(
 /// Redimensiona o recorte mantendo a proporção [ratio] fixa: o canto oposto
 /// ao que foi arrastado fica ancorado, e a escala do arraste em ambos os
 /// eixos é combinada para decidir o novo tamanho.
-///
-/// [minSide] tem o mesmo motivo de existir do [resizeFreeCrop] — ver o
-/// comentário lá.
 CropRect resizeLockedCrop(
   CropRect crop,
   CropHandle handle,
@@ -109,8 +101,8 @@ CropRect resizeLockedCrop(
   double ratio, {
   required int boundsWidth,
   required int boundsHeight,
-  double minSide = 32,
 }) {
+  const minSide = 32.0;
   // As alças de borda (top/bottom/left/right) só existem no modo livre
   // ("Personalizados"), que nunca chama esta função — os ramos delas abaixo
   // são inalcançáveis em tempo de execução e só existem para o switch
