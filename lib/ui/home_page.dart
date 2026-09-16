@@ -8,10 +8,8 @@ import '../models/conversion_settings.dart';
 import '../models/photo_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../theme_controller.dart';
+import 'app_shell.dart';
 import 'widgets/gif_weight_help_sheet.dart';
-import 'collage_page.dart';
-import 'editor_page.dart';
-import 'photo_frame_page.dart';
 import 'quick_convert_pick_page.dart';
 
 /// Tela inicial: apresenta o app e deixa o usuário escolher um vídeo para
@@ -54,13 +52,9 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
 
       setState(() => _loading = false);
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => EditorPage(
-            video: video,
-            initialSettings: ConversionSettings.recommendedFor(video),
-          ),
-        ),
+      await AppShell.of(context).openVideoEditor(
+        video: video,
+        settings: ConversionSettings.recommendedFor(video),
       );
     } on FfmpegException catch (e) {
       if (mounted) {
@@ -129,9 +123,7 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
 
       setState(() => _loading = false);
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => PhotoFramePage(photo: photo)),
-      );
+      await AppShell.of(context).openPhotoEditor(photo);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -198,9 +190,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       setState(() => _loading = false);
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => CollagePage(photos: photos)),
-      );
+      await AppShell.of(context).openCollage(photos);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -214,6 +204,10 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final shell = AppShell.of(context);
+    final hasVideoProject = shell.hasProject(ProjectSlot.video);
+    final hasPhotoProject = shell.hasProject(ProjectSlot.photo);
+    final hasCollageProject = shell.hasProject(ProjectSlot.collage);
 
     return Scaffold(
       appBar: AppBar(
@@ -300,37 +294,56 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
+                _ProjectButton(
+                  inProgress: hasVideoProject,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _loading ? null : _pickVideo,
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.video_library_outlined),
+                    label: Text(
+                      _loading
+                          ? 'Abrindo…'
+                          : hasVideoProject
+                          ? 'Continuar vídeo'
+                          : 'Escolher vídeo',
+                    ),
                   ),
-                  onPressed: _loading ? null : _pickVideo,
-                  icon: _loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.video_library_outlined),
-                  label: Text(_loading ? 'Abrindo…' : 'Escolher vídeo'),
                 ),
                 const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
+                _ProjectButton(
+                  inProgress: hasPhotoProject,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _loading ? null : _pickPhoto,
+                    icon: const Icon(Icons.photo_filter_outlined),
+                    label: Text(
+                      hasPhotoProject ? 'Continuar imagem' : 'Editar imagem',
+                    ),
                   ),
-                  onPressed: _loading ? null : _pickPhoto,
-                  icon: const Icon(Icons.photo_filter_outlined),
-                  label: const Text('Editar imagem'),
                 ),
                 const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
+                _ProjectButton(
+                  inProgress: hasCollageProject,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _loading ? null : _pickPhotosForCollage,
+                    icon: const Icon(Icons.dashboard_customize_outlined),
+                    label: Text(
+                      hasCollageProject ? 'Continuar montagem' : 'Montagem',
+                    ),
                   ),
-                  onPressed: _loading ? null : _pickPhotosForCollage,
-                  icon: const Icon(Icons.dashboard_customize_outlined),
-                  label: const Text('Montagem'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
@@ -354,6 +367,27 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Envolve o botão de um editor com um selo no canto quando [inProgress] —
+/// já existe um projeto em andamento naquele slot do [AppShell] — para o
+/// usuário ver isso sem precisar tocar no botão.
+class _ProjectButton extends StatelessWidget {
+  const _ProjectButton({required this.inProgress, required this.child});
+
+  final bool inProgress;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Badge(
+      isLabelVisible: inProgress,
+      label: const Text('•'),
+      alignment: AlignmentDirectional.topEnd,
+      offset: const Offset(-12, 8),
+      child: child,
     );
   }
 }

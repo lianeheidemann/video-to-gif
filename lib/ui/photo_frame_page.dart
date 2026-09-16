@@ -14,10 +14,12 @@ import '../models/photo_info.dart';
 import '../services/imported_frame_store.dart';
 import '../services/output_service.dart';
 import '../services/photo_frame_compositor.dart';
+import 'app_shell.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/editor_tabs_footer.dart';
 import 'widgets/frame_painter.dart';
+import 'widgets/save_name_field.dart';
 
 /// Mesmos três modos apresentados ao usuário em `EditorPage` — `fit` só
 /// existe como resultado interno do ajuste automático.
@@ -139,6 +141,12 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   }
 
   Future<void> _save() async {
+    final name = await askSaveName(
+      context,
+      defaultName: defaultFileName('foto_moldura'),
+    );
+    if (name == null || !mounted) return;
+
     setState(() => _saving = true);
     try {
       final bytes = await composeFramedPhoto(
@@ -146,7 +154,13 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         frame: _frame,
       );
       final file = await _writeTempPng(bytes);
-      await _output.saveToGallery(file);
+      final named = await renameForSaving(
+        file,
+        chosenName: name,
+        extension: 'png',
+        fallbackName: defaultFileName('foto_moldura'),
+      );
+      await _output.saveToGallery(named);
       if (!mounted) return;
       _message('Foto salva na galeria.');
     } on OutputException catch (e) {
@@ -161,6 +175,12 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   }
 
   Future<void> _share() async {
+    final name = await askSaveName(
+      context,
+      defaultName: defaultFileName('foto_moldura'),
+    );
+    if (name == null || !mounted) return;
+
     setState(() => _sharing = true);
     try {
       final bytes = await composeFramedPhoto(
@@ -168,8 +188,14 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         frame: _frame,
       );
       final file = await _writeTempPng(bytes);
-      await _output.share(
+      final named = await renameForSaving(
         file,
+        chosenName: name,
+        extension: 'png',
+        fallbackName: defaultFileName('foto_moldura'),
+      );
+      await _output.share(
+        named,
         mimeType: 'image/png',
         text: 'Foto com moldura feita com o app Video to GIF',
       );
@@ -236,19 +262,32 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         : (_activeSection! < sections.length ? _activeSection : null);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Moldura em foto'),
+        titleSpacing: 4,
+        // Esta tela nunca é empilhada com `Navigator.push` (fica montada
+        // dentro do `IndexedStack` do `AppShell` para preservar o projeto em
+        // memória — ver `app_shell.dart`), então não existe rota para
+        // `Navigator.pop` voltar: o botão de voltar chama `goHome()` direto.
+        leading: IconButton(
+          tooltip: 'Voltar para a Home',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => AppShell.of(context).goHome(),
+        ),
+        title: const Text('Moldura'),
         actions: [
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: 'Desfazer',
             onPressed: _undoStack.isEmpty ? null : _undo,
             icon: const Icon(Icons.undo_rounded),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: 'Refazer',
             onPressed: _redoStack.isEmpty ? null : _redo,
             icon: const Icon(Icons.redo_rounded),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: _saving ? 'Salvando…' : 'Salvar na galeria',
             onPressed: busy ? null : _save,
             icon: _saving
@@ -260,6 +299,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                 : const Icon(Icons.download_rounded),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: _sharing ? 'Preparando…' : 'Compartilhar',
             onPressed: busy ? null : _share,
             icon: _sharing
@@ -270,6 +310,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                   )
                 : const Icon(Icons.share_outlined),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
@@ -313,11 +354,14 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     );
   }
 
+  /// Sem moldura, a foto nunca tem canto arredondado aqui — só a própria
+  /// moldura (ver [_proceduralFramedPreview]) desenha arredondamento, e só
+  /// quando o estilo escolhido pede isso. Arredondar por padrão fazia a
+  /// prévia sugerir um resultado que a exportação não tinha.
   Widget _plainPreview() {
     final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
         ),

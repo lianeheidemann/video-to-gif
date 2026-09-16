@@ -15,6 +15,7 @@ import '../models/video_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
+import 'app_shell.dart';
 import 'converting_page.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
@@ -319,6 +320,15 @@ class _EditorPageState extends State<EditorPage> {
 
     return Scaffold(
       appBar: AppBar(
+        // Esta tela nunca é empilhada com `Navigator.push` (fica montada
+        // dentro do `IndexedStack` do `AppShell` para preservar o projeto em
+        // memória — ver `app_shell.dart`), então não existe rota para
+        // `Navigator.pop` voltar: o botão de voltar chama `goHome()` direto.
+        leading: IconButton(
+          tooltip: 'Voltar para a Home',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => AppShell.of(context).goHome(),
+        ),
         title: const Text('Editar GIF'),
         actions: [
           IconButton(
@@ -509,7 +519,7 @@ class _EditorPageState extends State<EditorPage> {
     final preview = hasFrame
         ? _framedPreview()
         : _timelined(
-            showCropHandles ? _preview() : _croppedPreview(rounded: true),
+            showCropHandles ? _preview() : _croppedPreview(bordered: true),
           );
     return AnimatedSize(
       duration: _previewTransitionDuration,
@@ -547,7 +557,7 @@ class _EditorPageState extends State<EditorPage> {
     if (frame.imageFrame != null) {
       framedVideo = _imageFramedPreview(frame.imageFrame!);
     } else if (frame.style == FrameStyle.none) {
-      framedVideo = _croppedPreview(rounded: true);
+      framedVideo = _croppedPreview(bordered: true);
     } else {
       framedVideo = LayoutBuilder(
         builder: (context, constraints) {
@@ -563,7 +573,7 @@ class _EditorPageState extends State<EditorPage> {
             padding: EdgeInsets.all(thickness),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(innerRadius),
-              child: _croppedPreview(rounded: false),
+              child: _croppedPreview(bordered: false),
             ),
           );
 
@@ -663,7 +673,7 @@ class _EditorPageState extends State<EditorPage> {
       child: SizedBox(
         width: 1000,
         height: 1000 / _contentAspectRatio,
-        child: _croppedPreview(rounded: false),
+        child: _croppedPreview(bordered: false),
       ),
     );
 
@@ -1600,10 +1610,7 @@ class _EditorPageState extends State<EditorPage> {
     if (_previewFailed) {
       return Container(
         constraints: const BoxConstraints(minHeight: 180),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(22),
-        ),
+        decoration: const BoxDecoration(color: Colors.black),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1627,12 +1634,9 @@ class _EditorPageState extends State<EditorPage> {
     if (player == null || !player.value.isInitialized) {
       return AspectRatio(
         aspectRatio: _video.aspectRatio,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: const Center(child: CircularProgressIndicator()),
+        child: const ColoredBox(
+          color: Colors.black,
+          child: Center(child: CircularProgressIndicator()),
         ),
       );
     }
@@ -1642,7 +1646,6 @@ class _EditorPageState extends State<EditorPage> {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.black,
-          borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
@@ -1667,10 +1670,13 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Prévia da aba "Frame": só a janela de recorte, sem véu e sem alças —
-  /// o enquadramento que vai sair no GIF. [rounded] aplica o cartão
-  /// arredondado só quando não há moldura em volta; dentro de uma moldura
-  /// quem arredonda o conteúdo é a própria moldura.
-  Widget _croppedPreview({required bool rounded}) {
+  /// o enquadramento que vai sair no GIF. Nunca arredonda os cantos: o
+  /// vídeo/GIF em si só tem cantos retos a menos que uma moldura desenhe o
+  /// arredondamento por cima (ver [_framedPreview]) — arredondar aqui por
+  /// padrão fazia a prévia sugerir um resultado que a exportação não tinha.
+  /// [bordered] só liga a borda de contorno (desliga dentro de uma moldura,
+  /// que já tem a própria borda).
+  Widget _croppedPreview({required bool bordered}) {
     final player = _player;
     if (_previewFailed || player == null || !player.value.isInitialized) {
       return _preview();
@@ -1694,8 +1700,7 @@ class _EditorPageState extends State<EditorPage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.black,
-        borderRadius: rounded ? BorderRadius.circular(22) : null,
-        border: rounded
+        border: bordered
             ? Border.all(
                 color: Theme.of(
                   context,
