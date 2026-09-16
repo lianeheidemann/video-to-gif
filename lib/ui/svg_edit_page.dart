@@ -11,7 +11,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/aspect_preset.dart';
-import '../models/collage_color_adjustment.dart';
 import '../models/color_adjustments.dart';
 import '../models/crop_rect.dart';
 import '../models/svg_edit_settings.dart';
@@ -740,7 +739,10 @@ class _SvgEditPageState extends State<SvgEditPage> {
   /// recorte. Desfaz na ordem inversa de como a prévia compõe a transformação
   /// (girar primeiro, espelhar depois — ver [_rawPreviewWithHandles]):
   /// primeiro desfaz o espelhamento, depois a rotação.
-  (CropHandle, Offset) _toSourceHandleAndDelta(CropHandle handle, Offset delta) {
+  (CropHandle, Offset) _toSourceHandleAndDelta(
+    CropHandle handle,
+    Offset delta,
+  ) {
     var h = handle;
     var dx = delta.dx;
     var dy = delta.dy;
@@ -879,7 +881,11 @@ class _SvgEditPageState extends State<SvgEditPage> {
 
     if (x == crop.x && y == crop.y) return;
 
-    _update(_settings.copyWith(crop: crop.copyWith(x: x, y: y)));
+    _update(
+      _settings.copyWith(
+        crop: crop.copyWith(x: x, y: y),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------

@@ -278,10 +278,7 @@ void applyFilterSvg(
     matrices.add(
       XmlElement.tag('feColorMatrix')
         ..setAttribute('type', 'matrix')
-        ..setAttribute(
-          'values',
-          _svgColorMatrixValues(adjustments.matrix4x5),
-        ),
+        ..setAttribute('values', _svgColorMatrixValues(adjustments.matrix4x5)),
     );
   }
   switch (type) {
@@ -392,7 +389,11 @@ String renderEditedSvg(
     }
     if (settings.filterType != SvgFilterType.none ||
         settings.adjustments.hasAdjustments) {
-      applyFilterSvg(root, settings.filterType, adjustments: settings.adjustments);
+      applyFilterSvg(
+        root,
+        settings.filterType,
+        adjustments: settings.adjustments,
+      );
     }
     if (settings.opacity < 1) {
       applyOpacitySvg(root, settings.opacity);
