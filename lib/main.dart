@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'licenses.dart';
 import 'theme.dart';
 import 'theme_controller.dart';
-import 'ui/app_shell.dart';
+import 'ui/home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +29,7 @@ class VideoToGifApp extends StatelessWidget {
           theme: buildTheme(Brightness.light),
           darkTheme: buildTheme(Brightness.dark),
           themeMode: mode,
-          home: const AppShell(),
+          home: const HomePage(),
         );
       },
     );

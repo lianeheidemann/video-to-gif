@@ -151,8 +151,8 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Vídeo, GIF ou WebP — na próxima tela você escolhe entre '
-                  'GIF, WebP ou MP4 para converter.',
+                  'Vídeo, GIF ou WebP — na próxima tela você escolhe para '
+                  'qual formato converter.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,

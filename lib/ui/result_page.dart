@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../models/conversion_settings.dart';
@@ -8,7 +6,6 @@ import '../models/video_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/output_service.dart';
 import '../theme.dart';
-import 'widgets/save_name_field.dart';
 
 /// Tela final: exibe o resumo da conversão e as ações de salvar/compartilhar.
 class ResultPage extends StatefulWidget {
@@ -32,39 +29,13 @@ class ResultPage extends StatefulWidget {
 class _ResultPageState extends State<ResultPage> {
   static const _output = OutputService();
 
-  late File _currentFile = widget.result.file;
-  late final _defaultName = defaultFileName('video_to_gif');
-  late final _nameController = TextEditingController(text: _defaultName);
-
   bool _saving = false;
   bool _saved = false;
-  bool _sharing = false;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  /// Renomeia o arquivo temporário para o nome escolhido no [SaveNameField]
-  /// (ou o padrão, se vazio) — feito uma vez, reaproveitado tanto por
-  /// "Salvar" quanto por "Compartilhar", já que os dois operam sobre o
-  /// mesmo arquivo de saída.
-  Future<File> _fileToUse() async {
-    _currentFile = await renameForSaving(
-      _currentFile,
-      chosenName: _nameController.text,
-      extension: widget.result.format.extension,
-      fallbackName: _defaultName,
-    );
-    return _currentFile;
-  }
 
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final file = await _fileToUse();
-      await _output.saveToGallery(file);
+      await _output.saveToGallery(widget.result.file);
       if (!mounted) return;
       setState(() {
         _saving = false;
@@ -75,28 +46,6 @@ class _ResultPageState extends State<ResultPage> {
       if (!mounted) return;
       setState(() => _saving = false);
       _message(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      _message('Não foi possível salvar com esse nome.');
-    }
-  }
-
-  Future<void> _share() async {
-    setState(() => _sharing = true);
-    try {
-      final file = await _fileToUse();
-      if (!mounted) return;
-      await _output.share(
-        file,
-        mimeType: widget.result.format.mimeType,
-        text: '${widget.result.format.shortLabel} feito com o app Video to GIF',
-      );
-    } catch (_) {
-      if (!mounted) return;
-      _message('Não foi possível compartilhar com esse nome.');
-    } finally {
-      if (mounted) setState(() => _sharing = false);
     }
   }
 
@@ -121,7 +70,11 @@ class _ResultPageState extends State<ResultPage> {
         actions: [
           IconButton(
             tooltip: 'Compartilhar',
-            onPressed: _sharing ? null : _share,
+            onPressed: () => _output.share(
+              result.file,
+              mimeType: result.format.mimeType,
+              text: '${result.format.shortLabel} feito com o app Video to GIF',
+            ),
             icon: const Icon(Icons.share_outlined),
           ),
           const SizedBox(width: 8),
@@ -297,11 +250,6 @@ class _ResultPageState extends State<ResultPage> {
               ),
             ),
             const SizedBox(height: 18),
-            SaveNameField(
-              controller: _nameController,
-              enabled: !_saving && !_saved,
-            ),
-            const SizedBox(height: 14),
             _GradientActionButton(
               isBusy: _saving,
               isDone: _saved,
@@ -309,7 +257,12 @@ class _ResultPageState extends State<ResultPage> {
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: _sharing ? null : _share,
+              onPressed: () => _output.share(
+                result.file,
+                mimeType: result.format.mimeType,
+                text:
+                    '${result.format.shortLabel} feito com o app Video to GIF',
+              ),
               icon: const Icon(Icons.share_outlined),
               label: const Text('Compartilhar'),
               style: OutlinedButton.styleFrom(

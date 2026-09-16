@@ -8,12 +8,10 @@ import '../models/size_estimate.dart';
 import '../models/video_info.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/output_service.dart';
-import 'widgets/save_name_field.dart';
 
 /// Segunda tela de "Converter formato": mostra o arquivo escolhido e deixa
-/// escolher, entre os 3 formatos suportados (GIF, WebP animado e MP4), para
-/// qual converter — sem nenhuma outra configuração (sem corte, qualidade ou
-/// prévia).
+/// escolher, entre os 5 formatos suportados, para qual converter — sem
+/// nenhuma outra configuração (sem corte, qualidade ou prévia).
 class QuickConvertFormatPage extends StatefulWidget {
   const QuickConvertFormatPage({super.key, required this.video});
 
@@ -403,35 +401,14 @@ class _QuickConvertResultPage extends StatefulWidget {
 class _QuickConvertResultPageState extends State<_QuickConvertResultPage> {
   static const _output = OutputService();
 
-  late File _currentFile = widget.file;
-  late final _defaultName = defaultFileName('convertido');
-  late final _nameController = TextEditingController(text: _defaultName);
-
   bool _saving = false;
   bool _saved = false;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  Future<File> _fileToUse() async {
-    _currentFile = await renameForSaving(
-      _currentFile,
-      chosenName: _nameController.text,
-      extension: widget.format.extension,
-      fallbackName: _defaultName,
-    );
-    return _currentFile;
-  }
 
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final file = await _fileToUse();
       await _output.saveToGallery(
-        file,
+        widget.file,
         asVideo: !widget.format.isAnimatedImage,
       );
       if (!mounted) return;
@@ -444,25 +421,6 @@ class _QuickConvertResultPageState extends State<_QuickConvertResultPage> {
       if (!mounted) return;
       setState(() => _saving = false);
       _message(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      _message('Não foi possível salvar com esse nome.');
-    }
-  }
-
-  Future<void> _share() async {
-    try {
-      final file = await _fileToUse();
-      if (!mounted) return;
-      await _output.share(
-        file,
-        mimeType: widget.format.mimeType,
-        text: '${widget.format.label} feito com o app Video to GIF',
-      );
-    } catch (_) {
-      if (!mounted) return;
-      _message('Não foi possível compartilhar com esse nome.');
     }
   }
 
@@ -476,7 +434,7 @@ class _QuickConvertResultPageState extends State<_QuickConvertResultPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final bytes = _currentFile.lengthSync();
+    final bytes = widget.file.lengthSync();
 
     return Scaffold(
       appBar: AppBar(title: Text('${widget.format.label} pronto')),
@@ -518,11 +476,6 @@ class _QuickConvertResultPageState extends State<_QuickConvertResultPage> {
               ),
             ),
             const SizedBox(height: 24),
-            SaveNameField(
-              controller: _nameController,
-              enabled: !_saving && !_saved,
-            ),
-            const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: _saving || _saved ? null : _save,
               icon: _saving
@@ -542,7 +495,11 @@ class _QuickConvertResultPageState extends State<_QuickConvertResultPage> {
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: _share,
+              onPressed: () => _output.share(
+                widget.file,
+                mimeType: widget.format.mimeType,
+                text: '${widget.format.label} feito com o app Video to GIF',
+              ),
               icon: const Icon(Icons.share_outlined),
               label: const Text('Compartilhar'),
             ),
