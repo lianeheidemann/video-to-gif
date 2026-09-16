@@ -5,18 +5,25 @@ import 'package:flutter/material.dart';
 import '../models/crop_rect.dart';
 import 'widgets/crop_overlay.dart';
 
-/// Proporções oferecidas na fileira de baixo da [PhotoCropPage]. `null` em
-/// [ratio] é o recorte livre (padrão); [PhotoCropPage.cellAspectRatio] entra
-/// como "Da célula", e "Personalizada…" abre um campo para digitar `L:A`.
+/// Proporções oferecidas na fileira de baixo da [PhotoCropPage] — as mesmas
+/// de todo recorte do app (`AspectPreset.presets`), com "Livre" no lugar de
+/// "Original" (aqui o recorte começa livre por padrão, não travado numa
+/// proporção). `null` em [ratio] é o recorte livre;
+/// [PhotoCropPage.cellAspectRatio] entra como "Da célula", e
+/// "Personalizada…" abre um campo para digitar `L:A`.
 const _cropRatioPresets = <(String label, double? ratio)>[
   ('Livre', null),
   ('1:1', 1.0),
   ('4:5', 4 / 5),
   ('5:4', 5 / 4),
+  ('2:3', 2 / 3),
+  ('3:2', 3 / 2),
   ('3:4', 3 / 4),
   ('4:3', 4 / 3),
   ('9:16', 9 / 16),
   ('16:9', 16 / 9),
+  ('2:1', 2.0),
+  ('1:2', 0.5),
 ];
 
 /// Tela cheia de recorte de uma única foto. O recorte é **livre por padrão**
@@ -139,14 +146,31 @@ class _PhotoCropPageState extends State<PhotoCropPage> {
     });
   }
 
+  /// Se a proporção digitada bater com um preset já na fileira (ou com "Da
+  /// célula"), seleciona esse chip existente em vez de duplicar o mesmo
+  /// número num chip "Personalizada…" à parte — dois chips mostrando "2:1"
+  /// ao mesmo tempo, por exemplo, seria confuso.
   Future<void> _askCustomRatio() async {
     final result = await showDialog<(String, double)>(
       context: context,
       builder: (_) => const _CustomRatioDialog(),
     );
     if (result == null || !mounted) return;
-    setState(() => _customLabel = result.$1);
-    _selectRatio(result.$1, result.$2);
+    final (label, ratio) = result;
+
+    for (final preset in _cropRatioPresets) {
+      if (preset.$2 != null && (preset.$2! - ratio).abs() < 0.001) {
+        _selectRatio(preset.$1, preset.$2);
+        return;
+      }
+    }
+    if ((widget.cellAspectRatio - ratio).abs() < 0.001) {
+      _selectRatio('Da célula', widget.cellAspectRatio);
+      return;
+    }
+
+    setState(() => _customLabel = label);
+    _selectRatio(label, ratio);
   }
 
   @override
