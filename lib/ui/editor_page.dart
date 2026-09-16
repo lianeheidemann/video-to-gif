@@ -26,6 +26,7 @@ import 'widgets/frame_painter.dart';
 import 'widgets/labeled_section.dart';
 import 'widgets/preview_settings_panel.dart';
 import 'widgets/size_panel.dart';
+import 'widgets/text_overlay_editor.dart';
 import 'widgets/webp_convert_panel.dart';
 
 const _customAspectPreset = AspectPreset('Personalizados', -1);
@@ -99,6 +100,8 @@ class _EditorPageState extends State<EditorPage> {
   final _widthFocus = FocusNode();
   final _heightFocus = FocusNode();
 
+  final _textOverlay = TextOverlayController();
+
   VideoInfo get _video => widget.video;
 
   /// Estimativa de tamanho recalculada a cada mudança de configuração,
@@ -114,6 +117,7 @@ class _EditorPageState extends State<EditorPage> {
     super.initState();
     _initPlayer();
     _loadImportedFrames();
+    _textOverlay.loadFonts();
   }
 
   /// Carrega as molduras de imagem importadas em sessões anteriores, para
@@ -153,6 +157,7 @@ class _EditorPageState extends State<EditorPage> {
     _heightController.dispose();
     _widthFocus.dispose();
     _heightFocus.dispose();
+    _textOverlay.dispose();
     super.dispose();
   }
 
@@ -277,6 +282,14 @@ class _EditorPageState extends State<EditorPage> {
         value: _settings.adjustments.hasAdjustments ? 'Ajustada' : 'Original',
         builder: (_) => _colorAdjustSection(),
       ),
+      EditorSection(
+        icon: Icons.text_fields_rounded,
+        title: 'Texto',
+        value: _settings.frame.texts.isEmpty
+            ? 'Nenhum'
+            : '${_settings.frame.texts.length}',
+        builder: (_) => _textSection(),
+      ),
       EditorSection.fromLabeled(_frameStyleSection(), label: 'Moldura'),
       EditorSection.fromLabeled(_imageFrameSection(), label: 'Imagem'),
       EditorSection(
@@ -326,6 +339,8 @@ class _EditorPageState extends State<EditorPage> {
     // (ver _previewArea), como o resultado final vai sair.
     final isCropTabActive =
         active != null && sections[active].barLabel == 'Janela';
+    final textTabActive =
+        active != null && sections[active].barLabel == 'Texto';
 
     return Scaffold(
       appBar: AppBar(
@@ -358,7 +373,10 @@ class _EditorPageState extends State<EditorPage> {
                   child: Center(
                     child: RepaintBoundary(
                       key: _colorPreviewKey,
-                      child: _previewArea(showCropHandles: isCropTabActive),
+                      child: _previewArea(
+                        showCropHandles: isCropTabActive,
+                        textTabActive: textTabActive,
+                      ),
                     ),
                   ),
                 ),
@@ -507,7 +525,10 @@ class _EditorPageState extends State<EditorPage> {
   /// de pronto, aparecia como uma tremida. Com a mudança de tamanho gradual,
   /// a correção acompanha quadro a quadro e nunca precisa de um salto
   /// grande.
-  Widget _previewArea({required bool showCropHandles}) {
+  Widget _previewArea({
+    required bool showCropHandles,
+    required bool textTabActive,
+  }) {
     // Com uma barra de abas só, a prévia mostra a moldura sempre que houver
     // uma (antes isso dependia de estar na aba "Frame"), e a linha do tempo
     // fica sempre à mão — é o controle de duração.
@@ -519,15 +540,51 @@ class _EditorPageState extends State<EditorPage> {
     // chamar _timelined() de novo aqui duplicava a barra "Atual Xs" quando
     // havia moldura.
     final preview = hasFrame
-        ? _framedPreview()
+        ? _framedPreview(textTabActive)
         : _timelined(
-            showCropHandles ? _preview() : _croppedPreview(rounded: true),
+            showCropHandles
+                ? _preview()
+                : _withTextOverlay(
+                    _croppedPreview(rounded: true),
+                    textTabActive,
+                  ),
           );
     return AnimatedSize(
       duration: _previewTransitionDuration,
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
       child: preview,
+    );
+  }
+
+  /// Sobrepõe as caixas de texto arrastáveis (aba "Texto") a [content] — um
+  /// `Stack`/`LayoutBuilder` que mede exatamente a caixa que [content] já
+  /// ocupa (a mesma proporção final do GIF/vídeo, moldura incluída, vinda de
+  /// [CroppedView]/[AspectRatio] por dentro dele), para as coordenadas
+  /// normalizadas de `CollageTextItem` baterem com o canvas de exportação —
+  /// mesma técnica de `PhotoFramePage._framedPreview`.
+  Widget _withTextOverlay(Widget content, bool textTabActive) {
+    return Stack(
+      children: [
+        content,
+        Positioned.fill(
+          child: LayoutBuilder(
+            builder: (context, constraints) => TextOverlayStack(
+              controller: _textOverlay,
+              texts: _settings.frame.texts,
+              onChanged: (texts) => _update(
+                _settings.copyWith(
+                  frame: _settings.frame.copyWith(texts: texts),
+                ),
+                pushUndo: false,
+              ),
+              canvasSize: constraints.biggest,
+              interactive: textTabActive,
+              onGestureStart: _pushUndoCheckpoint,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -552,14 +609,20 @@ class _EditorPageState extends State<EditorPage> {
 
   /// Envolve o vídeo já cortado ([_croppedPreview]) com a moldura
   /// selecionada.
-  Widget _framedPreview() {
+  Widget _framedPreview(bool textTabActive) {
     final frame = _settings.frame;
     final Widget framedVideo;
 
     if (frame.imageFrame != null) {
-      framedVideo = _imageFramedPreview(frame.imageFrame!);
+      framedVideo = _withTextOverlay(
+        _imageFramedPreview(frame.imageFrame!),
+        textTabActive,
+      );
     } else if (frame.style == FrameStyle.none) {
-      framedVideo = _croppedPreview(rounded: true);
+      framedVideo = _withTextOverlay(
+        _croppedPreview(rounded: true),
+        textTabActive,
+      );
     } else {
       framedVideo = LayoutBuilder(
         builder: (context, constraints) {
@@ -588,8 +651,10 @@ class _EditorPageState extends State<EditorPage> {
             borderRadius: BorderRadius.circular(outerRadius),
             child: bordered,
           );
-          if (frame.transparentBackground) return rounded;
-          return ColoredBox(color: frame.backgroundColor, child: rounded);
+          final framed = frame.transparentBackground
+              ? rounded
+              : ColoredBox(color: frame.backgroundColor, child: rounded);
+          return _withTextOverlay(framed, textTabActive);
         },
       );
     }
@@ -806,6 +871,19 @@ class _EditorPageState extends State<EditorPage> {
           pushUndo: false,
         );
       },
+    );
+  }
+
+  Widget _textSection() {
+    _textOverlay.dropSelectionIfGone(_settings.frame.texts);
+    return TextOverlayPanel(
+      controller: _textOverlay,
+      texts: _settings.frame.texts,
+      onChanged: (texts) => _update(
+        _settings.copyWith(frame: _settings.frame.copyWith(texts: texts)),
+      ),
+      previewImageBuilder: _renderPreviewImage,
+      onGestureStart: _pushUndoCheckpoint,
     );
   }
 

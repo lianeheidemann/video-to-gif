@@ -25,6 +25,7 @@ import 'widgets/editor_tabs_footer.dart';
 import 'widgets/frame_painter.dart';
 import 'widgets/labeled_section.dart';
 import 'widgets/preview_settings_panel.dart';
+import 'widgets/text_overlay_editor.dart';
 
 /// Mesmos três modos apresentados ao usuário em `EditorPage` — `fit` só
 /// existe como resultado interno do ajuste automático.
@@ -85,6 +86,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   final _widthFocus = FocusNode();
   final _heightFocus = FocusNode();
 
+  final _textOverlay = TextOverlayController();
+
   /// Aba aberta no rodapé (índice em [_sections]) — `null` fecha o painel e
   /// deixa a prévia com o máximo de espaço.
   int? _activeSection = 0;
@@ -102,6 +105,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   void initState() {
     super.initState();
     _loadImportedFrames();
+    _textOverlay.loadFonts();
   }
 
   @override
@@ -110,6 +114,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     _heightController.dispose();
     _widthFocus.dispose();
     _heightFocus.dispose();
+    _textOverlay.dispose();
     super.dispose();
   }
 
@@ -281,6 +286,12 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       builder: (_) => _colorAdjustSection(),
     ),
     EditorSection(
+      icon: Icons.text_fields_rounded,
+      title: 'Texto',
+      value: _frame.texts.isEmpty ? 'Nenhum' : '${_frame.texts.length}',
+      builder: (_) => _textSection(),
+    ),
+    EditorSection(
       icon: Icons.wallpaper_rounded,
       title: 'Fundo',
       value: _frame.transparentBackground ? 'Transparente' : 'Cor',
@@ -307,6 +318,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     // a prévia já mostra o resultado recortado, igual ao vídeo e ao SVG.
     final showCropHandles =
         active != null && sections[active].title == 'Recorte';
+    final textTabActive = active != null && sections[active].title == 'Texto';
     return Scaffold(
       appBar: AppBar(
         title: const Text('Moldura em foto'),
@@ -355,7 +367,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                     child: RepaintBoundary(
                       key: _colorPreviewKey,
-                      child: _preview(showCropHandles: showCropHandles),
+                      child: _preview(
+                        showCropHandles: showCropHandles,
+                        textTabActive: textTabActive,
+                      ),
                     ),
                   ),
                 ),
@@ -376,8 +391,12 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   // Prévia
   // ---------------------------------------------------------------------
 
-  Widget _preview({required bool showCropHandles}) =>
-      showCropHandles ? _rawCropPreviewWithHandles() : _framedPreview();
+  Widget _preview({
+    required bool showCropHandles,
+    required bool textTabActive,
+  }) => showCropHandles
+      ? _rawCropPreviewWithHandles()
+      : _framedPreview(textTabActive);
 
   /// Foto inteira (sem recorte aplicado) com o véu + alças por cima — mesma
   /// ideia da aba "Ajustar" do recorte de vídeo/"Recorte" do editor de SVG.
@@ -413,15 +432,39 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     );
   }
 
-  Widget _framedPreview() {
+  Widget _framedPreview(bool textTabActive) {
     final frame = _frame;
-    if (frame.imageFrame != null) return _imageFramedPreview(frame.imageFrame!);
+    final double aspect;
+    final Widget content;
+    if (frame.imageFrame != null) {
+      aspect = frame.imageFrame!.nativeAspectRatio;
+      content = _imageFramedPreview(frame.imageFrame!);
+    } else {
+      aspect = _photoAspectRatio;
+      content = frame.style == FrameStyle.none
+          ? _plainPreview()
+          : _proceduralFramedPreview();
+    }
 
     return AspectRatio(
-      aspectRatio: _photoAspectRatio,
-      child: frame.style == FrameStyle.none
-          ? _plainPreview()
-          : _proceduralFramedPreview(),
+      aspectRatio: aspect,
+      child: LayoutBuilder(
+        builder: (context, constraints) => Stack(
+          fit: StackFit.expand,
+          children: [
+            content,
+            TextOverlayStack(
+              controller: _textOverlay,
+              texts: _frame.texts,
+              onChanged: (texts) =>
+                  _updateFrame(_frame.copyWith(texts: texts), pushUndo: false),
+              canvasSize: constraints.biggest,
+              interactive: textTabActive,
+              onGestureStart: _pushUndoCheckpoint,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -561,8 +604,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   // Seção "Recorte"
   // ---------------------------------------------------------------------
 
-  String get _cropLabel =>
-      _aspect.ratio == null
+  String get _cropLabel => _aspect.ratio == null
       ? '${widget.photo.width}×${widget.photo.height}'
       : _aspect.label;
 
@@ -903,10 +945,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         displayDelta.dy * widget.photo.height / previewSize.height +
         _moveDragRemainder.dy;
 
-    final maxX = (widget.photo.width - crop.width).clamp(
-      0,
-      widget.photo.width,
-    );
+    final maxX = (widget.photo.width - crop.width).clamp(0, widget.photo.width);
     final maxY = (widget.photo.height - crop.height).clamp(
       0,
       widget.photo.height,
@@ -920,7 +959,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
 
     if (x == crop.x && y == crop.y) return;
 
-    _updateFrame(_frame.copyWith(crop: crop.copyWith(x: x, y: y)));
+    _updateFrame(
+      _frame.copyWith(
+        crop: crop.copyWith(x: x, y: y),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -1608,6 +1651,17 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           pushUndo: false,
         );
       },
+    );
+  }
+
+  Widget _textSection() {
+    _textOverlay.dropSelectionIfGone(_frame.texts);
+    return TextOverlayPanel(
+      controller: _textOverlay,
+      texts: _frame.texts,
+      onChanged: (texts) => _updateFrame(_frame.copyWith(texts: texts)),
+      previewImageBuilder: _renderPreviewImage,
+      onGestureStart: _pushUndoCheckpoint,
     );
   }
 

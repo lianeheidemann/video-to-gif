@@ -82,4 +82,48 @@ void main() {
       expect(bundledCollageFonts.length, 6);
     });
   });
+
+  group('CollageTextListOps', () {
+    const a = CollageTextItem(
+      id: 'a',
+      text: 'a',
+      centerX: 0.5,
+      centerY: 0.5,
+      zIndex: 3,
+    );
+    const b = CollageTextItem(
+      id: 'b',
+      text: 'b',
+      centerX: 0.5,
+      centerY: 0.5,
+      zIndex: 7,
+    );
+
+    test('nextTextZIndex é 0 numa lista vazia, e um a mais que o maior '
+        'zIndex quando há itens', () {
+      expect(<CollageTextItem>[].nextTextZIndex, 0);
+      expect([a, b].nextTextZIndex, 8);
+    });
+
+    test('minTextZIndex é 0 numa lista vazia, e um a menos que o menor '
+        'zIndex quando há itens', () {
+      expect(<CollageTextItem>[].minTextZIndex, 0);
+      expect([a, b].minTextZIndex, 2);
+    });
+
+    test('findText acha pelo id, ou devolve null se não existir', () {
+      expect([a, b].findText('a'), a);
+      expect([a, b].findText('z'), isNull);
+    });
+
+    test('replacingText troca só o item com aquele id, preservando ordem', () {
+      final updated = [a, b].replacingText('a', a.copyWith(text: 'A!'));
+      expect(updated.map((t) => t.text), ['A!', 'b']);
+    });
+
+    test('removingText tira só o item com aquele id', () {
+      final updated = [a, b].removingText('a');
+      expect(updated.map((t) => t.id), ['b']);
+    });
+  });
 }

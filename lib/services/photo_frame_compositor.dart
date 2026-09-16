@@ -10,6 +10,7 @@ import '../models/crop_rect.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
 import '../models/photo_info.dart';
+import '../ui/widgets/collage_painter.dart' show paintCollageTextItem;
 import '../ui/widgets/frame_painter.dart';
 
 /// Compõe uma [PhotoInfo] com a [FrameSettings] escolhida (moldura
@@ -43,7 +44,8 @@ Future<Uint8List> _composeProcedural(
   FrameSettings frame,
 ) {
   final crop =
-      frame.crop ?? CropRect(x: 0, y: 0, width: photo.width, height: photo.height);
+      frame.crop ??
+      CropRect(x: 0, y: 0, width: photo.width, height: photo.height);
 
   return rasterizeCanvas(crop.width, crop.height, (canvas, size) {
     // `paintFrame` já não desenha nada quando o estilo é `none`, e a
@@ -74,7 +76,18 @@ Future<Uint8List> _composeProcedural(
         ..colorFilter = frame.adjustments.filter,
     );
     canvas.restore();
+    _paintTexts(canvas, size, frame);
   });
+}
+
+/// Desenha `FrameSettings.texts`, ordenados por `zIndex`, sobre o canvas
+/// final já composto — mesmo desenho da prévia ao vivo (`TextOverlayStack`),
+/// para as duas nunca divergirem.
+void _paintTexts(Canvas canvas, Size size, FrameSettings frame) {
+  final sorted = [...frame.texts]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
+  for (final item in sorted) {
+    paintCollageTextItem(canvas, size, item);
+  }
 }
 
 /// Moldura de imagem: canvas dimensionado por
@@ -182,6 +195,7 @@ Future<Uint8List> _composeImageFramed(
   }
 
   await _drawArtwork(canvas, size, asset);
+  _paintTexts(canvas, size, frame);
 
   final picture = recorder.endRecording();
   try {

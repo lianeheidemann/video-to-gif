@@ -21,6 +21,7 @@ import '../models/size_estimate.dart';
 import '../models/video_info.dart';
 import '../ui/widgets/frame_painter.dart';
 import 'size_estimator.dart';
+import 'text_overlay_render.dart';
 
 /// Resultado de uma conversão bem-sucedida: o arquivo GIF e seus metadados.
 class ConversionResult {
@@ -599,6 +600,114 @@ class FfmpegService {
     return path;
   }
 
+  /// Sobrepõe `FrameSettings.texts` no arquivo já pronto em [outputPath] —
+  /// um segundo passo simples por cima do resultado final (que já saiu com
+  /// moldura/recorte/cor aplicados), em vez de acrescentar mais uma entrada/
+  /// `overlay` dentro de cada grafo de composição (que já são vários e
+  /// complexos o bastante — ver [_framedGraph]/[_imageFramedGraph]/
+  /// [_paletteGenArgs]). Os textos não animam, então a camada é um único PNG
+  /// estático (ver `text_overlay_render.dart`), sobreposto a cada quadro do
+  /// arquivo de saída; para o GIF, a paleta é recalculada depois da mistura
+  /// pelo mesmo motivo de [_paletteGenArgs]/[_paletteUseArgs] — os textos
+  /// podem trazer cores que a paleta original não reservou. Sem efeito
+  /// nenhum (nem um arquivo temporário criado) quando não há texto algum.
+  Future<void> _applyTextOverlay({
+    required String outputPath,
+    required ConversionSettings settings,
+    required VideoInfo video,
+    required Directory dir,
+    required String stamp,
+  }) async {
+    final texts = settings.frame.texts;
+    if (texts.isEmpty) return;
+
+    final (width, height) = settings.outputDimensions(video);
+    final layerBytes = await renderTextOverlayLayer(texts, width, height);
+    final layerPath = '${dir.path}/texto_$stamp.png';
+    await File(layerPath).writeAsBytes(layerBytes);
+
+    final isWebp = settings.format == OutputFormat.webp;
+    final mergedPath =
+        '${dir.path}/texto_merge_$stamp.${settings.format.extension}';
+    // Só existe transparência de verdade a preservar com uma moldura
+    // (procedural ou de imagem) que a deixou ligada — sem moldura nenhuma o
+    // resultado já sai sempre opaco (mesma condição de [webpArgs]/
+    // [_paletteGenArgs]).
+    final transparent =
+        settings.frame.transparentBackground &&
+        (settings.frame.hasImageFrame ||
+            settings.frame.style != FrameStyle.none);
+
+    try {
+      final args = isWebp
+          ? [
+              '-y',
+              '-i',
+              outputPath,
+              '-loop',
+              '1',
+              '-i',
+              layerPath,
+              '-lavfi',
+              '[0:v]format=rgba[base];'
+                  '[base][1:v]overlay=0:0:shortest=1[out]',
+              '-map',
+              '[out]',
+              '-c:v',
+              'libwebp',
+              '-quality',
+              '${settings.webpQuality}',
+              '-compression_level',
+              '2',
+              '-pix_fmt',
+              transparent ? 'yuva420p' : 'yuv420p',
+              '-loop',
+              settings.loop ? '0' : '1',
+              '-an',
+              '-f',
+              'webp',
+              mergedPath,
+            ]
+          : [
+              '-y',
+              '-i',
+              outputPath,
+              '-loop',
+              '1',
+              '-i',
+              layerPath,
+              '-lavfi',
+              '[0:v]format=rgba[base];'
+                  '[base][1:v]overlay=0:0:shortest=1[merged];'
+                  '[merged]split=2[palette_source][gif_source];'
+                  '[palette_source]palettegen=max_colors=${settings.colors}'
+                  ':stats_mode=${settings.palette.statsMode}'
+                  '${transparent ? ':reserve_transparent=1' : ''}[palette];'
+                  '[gif_source][palette]paletteuse='
+                  'dither=${settings.dither.ffmpegValue}'
+                  '${transparent ? ':alpha_threshold=128' : ''}[out]',
+              '-map',
+              '[out]',
+              '-loop',
+              settings.loop ? '0' : '-1',
+              '-an',
+              mergedPath,
+            ];
+      await _run(args, step: 'texto sobre o ${settings.format.shortLabel}');
+
+      final merged = File(mergedPath);
+      if (!merged.existsSync() || merged.lengthSync() == 0) {
+        throw FfmpegException(
+          'Não foi possível desenhar o texto sobre o resultado.',
+        );
+      }
+      await merged.copy(outputPath);
+    } finally {
+      _deleteQuietly(layerPath);
+      _deleteQuietly(mergedPath);
+    }
+  }
+
   /// Argumentos completos do FFmpeg para uma moldura de imagem.
   ///
   /// Com "Fundo transparente" ligado segue o caminho com alfa (paleta com
@@ -1146,14 +1255,21 @@ class FfmpegService {
           step:
               'montagem do ${settings.format.shortLabel} com moldura de imagem',
         );
-        onProgress?.call(1.0);
-
-        final output = File(outputPath);
+        var output = File(outputPath);
         if (!output.existsSync() || output.lengthSync() == 0) {
           throw FfmpegException(
             'O arquivo saiu vazio. Tente outro trecho do vídeo.',
           );
         }
+        await _applyTextOverlay(
+          outputPath: outputPath,
+          settings: settings,
+          video: video,
+          dir: dir,
+          stamp: '$stamp',
+        );
+        output = File(outputPath);
+        onProgress?.call(1.0);
 
         final (width, height) = settings.outputDimensions(video);
         return ConversionResult(
@@ -1223,14 +1339,21 @@ class FfmpegService {
         );
       }
 
-      onProgress?.call(1.0);
-
-      final output = File(outputPath);
+      var output = File(outputPath);
       if (!output.existsSync() || output.lengthSync() == 0) {
         throw FfmpegException(
           'O arquivo saiu vazio. Tente outro trecho do vídeo.',
         );
       }
+      await _applyTextOverlay(
+        outputPath: outputPath,
+        settings: settings,
+        video: video,
+        dir: dir,
+        stamp: '$stamp',
+      );
+      output = File(outputPath);
+      onProgress?.call(1.0);
 
       final (width, height) = settings.outputDimensions(video);
       return ConversionResult(
