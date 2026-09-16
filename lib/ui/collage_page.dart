@@ -27,6 +27,7 @@ import '../services/imported_asset_store.dart';
 import '../services/imported_font_store.dart';
 import '../services/output_service.dart';
 import '../services/sticker_folder_store.dart';
+import 'app_shell.dart';
 import 'photo_crop_page.dart';
 import 'widgets/collage_cell_view.dart';
 import 'widgets/collage_overlay_view.dart';
@@ -35,6 +36,7 @@ import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/export_progress_dialog.dart';
 import 'widgets/folder_tab.dart';
+import 'widgets/save_name_field.dart';
 import 'widgets/target_sub_panel.dart';
 
 /// Geometria do sticker/texto selecionado, na medida necessária para
@@ -561,19 +563,32 @@ class _CollagePageState extends State<CollagePage> {
     final busy = _saving || _sharing;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Montagem de fotos'),
+        titleSpacing: 4,
+        // Esta tela nunca é empilhada com `Navigator.push` (fica montada
+        // dentro do `IndexedStack` do `AppShell` para preservar o projeto em
+        // memória — ver `app_shell.dart`), então não existe rota para
+        // `Navigator.pop` voltar: o botão de voltar chama `goHome()` direto.
+        leading: IconButton(
+          tooltip: 'Voltar para a Home',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => AppShell.of(context).goHome(),
+        ),
+        title: const Text('Montagem'),
         actions: [
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: 'Desfazer',
             onPressed: _undoStack.isEmpty ? null : _undo,
             icon: const Icon(Icons.undo_rounded),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: 'Refazer',
             onPressed: _redoStack.isEmpty ? null : _redo,
             icon: const Icon(Icons.redo_rounded),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: _saving ? 'Salvando…' : 'Salvar na galeria',
             onPressed: busy ? null : _save,
             icon: _saving
@@ -585,6 +600,7 @@ class _CollagePageState extends State<CollagePage> {
                 : const Icon(Icons.download_rounded),
           ),
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: _sharing ? 'Preparando…' : 'Compartilhar',
             onPressed: busy ? null : _share,
             icon: _sharing
@@ -595,6 +611,7 @@ class _CollagePageState extends State<CollagePage> {
                   )
                 : const Icon(Icons.share_outlined),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
@@ -3721,15 +3738,16 @@ class _CollagePageState extends State<CollagePage> {
     return info;
   }
 
-  /// Pergunta o formato (quando há foto animada na montagem) e o tamanho da
-  /// exportação. Devolve `null` quando a pessoa fecha a folha sem escolher.
+  /// Pergunta o formato (quando há foto animada na montagem), o tamanho e o
+  /// nome do arquivo da exportação. Devolve `null` quando a pessoa fecha a
+  /// folha sem escolher.
   ///
   /// [_exportFormat]/[_durationRule]/[_exportSize] só guardam a última
   /// escolha para a folha já abrir marcada nela; a seleção feita durante
   /// esta chamada vive em variáveis locais (`selectedFormat`/`selectedRule`/
   /// `selectedSize`) para não vazar para outra folha que porventura esteja
   /// aberta ao mesmo tempo.
-  Future<CollageExportFormat?> _askExportFormat() async {
+  Future<({CollageExportFormat format, String name})?> _askExportFormat() async {
     final info = await _inspectAnimationCached();
     if (!mounted) return null;
 
@@ -3738,6 +3756,9 @@ class _CollagePageState extends State<CollagePage> {
         : CollageExportFormat.png;
     var selectedRule = _durationRule;
     var selectedSize = _exportSize;
+    final nameController = TextEditingController(
+      text: defaultFileName('montagem'),
+    );
 
     final result = await showModalBottomSheet<CollageExportFormat>(
       context: context,
@@ -3843,6 +3864,8 @@ class _CollagePageState extends State<CollagePage> {
                           ),
                       ],
                     ),
+                    const SizedBox(height: 16),
+                    SaveNameField(controller: nameController),
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () =>
@@ -3861,6 +3884,9 @@ class _CollagePageState extends State<CollagePage> {
       ),
     );
 
+    final chosenName = nameController.text;
+    nameController.dispose();
+
     if (result != null && mounted) {
       setState(() {
         _exportFormat = selectedFormat;
@@ -3868,7 +3894,7 @@ class _CollagePageState extends State<CollagePage> {
         _exportSize = selectedSize;
       });
     }
-    return result;
+    return result == null ? null : (format: result, name: chosenName);
   }
 
   String _formatSeconds(Duration duration) =>
@@ -3992,8 +4018,9 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Future<void> _save() async {
-    final format = await _askExportFormat();
-    if (format == null || !mounted) return;
+    final choice = await _askExportFormat();
+    if (choice == null || !mounted) return;
+    final (:format, :name) = choice;
     setState(() => _saving = true);
     try {
       final file = await _exportWithProgress(format);
@@ -4001,7 +4028,13 @@ class _CollagePageState extends State<CollagePage> {
         if (mounted) _message('Exportação cancelada.');
         return;
       }
-      await _output.saveToGallery(file);
+      final named = await renameForSaving(
+        file,
+        chosenName: name,
+        extension: format.extension,
+        fallbackName: defaultFileName('montagem'),
+      );
+      await _output.saveToGallery(named);
       if (!mounted) return;
       _message('Montagem salva na galeria.');
     } on OutputException catch (e) {
@@ -4019,8 +4052,9 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Future<void> _share() async {
-    final format = await _askExportFormat();
-    if (format == null || !mounted) return;
+    final choice = await _askExportFormat();
+    if (choice == null || !mounted) return;
+    final (:format, :name) = choice;
     setState(() => _sharing = true);
     try {
       final file = await _exportWithProgress(format);
@@ -4028,8 +4062,14 @@ class _CollagePageState extends State<CollagePage> {
         if (mounted) _message('Exportação cancelada.');
         return;
       }
-      await _output.share(
+      final named = await renameForSaving(
         file,
+        chosenName: name,
+        extension: format.extension,
+        fallbackName: defaultFileName('montagem'),
+      );
+      await _output.share(
+        named,
         mimeType: format.mimeType,
         text: 'Montagem de fotos feita com o app Video to GIF',
       );

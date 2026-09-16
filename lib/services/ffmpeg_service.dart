@@ -1260,12 +1260,12 @@ class FfmpegService {
   /// ampliar) e reaproveita [convert] — mesmo pipeline de paleta/WebP já
   /// usado por "Editar GIF" (com a mesma correção de velocidade do WebP).
   ///
-  /// MP4/MOV/WebM: linha de comando própria e simples — só limita a largura
-  /// (mesmo teto de [ConversionSettings.recommendedFor], nunca amplia) e
-  /// codifica o áudio quando existir. Sem `-map` explícito, o FFmpeg já
-  /// escolhe sozinho o melhor stream de vídeo e (se houver) de áudio — se a
-  /// fonte não tiver áudio (ex.: veio de um GIF), as flags de áudio
-  /// simplesmente não têm efeito, sem precisar detectar isso antes.
+  /// MP4: linha de comando própria e simples — só limita a largura (mesmo
+  /// teto de [ConversionSettings.recommendedFor], nunca amplia) e codifica
+  /// o áudio quando existir. Sem `-map` explícito, o FFmpeg já escolhe
+  /// sozinho o melhor stream de vídeo e (se houver) de áudio — se a fonte
+  /// não tiver áudio (ex.: veio de um GIF), as flags de áudio simplesmente
+  /// não têm efeito, sem precisar detectar isso antes.
   Future<File> quickConvert({
     required VideoInfo video,
     required QuickConvertFormat format,
@@ -1319,8 +1319,16 @@ class FfmpegService {
     }
   }
 
-  /// Linha de comando de conversão para MP4/MOV/WebM, usada por
-  /// [quickConvert]. Público (sem `_`) só para os testes de unidade.
+  /// Linha de comando de conversão para MP4, usada por [quickConvert].
+  /// Público (sem `_`) só para os testes de unidade.
+  ///
+  /// Usa `h264_mediacodec` (codificador de hardware do Android) em vez de
+  /// `libx264`: este app empacota a variante **LGPL** do FFmpeg
+  /// (`ffmpeg_kit_flutter_new_video`), que não inclui o `libx264` (GPL) — ver
+  /// `docs/pt-Br/LICENCAS.md`. Chamar `libx264` nesse build falha em tempo de
+  /// execução ("Unknown encoder"), que era a causa da conversão para MP4 não
+  /// funcionar. O MediaCodec não aceita `-crf`/`-preset` (específicos do
+  /// libx264): o controle de qualidade aqui é por bitrate de vídeo.
   @visibleForTesting
   List<String> quickConvertVideoArgs({
     required VideoInfo video,
@@ -1328,24 +1336,7 @@ class FfmpegService {
     required int width,
     required String outputPath,
   }) {
-    final codecArgs = format == QuickConvertFormat.webm
-        ? ['-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-c:a', 'libopus']
-        : [
-            '-c:v',
-            'libx264',
-            '-preset',
-            'veryfast',
-            '-crf',
-            '23',
-            '-pix_fmt',
-            'yuv420p',
-            '-c:a',
-            'aac',
-            '-b:a',
-            '128k',
-            '-movflags',
-            '+faststart',
-          ];
+    final bitrate = width > 480 ? '4M' : '2M';
 
     return [
       '-y',
@@ -1353,7 +1344,16 @@ class FfmpegService {
       video.path,
       '-vf',
       'scale=$width:-2:flags=lanczos',
-      ...codecArgs,
+      '-c:v',
+      'h264_mediacodec',
+      '-b:v',
+      bitrate,
+      '-c:a',
+      'aac',
+      '-b:a',
+      '128k',
+      '-movflags',
+      '+faststart',
       '-f',
       format.extension,
       outputPath,
