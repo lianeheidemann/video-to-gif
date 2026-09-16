@@ -56,6 +56,11 @@ class _SvgEditPageState extends State<SvgEditPage> {
 
   SvgEditSettings _settings = const SvgEditSettings();
 
+  /// Sobra fracionária do arrasto de recorte, de um frame de gesto pro
+  /// próximo — ver o porquê em [_resizeCropFromHandle]/[_moveCropFromHandle].
+  Offset _resizeDragRemainder = Offset.zero;
+  Offset _moveDragRemainder = Offset.zero;
+
   /// Preset de proporção travado na aba "Recorte" — guardado à parte de
   /// `_settings.crop` porque "Personalizado" e um preset podem cair no
   /// mesmo retângulo (ex.: ao digitar largura/altura que batem com 1:1), e
@@ -76,6 +81,15 @@ class _SvgEditPageState extends State<SvgEditPage> {
 
   int get _sourceWidth => widget.svg.width.round();
   int get _sourceHeight => widget.svg.height.round();
+
+  /// Tamanho de [_sourceWidth]/[_sourceHeight] depois de girar — 90°/270°
+  /// trocam largura por altura. É o que a aba "Recorte" mostra e mede: a
+  /// prévia ali reflete girar/espelhar (ver [_rawPreviewWithHandles]), então
+  /// a janela de recorte é medida no espaço já girado, não no original.
+  int get _displayWidth =>
+      _settings.rotationQuarterTurns.isOdd ? _sourceHeight : _sourceWidth;
+  int get _displayHeight =>
+      _settings.rotationQuarterTurns.isOdd ? _sourceWidth : _sourceHeight;
 
   /// Janela mínima arrastável pela alça — 32 (o padrão do recorte de vídeo/
   /// foto, que nunca é menor que isso) quebraria um ícone de 24x24, bem
@@ -263,13 +277,37 @@ class _SvgEditPageState extends State<SvgEditPage> {
       showCropHandles ? _rawPreviewWithHandles() : _croppedDecoratedPreview();
 
   /// SVG inteiro (sem recorte aplicado) com o véu + alças por cima, igual à
-  /// aba "Ajustar" do recorte de vídeo — as coordenadas do recorte são
-  /// sempre relativas a este tamanho original, nunca ao já rotacionado/
-  /// espelhado (que só existe depois, na composição final).
+  /// aba "Ajustar" do recorte de vídeo — mas, ao contrário de antes, já
+  /// mostrado girado/espelhado (ver [_displayWidth]/[_displayHeight] e o
+  /// `Transform`/`RotatedBox` abaixo), pra não parecer que "Girar" foi
+  /// desfeito ao abrir esta aba. A janela de recorte em si continua guardada
+  /// em espaço original (ver [SvgEditSettings.crop]) — [_toDisplayCrop]
+  /// converte só pra desenhar aqui, e [_resizeCropFromHandle]/
+  /// [_moveCropFromHandle] convertem o arrasto de volta.
   Widget _rawPreviewWithHandles() {
     final theme = Theme.of(context);
+    Widget picture = SvgPicture.file(File(widget.svg.path), fit: BoxFit.fill);
+    if (_settings.rotationQuarterTurns != 0) {
+      picture = RotatedBox(
+        quarterTurns: _settings.rotationQuarterTurns,
+        child: picture,
+      );
+    }
+    if (_settings.flipHorizontal || _settings.flipVertical) {
+      picture = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.diagonal3Values(
+          _settings.flipHorizontal ? -1.0 : 1.0,
+          _settings.flipVertical ? -1.0 : 1.0,
+          1.0,
+        ),
+        child: picture,
+      );
+    }
+
+    final crop = _settings.crop;
     return AspectRatio(
-      aspectRatio: _sourceWidth / _sourceHeight,
+      aspectRatio: _displayWidth / _displayHeight,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(22),
@@ -281,10 +319,10 @@ class _SvgEditPageState extends State<SvgEditPage> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            SvgPicture.file(File(widget.svg.path), fit: BoxFit.fill),
+            picture,
             CropOverlay(
-              bounds: Size(_sourceWidth.toDouble(), _sourceHeight.toDouble()),
-              crop: _settings.crop,
+              bounds: Size(_displayWidth.toDouble(), _displayHeight.toDouble()),
+              crop: crop == null ? null : _toDisplayCrop(crop),
               onResize: _resizeCropFromHandle,
               onMove: _moveCropFromHandle,
               freeform: _aspect == _customAspectPreset,
@@ -607,12 +645,122 @@ class _SvgEditPageState extends State<SvgEditPage> {
     return CropRect(x: x, y: y, width: safeWidth, height: safeHeight);
   }
 
+  /// Converte um [CropRect] do espaço original do SVG pro espaço de exibição
+  /// atual (já girado/espelhado) — só pra desenhar a janela por cima da
+  /// prévia transformada em [_rawPreviewWithHandles]; [SvgEditSettings.crop]
+  /// continua sempre guardado no espaço original.
+  CropRect _toDisplayCrop(CropRect crop) {
+    var x = crop.x;
+    var y = crop.y;
+    var w = crop.width;
+    var h = crop.height;
+    var boundsW = _sourceWidth;
+    var boundsH = _sourceHeight;
+
+    for (var i = 0; i < _settings.rotationQuarterTurns; i++) {
+      final newX = boundsH - (y + h);
+      final newY = x;
+      x = newX;
+      y = newY;
+      final newW = h;
+      final newH = w;
+      w = newW;
+      h = newH;
+      final newBoundsW = boundsH;
+      final newBoundsH = boundsW;
+      boundsW = newBoundsW;
+      boundsH = newBoundsH;
+    }
+    if (_settings.flipHorizontal) x = boundsW - (x + w);
+    if (_settings.flipVertical) y = boundsH - (y + h);
+
+    return CropRect(x: x, y: y, width: w, height: h);
+  }
+
+  CropHandle _mirrorHandleHorizontally(CropHandle handle) => switch (handle) {
+    CropHandle.topLeft => CropHandle.topRight,
+    CropHandle.topRight => CropHandle.topLeft,
+    CropHandle.bottomLeft => CropHandle.bottomRight,
+    CropHandle.bottomRight => CropHandle.bottomLeft,
+    CropHandle.left => CropHandle.right,
+    CropHandle.right => CropHandle.left,
+    CropHandle.top => CropHandle.top,
+    CropHandle.bottom => CropHandle.bottom,
+  };
+
+  CropHandle _mirrorHandleVertically(CropHandle handle) => switch (handle) {
+    CropHandle.topLeft => CropHandle.bottomLeft,
+    CropHandle.bottomLeft => CropHandle.topLeft,
+    CropHandle.topRight => CropHandle.bottomRight,
+    CropHandle.bottomRight => CropHandle.topRight,
+    CropHandle.top => CropHandle.bottom,
+    CropHandle.bottom => CropHandle.top,
+    CropHandle.left => CropHandle.left,
+    CropHandle.right => CropHandle.right,
+  };
+
+  /// Um passo pra trás no ciclo horário de cantos/lados — desfaz um quarto
+  /// de volta de rotação na identidade do handle (ex.: o que a pessoa vê
+  /// como canto superior-direito, com a arte girada 90°, é o canto
+  /// superior-esquerdo no espaço original).
+  CropHandle _undoQuarterTurn(CropHandle handle) => switch (handle) {
+    CropHandle.topLeft => CropHandle.bottomLeft,
+    CropHandle.topRight => CropHandle.topLeft,
+    CropHandle.bottomRight => CropHandle.topRight,
+    CropHandle.bottomLeft => CropHandle.bottomRight,
+    CropHandle.top => CropHandle.left,
+    CropHandle.right => CropHandle.top,
+    CropHandle.bottom => CropHandle.right,
+    CropHandle.left => CropHandle.bottom,
+  };
+
+  /// Converte o handle e o delta arrastados na prévia — que mostra a arte já
+  /// girada/espelhada — para o handle e o delta equivalentes no espaço
+  /// original, onde [SvgEditSettings.crop] é definido. Sem isso, arrastar um
+  /// canto com rotação/espelhamento ativos mexeria no lado errado do
+  /// recorte. Desfaz na ordem inversa de como a prévia compõe a transformação
+  /// (girar primeiro, espelhar depois — ver [_rawPreviewWithHandles]):
+  /// primeiro desfaz o espelhamento, depois a rotação.
+  (CropHandle, Offset) _toSourceHandleAndDelta(CropHandle handle, Offset delta) {
+    var h = handle;
+    var dx = delta.dx;
+    var dy = delta.dy;
+
+    if (_settings.flipHorizontal) {
+      h = _mirrorHandleHorizontally(h);
+      dx = -dx;
+    }
+    if (_settings.flipVertical) {
+      h = _mirrorHandleVertically(h);
+      dy = -dy;
+    }
+    for (var i = 0; i < _settings.rotationQuarterTurns; i++) {
+      h = _undoQuarterTurn(h);
+      final nextDx = dy;
+      final nextDy = -dx;
+      dx = nextDx;
+      dy = nextDy;
+    }
+
+    return (h, Offset(dx, dy));
+  }
+
   /// Converte o arraste de uma alça (em pixels da prévia exibida) para
   /// unidades do SVG e recalcula o recorte, livre ou travado à proporção
   /// selecionada.
+  ///
+  /// Um SVG pequeno (ex. 24×24) tem uma escala unidade-do-SVG/pixel-de-tela
+  /// bem menor que 1 (a prévia é exibida bem maior que o tamanho nativo), e
+  /// `onPanUpdate` chega em deltas pequenos e irregulares — sem acumular a
+  /// sobra fracionária de um frame pro outro, a maioria dos frames arredonda
+  /// pra zero (nada acontece) e, de vez em quando, um frame com delta maior
+  /// (ruído normal de toque) produz um salto de vários pixels de uma vez só,
+  /// exatamente o "pulando de um lado pro outro" relatado. Guardar
+  /// [_resizeDragRemainder] resolve isso: nenhum pedacinho de arrasto é
+  /// descartado, só fica pendente até completar uma unidade inteira.
   void _resizeCropFromHandle(
-    CropHandle handle,
-    Offset displayDelta,
+    CropHandle displayHandle,
+    Offset rawDisplayDelta,
     Size previewSize,
   ) {
     final crop = _settings.crop;
@@ -620,9 +768,23 @@ class _SvgEditPageState extends State<SvgEditPage> {
       return;
     }
 
-    final dx = displayDelta.dx * _sourceWidth / previewSize.width;
-    final dy = displayDelta.dy * _sourceHeight / previewSize.height;
+    final scaledDelta = Offset(
+      rawDisplayDelta.dx * _displayWidth / previewSize.width,
+      rawDisplayDelta.dy * _displayHeight / previewSize.height,
+    );
+    final (handle, sourceDelta) = _toSourceHandleAndDelta(
+      displayHandle,
+      scaledDelta,
+    );
 
+    final dx = _resizeDragRemainder.dx + sourceDelta.dx;
+    final dy = _resizeDragRemainder.dy + sourceDelta.dy;
+
+    // `_aspect.ratio` não é invertido para 90°/270° — um preset travado
+    // (não "Personalizado") combinado com rotação ímpar pode desenhar a
+    // janela um pouco fora da proporção que aparece na tela. O caso
+    // relatado (arraste "pulando"/reset visual) usa sempre "Personalizado"
+    // (sem proporção travada), então não esbarra nisso.
     final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
     final next = ratio == null
         ? resizeFreeCrop(
@@ -649,33 +811,56 @@ class _SvgEditPageState extends State<SvgEditPage> {
         next.height == crop.height &&
         next.x == crop.x &&
         next.y == crop.y) {
+      // Nada mudou ainda (a sobra acumulada não fechou uma unidade inteira)
+      // — guarda pro próximo frame em vez de descartar.
+      _resizeDragRemainder = Offset(dx, dy);
       return;
     }
 
+    _resizeDragRemainder = Offset.zero;
     _update(_settings.copyWith(crop: next));
   }
 
-  void _moveCropFromHandle(Offset displayDelta, Size previewSize) {
+  /// Mesma lógica de sobra fracionária de [_resizeCropFromHandle] — e a
+  /// mesma conversão de espaço de exibição pro espaço original — para o
+  /// botão de mover a janela inteira. Move não tem "handle" (é sempre a
+  /// janela inteira), então só o delta precisa ser desfeito, sem
+  /// [_toSourceHandleAndDelta] remapear identidade de canto/lado.
+  void _moveCropFromHandle(Offset rawDisplayDelta, Size previewSize) {
     final crop = _settings.crop;
     if (crop == null || previewSize.width <= 0 || previewSize.height <= 0) {
       return;
     }
 
-    final dx = displayDelta.dx * _sourceWidth / previewSize.width;
-    final dy = displayDelta.dy * _sourceHeight / previewSize.height;
+    var dx = rawDisplayDelta.dx * _displayWidth / previewSize.width;
+    var dy = rawDisplayDelta.dy * _displayHeight / previewSize.height;
+    if (_settings.flipHorizontal) dx = -dx;
+    if (_settings.flipVertical) dy = -dy;
+    for (var i = 0; i < _settings.rotationQuarterTurns; i++) {
+      final nextDx = dy;
+      final nextDy = -dx;
+      dx = nextDx;
+      dy = nextDy;
+    }
+
+    dx += _moveDragRemainder.dx;
+    dy += _moveDragRemainder.dy;
 
     final maxX = (_sourceWidth - crop.width).clamp(0, _sourceWidth);
     final maxY = (_sourceHeight - crop.height).clamp(0, _sourceHeight);
-    final x = (crop.x + dx.round()).clamp(0, maxX);
-    final y = (crop.y + dy.round()).clamp(0, maxY);
+    final rawX = (crop.x + dx).clamp(0.0, maxX.toDouble());
+    final rawY = (crop.y + dy).clamp(0.0, maxY.toDouble());
+    final x = rawX.round();
+    final y = rawY.round();
+
+    // Guarda só o resto do arredondamento (nunca o quanto passou do limite
+    // já clampado) — senão arrastar bem além da borda exigiria arrastar de
+    // volta o mesmo tanto antes da janela voltar a se mexer.
+    _moveDragRemainder = Offset(rawX - x, rawY - y);
 
     if (x == crop.x && y == crop.y) return;
 
-    _update(
-      _settings.copyWith(
-        crop: crop.copyWith(x: x, y: y),
-      ),
-    );
+    _update(_settings.copyWith(crop: crop.copyWith(x: x, y: y)));
   }
 
   // ---------------------------------------------------------------------

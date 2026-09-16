@@ -3408,7 +3408,21 @@ class _CollagePageState extends State<CollagePage> {
   Future<void> _pickPhotoForCell(int index) async {
     try {
       final picked = await FilePicker.pickFile(
-        type: FileType.image,
+        type: FileType.custom,
+        // Navegador de arquivos comum, não o seletor de mídia estilo
+        // galeria — ver o comentário em `home_page.dart`.
+        allowedExtensions: const [
+          'jpg',
+          'jpeg',
+          'png',
+          'bmp',
+          'heic',
+          'heif',
+          'tif',
+          'tiff',
+          'gif',
+          'webp',
+        ],
         dialogTitle: 'Escolha uma foto',
       );
       final path = picked?.path;

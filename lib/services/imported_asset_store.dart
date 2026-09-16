@@ -77,10 +77,13 @@ class ImportedAssetStore {
   /// padrão, e o único caso das imagens de fundo) põe em "Importados".
   Future<ImportedAsset> import({String? folderId}) async {
     final picked = await FilePicker.pickFile(
-      type: kind.allowsSvg ? FileType.custom : FileType.image,
+      // Sempre `custom` (nunca `FileType.image`), pro Android abrir o
+      // navegador de arquivos comum em vez do seletor de mídia estilo
+      // galeria — ver o comentário em `home_page.dart`.
+      type: FileType.custom,
       allowedExtensions: kind.allowsSvg
           ? const ['svg', 'png', 'jpg', 'jpeg', 'webp']
-          : null,
+          : const ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'heic', 'heif'],
       dialogTitle: kind == ImportedAssetKind.sticker
           ? 'Escolha uma imagem para o sticker'
           : 'Escolha uma imagem de fundo',
