@@ -1,0 +1,56 @@
+name: Fix PR 120 source
+
+on:
+  push:
+    branches:
+      - claude/project-memory-persistence-oew4wd
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    name: Apply source fixes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/project-memory-persistence-oew4wd
+
+      - name: Corrigir tipos de record e formatação
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          collage = Path('lib/ui/collage_page.dart')
+          text = collage.read_text(encoding='utf-8')
+          old = 'Future<(CollageExportFormat format, String name)?> _askExportFormat() async {'
+          new = 'Future<({CollageExportFormat format, String name})?> _askExportFormat() async {'
+          if old not in text:
+              raise SystemExit('Assinatura esperada não encontrada em collage_page.dart')
+          collage.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          save_name = Path('lib/ui/widgets/save_name_field.dart')
+          text = save_name.read_text(encoding='utf-8')
+          old = '  const SaveNameField({super.key, required this.controller, this.enabled = true});'
+          new = '''  const SaveNameField({
+            super.key,
+            required this.controller,
+            this.enabled = true,
+          });'''
+          if old not in text:
+              raise SystemExit('Construtor esperado não encontrado em save_name_field.dart')
+          save_name.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Commitar correções na branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/ui/collage_page.dart lib/ui/widgets/save_name_field.dart
+          if git diff --cached --quiet; then
+            echo "Nenhuma correção pendente."
+            exit 0
+          fi
+          git commit -m "Fix CI record typing and formatting"
+          git push origin HEAD:claude/project-memory-persistence-oew4wd
