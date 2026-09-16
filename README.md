@@ -13,6 +13,8 @@
 
 ---
 
+<img src="assets/gif/video-to-gif-interface-v2.webp"/>
+
 </div>
 
 ## About
@@ -27,8 +29,6 @@ pipeline, plus a fourth, no-settings tool for quick format swaps:
 | **Frame on a photo** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes, color adjustment and a transparent or colored background. |
 | **Photo collage** | Assembles several photos into one composition — layouts, margins, per-photo borders and backgrounds, stickers (in folders you create), text with imported fonts, crop and color adjustment. If any photo is an animated GIF/WebP, the whole collage can be exported **animated**. |
 | **Convert format** | Picks any video, GIF or WebP and re-encodes it straight to GIF, animated WebP, MP4, WebM or MOV — no trimming, quality or preview settings, just a source file and a target format. |
-
-<img src="assets/gif/video-to-gif-interface-v2.webp"/>
 
 Choose the format that best fits your destination:
 
