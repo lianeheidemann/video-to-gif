@@ -11,12 +11,15 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/aspect_preset.dart';
+import '../models/collage_color_adjustment.dart';
+import '../models/color_adjustments.dart';
 import '../models/crop_rect.dart';
 import '../models/svg_edit_settings.dart';
 import '../models/svg_info.dart';
 import '../services/output_service.dart';
 import '../services/svg_xml_editor.dart';
 import 'widgets/checkerboard_background.dart';
+import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/crop_overlay.dart';
 import 'widgets/cropped_view.dart';
@@ -174,6 +177,13 @@ class _SvgEditPageState extends State<SvgEditPage> {
       title: 'Filtro',
       value: _settings.filterType.label,
       builder: (_) => _filterSection(),
+    ),
+    EditorSection(
+      icon: Icons.tune_rounded,
+      title: 'Ajustar cor',
+      label: 'Cor',
+      value: _settings.adjustments.hasAdjustments ? 'Ajustada' : 'Original',
+      builder: (_) => _colorAdjustSection(),
     ),
     EditorSection(
       icon: Icons.opacity_rounded,
@@ -359,6 +369,15 @@ class _SvgEditPageState extends State<SvgEditPage> {
           _settings.flipVertical ? -1.0 : 1.0,
           1.0,
         ),
+        child: content,
+      );
+    }
+    // Ajuste fino primeiro, preset por cima — mesma ordem de
+    // `svg_xml_editor.dart`'s `applyFilterSvg`, para a prévia nunca divergir
+    // do arquivo exportado.
+    if (_settings.adjustments.hasAdjustments) {
+      content = ColorFiltered(
+        colorFilter: _settings.adjustments.filter,
         child: content,
       );
     }
@@ -1088,6 +1107,34 @@ class _SvgEditPageState extends State<SvgEditPage> {
             onSelected: (_) => _update(_settings.copyWith(filterType: type)),
           ),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Seção "Cor"
+  // ---------------------------------------------------------------------
+
+  /// Mesmo painel de `EditorPage`/`PhotoFramePage`/`CollagePage` — brilho,
+  /// exposição, contraste, realces, sombras, saturação, matiz e temperatura,
+  /// compostos por cima do preset de [SvgFilterType] (ver
+  /// [SvgEditSettings.adjustments]), não em vez dele.
+  Widget _colorAdjustSection() {
+    final adjustments = _settings.adjustments;
+    return ColorAdjustPanel(
+      hasAdjustments: adjustments.hasAdjustments,
+      valueOf: (adjustment) => adjustment.valueIn(adjustments),
+      onChangeStart: _pushUndoCheckpoint,
+      onChanged: (adjustment, value) => _update(
+        _settings.copyWith(adjustments: adjustment.applyIn(adjustments, value)),
+        pushUndo: false,
+      ),
+      onReset: () {
+        _pushUndoCheckpoint();
+        _update(
+          _settings.copyWith(adjustments: ColorAdjustments.neutral),
+          pushUndo: false,
+        );
+      },
     );
   }
 

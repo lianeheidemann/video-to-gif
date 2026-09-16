@@ -33,6 +33,7 @@ class SvgEditSettings {
     this.transparentBackground = true,
     this.backgroundColor = defaultBackgroundColor,
     this.filterType = SvgFilterType.none,
+    this.adjustments = ColorAdjustments.neutral,
     this.opacity = 1.0,
   });
 
@@ -55,6 +56,14 @@ class SvgEditSettings {
   final Color backgroundColor;
 
   final SvgFilterType filterType;
+
+  /// Ajuste fino (brilho, exposição, contraste, realces, sombras, saturação,
+  /// matiz, temperatura) — a mesma aba "Cor" de `EditorPage`/`PhotoFramePage`/
+  /// `CollagePage`, para os "mais opções de filtro" que só os três presets de
+  /// [filterType] não cobrem. Composto por cima do filtro (ver
+  /// [previewColorFilter]/`svg_xml_editor.dart`'s `applyColorAdjustmentsSvg`),
+  /// não em vez dele: os dois podem estar ativos ao mesmo tempo.
+  final ColorAdjustments adjustments;
 
   /// 0 a 1.
   final double opacity;
@@ -92,6 +101,7 @@ class SvgEditSettings {
     bool? transparentBackground,
     Color? backgroundColor,
     SvgFilterType? filterType,
+    ColorAdjustments? adjustments,
     double? opacity,
   }) {
     return SvgEditSettings(
@@ -103,6 +113,7 @@ class SvgEditSettings {
           transparentBackground ?? this.transparentBackground,
       backgroundColor: backgroundColor ?? this.backgroundColor,
       filterType: filterType ?? this.filterType,
+      adjustments: adjustments ?? this.adjustments,
       opacity: opacity ?? this.opacity,
     );
   }

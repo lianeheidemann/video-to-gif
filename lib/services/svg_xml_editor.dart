@@ -2,6 +2,7 @@ import 'dart:ui' show Color;
 
 import 'package:xml/xml.dart';
 
+import '../models/color_adjustments.dart';
 import '../models/crop_rect.dart';
 import '../models/svg_edit_settings.dart';
 import '../models/svg_info.dart';
@@ -245,42 +246,89 @@ void applyBackgroundSvg(XmlElement root, Color? color) {
   root.children.insert(0, rect);
 }
 
-/// Injeta (ou remove, com [SvgFilterType.none]) um `<filter>`/
-/// `<feColorMatrix>` em `<defs>` e referencia via `filter="url(#...)"` no
-/// grupo de conteúdo — preto e branco usa `type="saturate"` (o mesmo peso de
-/// luminância Rec. 709 de `color_adjustments.dart`, só que nativo do SVG);
-/// inverter usa a matriz clássica de inversão, sem equivalente primitivo.
-void applyFilterSvg(XmlElement root, SvgFilterType type) {
+/// Injeta (ou remove, quando não há nada ativo) um `<filter>` em `<defs>` e
+/// referencia via `filter="url(#...)"` no grupo de conteúdo — combinando o
+/// preset [type] com o ajuste fino [adjustments] (brilho/exposição/
+/// contraste/realces/sombras/saturação/matiz/temperatura — a aba "Cor"), que
+/// podem estar ativos ao mesmo tempo. Preto e branco usa `type="saturate"`
+/// (o mesmo peso de luminância Rec. 709 de `color_adjustments.dart`, só que
+/// nativo do SVG); inverter usa a matriz clássica de inversão, sem
+/// equivalente primitivo; o ajuste fino usa a mesma matriz 4x5 de
+/// `ColorAdjustments.matrix4x5`, convertida para a escala 0-1 do SVG (ver
+/// [_svgColorMatrixValues]) — nenhuma fórmula é duplicada, as duas telas
+/// (prévia em `SvgEditPage`, exportação aqui) usam a mesma conta.
+///
+/// Quando os dois estão ativos, o ajuste fino entra primeiro (mesma ordem
+/// de composição da prévia em `SvgEditPage._croppedDecoratedPreview`),
+/// encadeado via `in`/`result` para o preset atuar sobre o resultado já
+/// ajustado, não sobre a arte original.
+void applyFilterSvg(
+  XmlElement root,
+  SvgFilterType type, {
+  ColorAdjustments adjustments = ColorAdjustments.neutral,
+}) {
   final group = ensureContentGroup(root);
   group.removeAttribute('filter');
   root.children.removeWhere(
     (node) => node is XmlElement && node.getAttribute('$_marker-defs') == '1',
   );
-  if (type == SvgFilterType.none) return;
 
-  final feColorMatrix = XmlElement.tag('feColorMatrix');
+  final matrices = <XmlElement>[];
+  if (adjustments.hasAdjustments) {
+    matrices.add(
+      XmlElement.tag('feColorMatrix')
+        ..setAttribute('type', 'matrix')
+        ..setAttribute(
+          'values',
+          _svgColorMatrixValues(adjustments.matrix4x5),
+        ),
+    );
+  }
   switch (type) {
     case SvgFilterType.grayscale:
-      feColorMatrix.setAttribute('type', 'saturate');
-      feColorMatrix.setAttribute('values', '0');
+      matrices.add(
+        XmlElement.tag('feColorMatrix')
+          ..setAttribute('type', 'saturate')
+          ..setAttribute('values', '0'),
+      );
     case SvgFilterType.invert:
-      feColorMatrix.setAttribute('type', 'matrix');
-      feColorMatrix.setAttribute(
-        'values',
-        '-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0',
+      matrices.add(
+        XmlElement.tag('feColorMatrix')
+          ..setAttribute('type', 'matrix')
+          ..setAttribute(
+            'values',
+            '-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0',
+          ),
       );
     case SvgFilterType.none:
-      return;
+      break;
+  }
+  if (matrices.isEmpty) return;
+
+  for (var i = 1; i < matrices.length; i++) {
+    matrices[i - 1].setAttribute('result', 'svgedit-step$i');
+    matrices[i].setAttribute('in', 'svgedit-step$i');
   }
 
-  final filter = XmlElement.tag('filter')
-    ..setAttribute('id', 'svgedit-filter')
-    ..children.add(feColorMatrix);
+  final filter = XmlElement.tag('filter')..setAttribute('id', 'svgedit-filter');
+  filter.children.addAll(matrices);
   final defs = XmlElement.tag('defs')
     ..setAttribute('$_marker-defs', '1')
     ..children.add(filter);
   root.children.insert(0, defs);
   group.setAttribute('filter', 'url(#svgedit-filter)');
+}
+
+/// Converte a matriz 4x5 de [ColorAdjustments.matrix4x5] (deslocamentos na
+/// escala 0-255, convenção do `ColorFilter.matrix` do Flutter) para o
+/// formato nativo de `<feColorMatrix type="matrix">` do SVG (mesma matriz,
+/// só os 3 deslocamentos de cor — não o de alfa — na escala 0-1).
+String _svgColorMatrixValues(List<double> matrix4x5) {
+  final values = List<double>.from(matrix4x5);
+  for (final i in [4, 9, 14]) {
+    values[i] = values[i] / 255;
+  }
+  return values.map(_num).join(' ');
 }
 
 /// Define (ou remove, com `opacity: 1`) `opacity` no grupo de conteúdo.
@@ -298,7 +346,8 @@ void applyOpacitySvg(XmlElement root, double opacity) {
 /// original — nunca reedita um documento já editado numa chamada anterior,
 /// pra desfazer/refazer nunca acumular grupos/transforms obsoletos) e
 /// devolve o SVG resultante como texto. Ordem fixa: recorte → girar →
-/// espelhar → fundo → filtro → opacidade.
+/// espelhar → fundo → filtro (ajuste fino + preset, nessa ordem — ver
+/// [applyFilterSvg]) → opacidade.
 String renderEditedSvg(
   String originalSource,
   SvgInfo info,
@@ -341,8 +390,9 @@ String renderEditedSvg(
     if (!settings.transparentBackground) {
       applyBackgroundSvg(root, settings.backgroundColor);
     }
-    if (settings.filterType != SvgFilterType.none) {
-      applyFilterSvg(root, settings.filterType);
+    if (settings.filterType != SvgFilterType.none ||
+        settings.adjustments.hasAdjustments) {
+      applyFilterSvg(root, settings.filterType, adjustments: settings.adjustments);
     }
     if (settings.opacity < 1) {
       applyOpacitySvg(root, settings.opacity);

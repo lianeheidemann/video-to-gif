@@ -44,7 +44,14 @@ class ColorAdjustments {
       hue != 0 ||
       temperature != 0;
 
-  ColorFilter get filter => buildAdjustmentColorFilter(
+  ColorFilter get filter => ColorFilter.matrix(matrix4x5);
+
+  /// A matriz 4x5 (formato de [ColorFilter.matrix]) combinando os oito
+  /// ajustes — a mesma conta de [filter], exposta como lista crua para
+  /// `svg_xml_editor.dart` gerar um `<feColorMatrix type="matrix">` nativo
+  /// equivalente sem duplicar a fórmula (mesmo motivo de [lumR]/[lumG]/
+  /// [lumB] serem públicos).
+  List<double> get matrix4x5 => buildAdjustmentColorFilterMatrix(
     brightness: brightness,
     exposure: exposure,
     contrast: contrast,
@@ -136,6 +143,30 @@ ColorFilter buildAdjustmentColorFilter({
   required double saturation,
   double hue = 0,
   double temperature = 0,
+}) => ColorFilter.matrix(
+  buildAdjustmentColorFilterMatrix(
+    brightness: brightness,
+    exposure: exposure,
+    contrast: contrast,
+    highlights: highlights,
+    shadows: shadows,
+    saturation: saturation,
+    hue: hue,
+    temperature: temperature,
+  ),
+);
+
+/// A lista crua por trás de [buildAdjustmentColorFilter] — ver ali a ordem
+/// de composição.
+List<double> buildAdjustmentColorFilterMatrix({
+  required double brightness,
+  double exposure = 0,
+  required double contrast,
+  double highlights = 0,
+  double shadows = 0,
+  required double saturation,
+  double hue = 0,
+  double temperature = 0,
 }) {
   var m = _identity4x5();
   m = _multiply4x5(_exposureMatrix(exposure), m);
@@ -146,7 +177,7 @@ ColorFilter buildAdjustmentColorFilter({
   m = _multiply4x5(_saturationMatrix(saturation), m);
   m = _multiply4x5(_hueMatrix(hue), m);
   m = _multiply4x5(_temperatureMatrix(temperature), m);
-  return ColorFilter.matrix(m);
+  return m;
 }
 
 List<double> _identity4x5() => [
