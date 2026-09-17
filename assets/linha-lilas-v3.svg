@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1400"
+     height="14"
+     viewBox="0 0 1400 14"
+     preserveAspectRatio="none"
+     role="img"
+     aria-label="Linha lilás animada">
+  <defs>
+    <linearGradient id="lilas" x1="0" y1="0" x2="100%" y2="0">
+      <stop offset="0%" stop-color="#7C3AED" stop-opacity="0"/>
+      <stop offset="18%" stop-color="#8B5CF6" stop-opacity="0.35"/>
+      <stop offset="36%" stop-color="#A855F7" stop-opacity="0.90"/>
+      <!-- Centro saturado: não desaparece sobre o fundo branco do tema claro. -->
+      <stop offset="50%" stop-color="#7C3AED" stop-opacity="1"/>
+      <stop offset="64%" stop-color="#A855F7" stop-opacity="0.90"/>
+      <stop offset="82%" stop-color="#8B5CF6" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Sem retângulo de fundo: toda a área ao redor é transparente. -->
+  <line x1="1" y1="7" x2="1399" y2="7"
+        stroke="#8B5CF6" stroke-opacity="0.32" stroke-width="1"
+        stroke-linecap="round"/>
+
+  <!-- Brilho suave sobre o mesmo eixo da linha, sem filtros retangulares. -->
+  <rect x="-240" y="4" width="240" height="6" rx="3"
+        fill="url(#lilas)" opacity="0.16">
+    <animate attributeName="x"
+             values="-240;1400;-240"
+             keyTimes="0;0.5;1"
+             dur="9s"
+             calcMode="spline"
+             keySplines="0.45 0 0.55 1;0.45 0 0.55 1"
+             repeatCount="indefinite"/>
+  </rect>
+
+  <rect x="-240" y="5.5" width="240" height="3" rx="1.5"
+        fill="url(#lilas)" opacity="0.55">
+    <animate attributeName="x"
+             values="-240;1400;-240"
+             keyTimes="0;0.5;1"
+             dur="9s"
+             calcMode="spline"
+             keySplines="0.45 0 0.55 1;0.45 0 0.55 1"
+             repeatCount="indefinite"/>
+  </rect>
+
+  <rect x="-240" y="6" width="240" height="2" rx="1"
+        fill="url(#lilas)">
+    <animate attributeName="x"
+             values="-240;1400;-240"
+             keyTimes="0;0.5;1"
+             dur="9s"
+             calcMode="spline"
+             keySplines="0.45 0 0.55 1;0.45 0 0.55 1"
+             repeatCount="indefinite"/>
+  </rect>
+</svg>
