@@ -17,36 +17,6 @@ import 'photo_frame_page.dart';
 import 'quick_convert_pick_page.dart';
 import 'svg_edit_page.dart';
 
-/// Extensões aceitas nos seletores de arquivo desta tela — sempre passadas
-/// com `FileType.custom`, nunca `FileType.video`/`FileType.image`, para o
-/// Android abrir o navegador de arquivos comum (o mesmo de "Salvar como"),
-/// em vez do seletor de mídia estilo galeria (que só mostra fotos/vídeos
-/// indexados, agrupados por mês, sem acesso a outras pastas como Downloads).
-const _videoExtensions = [
-  'mp4',
-  'mov',
-  'm4v',
-  'webm',
-  'mkv',
-  'avi',
-  '3gp',
-  'flv',
-  'wmv',
-  'ts',
-];
-const _imageExtensions = [
-  'jpg',
-  'jpeg',
-  'png',
-  'bmp',
-  'heic',
-  'heif',
-  'tif',
-  'tiff',
-  'gif',
-  'webp',
-];
-
 /// Tela inicial: apresenta o app e deixa o usuário escolher um vídeo para
 /// começar a edição.
 class HomePage extends StatefulWidget {
@@ -73,8 +43,7 @@ class _HomePageState extends State<HomePage> {
       // O seletor do sistema devolve acesso só ao arquivo escolhido, por isso
       // o app não precisa de permissão de leitura de mídia.
       final picked = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: _videoExtensions,
+        type: FileType.video,
         dialogTitle: 'Escolha um vídeo',
       );
 
@@ -124,8 +93,7 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final picked = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: _imageExtensions,
+        type: FileType.image,
         dialogTitle: 'Escolha uma foto',
       );
 
@@ -140,8 +108,8 @@ class _HomePageState extends State<HomePage> {
       // "Editar imagem" só sabe desenhar uma foto parada — um GIF/WebP
       // animado decodificaria normalmente (é só imagem pra esse codec), mas
       // ia perder o resto dos quadros em silêncio, virando uma foto parada
-      // sem ninguém pedir isso. Vídeo nem chega aqui: o seletor já filtra
-      // por `_imageExtensions`.
+      // sem ninguém pedir isso. Vídeo nem chega aqui: o próprio
+      // `FileType.image` do seletor de mídia já filtra por conta própria.
       if (codec.frameCount > 1) {
         codec.dispose();
         if (mounted) {
@@ -256,8 +224,7 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final picked = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: _imageExtensions,
+        type: FileType.image,
         dialogTitle: 'Escolha as fotos da montagem',
       );
 

@@ -16,6 +16,7 @@ import '../services/ffmpeg_service.dart';
 import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
 import 'converting_page.dart';
+import 'widgets/app_bar_title.dart';
 import 'widgets/checkerboard_background.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
@@ -344,7 +345,7 @@ class _EditorPageState extends State<EditorPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editar GIF'),
+        title: const AppBarTitle('Editar GIF'),
         actions: [
           IconButton(
             tooltip: 'Desfazer',

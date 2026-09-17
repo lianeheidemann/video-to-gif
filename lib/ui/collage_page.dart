@@ -28,6 +28,7 @@ import '../services/imported_font_store.dart';
 import '../services/output_service.dart';
 import '../services/sticker_folder_store.dart';
 import 'photo_crop_page.dart';
+import 'widgets/app_bar_title.dart';
 import 'widgets/aspect_ratio_number_input.dart';
 import 'widgets/checkerboard_background.dart';
 import 'widgets/collage_cell_view.dart';
@@ -569,7 +570,7 @@ class _CollagePageState extends State<CollagePage> {
     final busy = _saving || _sharing;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Montagem de fotos'),
+        title: const AppBarTitle('Montagem'),
         actions: [
           IconButton(
             tooltip: 'Desfazer',
@@ -3408,21 +3409,7 @@ class _CollagePageState extends State<CollagePage> {
   Future<void> _pickPhotoForCell(int index) async {
     try {
       final picked = await FilePicker.pickFile(
-        type: FileType.custom,
-        // Navegador de arquivos comum, não o seletor de mídia estilo
-        // galeria — ver o comentário em `home_page.dart`.
-        allowedExtensions: const [
-          'jpg',
-          'jpeg',
-          'png',
-          'bmp',
-          'heic',
-          'heif',
-          'tif',
-          'tiff',
-          'gif',
-          'webp',
-        ],
+        type: FileType.image,
         dialogTitle: 'Escolha uma foto',
       );
       final path = picked?.path;

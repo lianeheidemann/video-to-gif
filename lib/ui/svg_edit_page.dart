@@ -17,6 +17,7 @@ import '../models/svg_edit_settings.dart';
 import '../models/svg_info.dart';
 import '../services/output_service.dart';
 import '../services/svg_xml_editor.dart';
+import 'widgets/app_bar_title.dart';
 import 'widgets/checkerboard_background.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
@@ -215,7 +216,7 @@ class _SvgEditPageState extends State<SvgEditPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editar SVG'),
+        title: const AppBarTitle('Editar SVG'),
         actions: [
           IconButton(
             tooltip: 'Desfazer',
