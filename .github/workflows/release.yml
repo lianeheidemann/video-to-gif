@@ -70,7 +70,26 @@ jobs:
           fi
           echo "nome=$NOME" >> "$GITHUB_OUTPUT"
           echo "codigo=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "Versão $NOME (versionCode ${GITHUB_RUN_NUMBER})"
+
+          # A tag do release precisa ser única a cada execução — sem isso,
+          # rodar de novo sem mudar a versão em pubspec.yaml sobrescrevia o
+          # release anterior (mesma tag "vX.Y.Z") em vez de criar um novo, e
+          # o APK antigo sumia do histórico. Disparando por uma tag de
+          # verdade (`git tag vX.Y.Z && git push`) ela já garante isso
+          # sozinha; nos outros dois gatilhos (push em main/workflow_dispatch)
+          # o número do run entra no final da tag para diferenciar. O nome
+          # de exibição (arquivos, corpo do release) continua limpo, só com
+          # a versão — só a tag e o título do release ganham o "(build N)".
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            TITULO="Video to GIF $NOME"
+          else
+            TAG="v$NOME-${GITHUB_RUN_NUMBER}"
+            TITULO="Video to GIF $NOME (build ${GITHUB_RUN_NUMBER})"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "titulo=$TITULO" >> "$GITHUB_OUTPUT"
+          echo "Versão $NOME (versionCode ${GITHUB_RUN_NUMBER}, tag $TAG)"
 
       - name: Preparar o keystore
         id: chave
@@ -143,8 +162,8 @@ jobs:
       - name: Publicar o Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.versao.outputs.nome }}
-          name: Video to GIF ${{ steps.versao.outputs.nome }}
+          tag_name: ${{ steps.versao.outputs.tag }}
+          name: ${{ steps.versao.outputs.titulo }}
           files: entrega/*
           fail_on_unmatched_files: true
           # Sem isto a action só marca o "Latest" quando ela CRIA a linha do
