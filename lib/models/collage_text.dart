@@ -116,6 +116,36 @@ class CollageTextItem {
   }
 }
 
+/// Operações puras de lista compartilhadas por qualquer tela com caixas de
+/// texto sobrepostas (Montagem, e — via `text_overlay_editor.dart` — Editar
+/// imagem/GIF), para não duplicar a mesma busca/substituição por `id` em
+/// cada uma.
+extension CollageTextListOps on List<CollageTextItem> {
+  /// Próximo `zIndex` livre — um a mais que o maior já usado, para o item
+  /// novo sempre nascer por cima de todos os outros.
+  int get nextTextZIndex =>
+      isEmpty ? 0 : map((t) => t.zIndex).reduce((a, b) => a > b ? a : b) + 1;
+
+  /// Menor `zIndex` em uso menos um, para "enviar para trás" sempre deixar o
+  /// item atrás de todos os outros.
+  int get minTextZIndex =>
+      isEmpty ? 0 : map((t) => t.zIndex).reduce((a, b) => a < b ? a : b) - 1;
+
+  CollageTextItem? findText(String id) {
+    for (final item in this) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  List<CollageTextItem> replacingText(String id, CollageTextItem item) => [
+    for (final t in this) t.id == id ? item : t,
+  ];
+
+  List<CollageTextItem> removingText(String id) =>
+      where((t) => t.id != id).toList();
+}
+
 /// Fontes embutidas no app (offline, sem baixar nada em tempo de execução —
 /// mesmo espírito dos 5 stickers embutidos em `assets/sticker/`), oferecidas
 /// como opção para o texto da montagem. `null` é "Padrão" (a fonte do tema).

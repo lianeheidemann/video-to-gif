@@ -28,6 +28,8 @@ import '../services/imported_font_store.dart';
 import '../services/output_service.dart';
 import '../services/sticker_folder_store.dart';
 import 'photo_crop_page.dart';
+import 'widgets/aspect_ratio_number_input.dart';
+import 'widgets/checkerboard_background.dart';
 import 'widgets/collage_cell_view.dart';
 import 'widgets/collage_overlay_view.dart';
 import 'widgets/collage_painter.dart';
@@ -35,6 +37,7 @@ import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
 import 'widgets/export_progress_dialog.dart';
 import 'widgets/folder_tab.dart';
+import 'widgets/preview_settings_panel.dart';
 import 'widgets/target_sub_panel.dart';
 
 /// Geometria do sticker/texto selecionado, na medida necessária para
@@ -86,6 +89,11 @@ enum _CollageTab {
   color,
   stickers,
   text,
+  // Última aba da barra nas três telas de edição (vídeo, foto e montagem) —
+  // configurações gerais, não desta montagem em si. Como a barra itera
+  // `_CollageTab.values` direto, ser o último valor do enum já garante que
+  // fica por último na barra.
+  settings,
 }
 
 /// Pastas da seção "Stickers": as temáticas com os stickers embutidos do
@@ -600,7 +608,9 @@ class _CollagePageState extends State<CollagePage> {
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(child: Center(child: _preview())),
+            Expanded(
+              child: PreviewAreaBackground(child: Center(child: _preview())),
+            ),
             ?toolbar,
             ?_activeTabPanel(),
             _footerTabs(),
@@ -692,6 +702,7 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.color => _colorPanelContent(),
     _CollageTab.stickers => _stickersPanelContent(),
     _CollageTab.text => _textPanelContent(),
+    _CollageTab.settings => const PreviewSettingsPanel(),
   };
 
   /// Valor atual de uma seção, alinhado à direita — sem repetir o nome da
@@ -782,6 +793,7 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.color => Icons.tune_rounded,
     _CollageTab.stickers => Icons.emoji_emotions_outlined,
     _CollageTab.text => Icons.text_fields_rounded,
+    _CollageTab.settings => Icons.settings_rounded,
   };
 
   String _tabLabel(_CollageTab tab) => switch (tab) {
@@ -793,6 +805,7 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.color => 'Cor',
     _CollageTab.stickers => 'Stickers',
     _CollageTab.text => 'Texto',
+    _CollageTab.settings => 'Ajustes',
   };
 
   // ---------------------------------------------------------------------
@@ -1728,7 +1741,7 @@ class _CollagePageState extends State<CollagePage> {
         // dos formatos prontos.
         if (custom) ...[
           const SizedBox(height: 8),
-          _CustomAspectRatioInput(
+          CustomAspectRatioInput(
             onApply: (ratio) {
               _pushUndoCheckpoint();
               _update(
@@ -3395,7 +3408,21 @@ class _CollagePageState extends State<CollagePage> {
   Future<void> _pickPhotoForCell(int index) async {
     try {
       final picked = await FilePicker.pickFile(
-        type: FileType.image,
+        type: FileType.custom,
+        // Navegador de arquivos comum, não o seletor de mídia estilo
+        // galeria — ver o comentário em `home_page.dart`.
+        allowedExtensions: const [
+          'jpg',
+          'jpeg',
+          'png',
+          'bmp',
+          'heic',
+          'heif',
+          'tif',
+          'tiff',
+          'gif',
+          'webp',
+        ],
         dialogTitle: 'Escolha uma foto',
       );
       final path = picked?.path;
@@ -4102,82 +4129,6 @@ class _TextInputDialogState extends State<_TextInputDialog> {
           child: const Text('Cancelar'),
         ),
         FilledButton(onPressed: _submit, child: const Text('OK')),
-      ],
-    );
-  }
-}
-
-/// Campo para digitar uma proporção W:H exata, além dos chips de preset e do
-/// slider livre já existentes na aba "Proporção". Os dois `TextEditingController`
-/// têm ciclo de vida próprio (criar/liberar), por isso este pequeno
-/// `StatefulWidget` privado — mesmo padrão de [_TextInputDialog] — em vez de
-/// controllers soltos em `_CollagePageState`, que é rebuilda a cada
-/// `setState` da tela inteira e não é a dona natural desse estado.
-class _CustomAspectRatioInput extends StatefulWidget {
-  const _CustomAspectRatioInput({required this.onApply});
-
-  final ValueChanged<double> onApply;
-
-  @override
-  State<_CustomAspectRatioInput> createState() =>
-      _CustomAspectRatioInputState();
-}
-
-class _CustomAspectRatioInputState extends State<_CustomAspectRatioInput> {
-  final _widthController = TextEditingController();
-  final _heightController = TextEditingController();
-
-  @override
-  void dispose() {
-    _widthController.dispose();
-    _heightController.dispose();
-    super.dispose();
-  }
-
-  void _apply() {
-    final w = double.tryParse(_widthController.text.replaceAll(',', '.'));
-    final h = double.tryParse(_heightController.text.replaceAll(',', '.'));
-    if (w == null || h == null || w <= 0 || h <= 0) return;
-    widget.onApply(w / h);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _widthController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Largura',
-              hintText: 'X',
-              isDense: true,
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text('：', style: theme.textTheme.titleMedium),
-        ),
-        Expanded(
-          child: TextField(
-            controller: _heightController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Altura',
-              hintText: 'Y',
-              isDense: true,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        IconButton.filled(
-          tooltip: 'Aplicar proporção',
-          onPressed: _apply,
-          icon: const Icon(Icons.check_rounded),
-        ),
       ],
     );
   }

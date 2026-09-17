@@ -43,6 +43,12 @@ dependencies:
   # Roda de cor HSV usada no seletor de fundo da montagem de fotos.
   flutter_colorpicker: ^1.1.0
 
+  # Reescrita do XML do SVG editado (recorte/rotação/espelho/fundo/filtro),
+  # sem rasterizar — já era dependência transitiva do flutter_svg (via
+  # vector_graphics_compiler), promovida aqui a direta porque
+  # `svg_xml_editor.dart` agora a importa explicitamente.
+  xml: ^6.6.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
