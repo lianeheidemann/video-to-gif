@@ -320,7 +320,6 @@ class _SvgEditPageState extends State<SvgEditPage> {
       aspectRatio: _displayWidth / _displayHeight,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
@@ -391,7 +390,6 @@ class _SvgEditPageState extends State<SvgEditPage> {
 
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
         ),

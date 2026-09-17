@@ -473,7 +473,6 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
         ),
