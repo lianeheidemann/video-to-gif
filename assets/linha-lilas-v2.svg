@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="15" viewBox="0 0 1536 15" role="img" aria-label="Animated purple divider">
+  <style>
+    :root {
+      --track: #e9ddf5;
+      --edge: #8b5cf6;
+      --middle: #6d28d9;
+      --glow: #8b5cf6;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --track: #241536;
+        --edge: #7c3aed;
+        --middle: #eadcff;
+        --glow: #a855f7;
+      }
+    }
+
+    .runner {
+      animation: travel 10s ease-in-out infinite alternate;
+    }
+
+    @keyframes travel {
+      from { transform: translateX(0); }
+      to   { transform: translateX(1236px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .runner { animation: none; transform: translateX(618px); }
+    }
+  </style>
+
+  <defs>
+    <linearGradient id="moving-color" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="var(--edge)" stop-opacity="0"/>
+      <stop offset="0.28" stop-color="var(--edge)" stop-opacity="0.86"/>
+      <stop offset="0.50" stop-color="var(--middle)" stop-opacity="1"/>
+      <stop offset="0.72" stop-color="var(--edge)" stop-opacity="0.86"/>
+      <stop offset="1" stop-color="var(--edge)" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="soft-glow" x="-25%" y="-300%" width="150%" height="700%">
+      <feGaussianBlur stdDeviation="2.1"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="7" width="1536" height="1.5" rx="0.75" fill="var(--track)"/>
+
+  <g class="runner">
+    <rect x="0" y="5.4" width="300" height="4.2" rx="2.1" fill="var(--glow)" opacity="0.28" filter="url(#soft-glow)"/>
+    <rect x="0" y="6.1" width="300" height="2.8" rx="1.4" fill="url(#moving-color)"/>
+  </g>
+</svg>
