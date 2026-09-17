@@ -29,7 +29,7 @@ pipeline, plus a fourth, no-settings tool for quick format swaps:
 | **Video to GIF/WebP** | Converts MP4, MOV, AVI, MKV, WebM and 3GP to **GIF or animated WebP** — trim, crop, speed, resolution, frame rate, colors and a decorative frame. For GIF it also **estimates the final file size before converting**. |
 | **Frame on a photo** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes, color adjustment and a transparent or colored background. |
 | **Photo collage** | Assembles several photos into one composition — layouts, margins, per-photo borders and backgrounds, stickers (in folders you create), text with imported fonts, crop and color adjustment. If any photo is an animated GIF/WebP, the whole collage can be exported **animated**. |
-| **Convert format** | Picks any video, GIF or WebP and re-encodes it straight to GIF, animated WebP, MP4, WebM or MOV — no trimming, quality or preview settings, just a source file and a target format. |
+| **Convert format** | Picks any video, GIF or WebP and re-encodes it straight to GIF, animated WebP or MP4 — no trimming, quality or preview settings, just a source file and a target format. |
 
 Choose the format that best fits your destination:
 
@@ -131,8 +131,8 @@ matrix drives both the live preview and the export (through FFmpeg's `eq` and
 - **Any input FFmpeg can read** — video, GIF or animated WebP — picked from
   the system media gallery, with static photos rejected up front since
   there's already a dedicated tool for those
-- **Five output formats** — GIF, animated WebP, MP4, WebM or MOV — with the
-  source's own format disabled in the picker
+- **Three output formats** — GIF, animated WebP or MP4 — with the source's
+  own format disabled in the picker
 
 ## How to run it
 

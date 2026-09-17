@@ -1383,12 +1383,12 @@ class FfmpegService {
   /// ampliar) e reaproveita [convert] — mesmo pipeline de paleta/WebP já
   /// usado por "Editar GIF" (com a mesma correção de velocidade do WebP).
   ///
-  /// MP4/MOV/WebM: linha de comando própria e simples — só limita a largura
-  /// (mesmo teto de [ConversionSettings.recommendedFor], nunca amplia) e
-  /// codifica o áudio quando existir. Sem `-map` explícito, o FFmpeg já
-  /// escolhe sozinho o melhor stream de vídeo e (se houver) de áudio — se a
-  /// fonte não tiver áudio (ex.: veio de um GIF), as flags de áudio
-  /// simplesmente não têm efeito, sem precisar detectar isso antes.
+  /// MP4: linha de comando própria e simples — só limita a largura (mesmo
+  /// teto de [ConversionSettings.recommendedFor], nunca amplia) e codifica
+  /// o áudio quando existir. Sem `-map` explícito, o FFmpeg já escolhe
+  /// sozinho o melhor stream de vídeo e (se houver) de áudio — se a fonte
+  /// não tiver áudio (ex.: veio de um GIF), as flags de áudio simplesmente
+  /// não têm efeito, sem precisar detectar isso antes.
   Future<File> quickConvert({
     required VideoInfo video,
     required QuickConvertFormat format,
@@ -1442,43 +1442,37 @@ class FfmpegService {
     }
   }
 
-  /// Linha de comando de conversão para MP4/MOV/WebM, usada por
-  /// [quickConvert]. Público (sem `_`) só para os testes de unidade.
+  /// Linha de comando de conversão para MP4, usada por [quickConvert].
+  /// Público (sem `_`) só para os testes de unidade.
+  ///
+  /// Usa `h264_mediacodec` (o encoder de hardware do Android) em vez de
+  /// `libx264` — este app usa a variante LGPL do FFmpeg
+  /// (`ffmpeg_kit_flutter_new_video`, ver `docs/pt-Br/LICENCAS.md`), que não
+  /// traz nenhum codec H.264 por software (GPL). Por ser um encoder de
+  /// hardware, não aceita `-preset`/`-crf` (específicos do `libx264`).
   @visibleForTesting
   List<String> quickConvertVideoArgs({
     required VideoInfo video,
-    required QuickConvertFormat format,
+    required QuickConvertFormat format, // só mp4 chega aqui hoje
     required int width,
     required String outputPath,
   }) {
-    final codecArgs = format == QuickConvertFormat.webm
-        ? ['-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-c:a', 'libopus']
-        : [
-            '-c:v',
-            'libx264',
-            '-preset',
-            'veryfast',
-            '-crf',
-            '23',
-            '-pix_fmt',
-            'yuv420p',
-            '-c:a',
-            'aac',
-            '-b:a',
-            '128k',
-            '-movflags',
-            '+faststart',
-          ];
-
     return [
       '-y',
       '-i',
       video.path,
       '-vf',
       'scale=$width:-2:flags=lanczos',
-      ...codecArgs,
+      '-c:v',
+      'h264_mediacodec',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '128k',
+      '-movflags',
+      '+faststart',
       '-f',
-      format.extension,
+      'mp4',
       outputPath,
     ];
   }
