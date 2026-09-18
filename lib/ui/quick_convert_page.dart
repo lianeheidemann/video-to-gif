@@ -308,10 +308,14 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
     );
   }
 
+  /// Mesma `ListView` de [_buildForm] de propósito: num `Padding` direto, o
+  /// cartão herdaria a altura cheia que o `Scaffold` passa para o corpo e
+  /// esticaria pela tela inteira. Aqui ele fica do tamanho do próprio
+  /// conteúdo, no mesmo lugar onde o cartão do arquivo aparece depois.
   Widget _buildPicker() {
-    return Padding(
+    return ListView(
       padding: const EdgeInsets.all(16),
-      child: _PickFileCard(loading: _loadingFile, onTap: _pickFile),
+      children: [_PickFileCard(loading: _loadingFile, onTap: _pickFile)],
     );
   }
 
@@ -433,7 +437,7 @@ class _PickFileCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: scheme.primary,
+                  color: scheme.primaryContainer,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
@@ -443,10 +447,14 @@ class _PickFileCard extends StatelessWidget {
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: scheme.onPrimary,
+                          color: scheme.onPrimaryContainer,
                         ),
                       )
-                    : Icon(Icons.add, color: scheme.onPrimary, size: 22),
+                    : Icon(
+                        Icons.add,
+                        color: scheme.onPrimaryContainer,
+                        size: 22,
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(
