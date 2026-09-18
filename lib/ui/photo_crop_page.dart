@@ -256,7 +256,13 @@ class _PhotoCropPageState extends State<PhotoCropPage> {
       label: Text(label),
       selected: selected,
       onSelected: (_) => onTap(),
-      backgroundColor: Colors.white10,
+      // Cor sólida, não translúcida: um branco a 10% deixa o fundo real do
+      // Material 3 (que segue o tema ambiente, claro ou escuro) transparecer
+      // por baixo — no modo claro isso apagava o texto branco do rótulo
+      // contra um fundo quase branco. Esta tela é sempre escura de
+      // propósito (Scaffold preto acima), então o fundo do chip também
+      // precisa ser opaco para não depender do tema ambiente.
+      backgroundColor: const Color(0xFF2A2932),
       selectedColor: Theme.of(context).colorScheme.primary,
       labelStyle: TextStyle(
         color: selected
@@ -266,10 +272,6 @@ class _PhotoCropPageState extends State<PhotoCropPage> {
       ),
       side: const BorderSide(color: Colors.white24),
       showCheckmark: false,
-      // Esta tela é sempre escura, de propósito (Scaffold preto acima) —
-      // sem travar isso, o Material 3 tinge o chip com o ColorScheme
-      // ambiente (que troca de claro pra escuro junto do app) por cima das
-      // cores fixas de propósito, apagando o contraste no modo claro.
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       pressElevation: 0,

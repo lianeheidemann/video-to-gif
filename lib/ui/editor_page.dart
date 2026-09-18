@@ -16,6 +16,7 @@ import '../services/ffmpeg_service.dart';
 import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
 import 'converting_page.dart';
+import 'widgets/app_bar_title.dart';
 import 'widgets/checkerboard_background.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
@@ -344,7 +345,7 @@ class _EditorPageState extends State<EditorPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editar GIF'),
+        title: const AppBarTitle('Editar GIF'),
         actions: [
           IconButton(
             tooltip: 'Desfazer',
@@ -545,7 +546,7 @@ class _EditorPageState extends State<EditorPage> {
             showCropHandles
                 ? _preview()
                 : _withTextOverlay(
-                    _croppedPreview(rounded: true),
+                    _croppedPreview(showOutline: true),
                     textTabActive,
                   ),
           );
@@ -620,7 +621,7 @@ class _EditorPageState extends State<EditorPage> {
       );
     } else if (frame.style == FrameStyle.none) {
       framedVideo = _withTextOverlay(
-        _croppedPreview(rounded: true),
+        _croppedPreview(showOutline: true),
         textTabActive,
       );
     } else {
@@ -638,7 +639,7 @@ class _EditorPageState extends State<EditorPage> {
             padding: EdgeInsets.all(thickness),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(innerRadius),
-              child: _croppedPreview(rounded: false),
+              child: _croppedPreview(showOutline: false),
             ),
           );
 
@@ -740,7 +741,7 @@ class _EditorPageState extends State<EditorPage> {
       child: SizedBox(
         width: 1000,
         height: 1000 / _contentAspectRatio,
-        child: _croppedPreview(rounded: false),
+        child: _croppedPreview(showOutline: false),
       ),
     );
 
@@ -1690,10 +1691,7 @@ class _EditorPageState extends State<EditorPage> {
     if (_previewFailed) {
       return Container(
         constraints: const BoxConstraints(minHeight: 180),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(22),
-        ),
+        decoration: const BoxDecoration(color: Colors.black),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1718,10 +1716,7 @@ class _EditorPageState extends State<EditorPage> {
       return AspectRatio(
         aspectRatio: _video.aspectRatio,
         child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(22),
-          ),
+          decoration: const BoxDecoration(color: Colors.black),
           child: const Center(child: CircularProgressIndicator()),
         ),
       );
@@ -1732,7 +1727,6 @@ class _EditorPageState extends State<EditorPage> {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.black,
-          borderRadius: BorderRadius.circular(22),
           border: Border.all(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
@@ -1757,10 +1751,11 @@ class _EditorPageState extends State<EditorPage> {
   }
 
   /// Prévia da aba "Frame": só a janela de recorte, sem véu e sem alças —
-  /// o enquadramento que vai sair no GIF. [rounded] aplica o cartão
-  /// arredondado só quando não há moldura em volta; dentro de uma moldura
-  /// quem arredonda o conteúdo é a própria moldura.
-  Widget _croppedPreview({required bool rounded}) {
+  /// o enquadramento que vai sair no GIF, sempre com cantos retos (nunca
+  /// arredondados por padrão). [showOutline] desenha a borda cinza fina só
+  /// quando não há moldura em volta; dentro de uma moldura, quem desenha a
+  /// borda (e arredonda o conteúdo, se for o caso) é a própria moldura.
+  Widget _croppedPreview({required bool showOutline}) {
     final player = _player;
     if (_previewFailed || player == null || !player.value.isInitialized) {
       return _preview();
@@ -1784,8 +1779,7 @@ class _EditorPageState extends State<EditorPage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.black,
-        borderRadius: rounded ? BorderRadius.circular(22) : null,
-        border: rounded
+        border: showOutline
             ? Border.all(
                 color: Theme.of(
                   context,

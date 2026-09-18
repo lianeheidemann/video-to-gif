@@ -10,7 +10,7 @@ import '../services/ffmpeg_service.dart';
 import '../services/output_service.dart';
 
 /// Segunda tela de "Converter formato": mostra o arquivo escolhido e deixa
-/// escolher, entre os 5 formatos suportados, para qual converter — sem
+/// escolher, entre os 3 formatos suportados, para qual converter — sem
 /// nenhuma outra configuração (sem corte, qualidade ou prévia).
 class QuickConvertFormatPage extends StatefulWidget {
   const QuickConvertFormatPage({super.key, required this.video});

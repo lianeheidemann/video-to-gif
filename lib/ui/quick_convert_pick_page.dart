@@ -6,12 +6,13 @@ import 'package:flutter/material.dart';
 
 import '../services/ffmpeg_service.dart';
 import 'quick_convert_format_page.dart';
+import 'widgets/app_bar_title.dart';
 
 /// Primeira tela de "Converter formato": só escolhe o arquivo, sem nenhuma
 /// configuração. Aceita qualquer formato que o FFmpeg saiba abrir — vídeo,
-/// GIF ou WebP. Usa `FileType.custom` (navegador de arquivos comum, não o
-/// seletor de mídia estilo galeria — ver `home_page.dart`), validando
-/// depois se o conteúdo pode ser convertido.
+/// GIF ou WebP. Usa `FileType.media` (seletor de mídia estilo galeria,
+/// aceitando vídeo e imagem no mesmo seletor), validando depois se o
+/// conteúdo pode ser convertido.
 class QuickConvertPickPage extends StatefulWidget {
   const QuickConvertPickPage({super.key});
 
@@ -22,7 +23,6 @@ class QuickConvertPickPage extends StatefulWidget {
 class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
   final _ffmpeg = FfmpegService();
   bool _loading = false;
-  String? _error;
 
   /// Extensões de imagem que podem ser estáticas ou animadas — só para elas
   /// vale a pena decodificar o arquivo e conferir `frameCount` (ver
@@ -42,27 +42,12 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
     'webp',
   };
 
-  /// Extensões de vídeo aceitas pelo seletor — junto com [_imageExtensions],
-  /// já que esta tela aceita vídeo, GIF ou WebP num seletor só.
-  static const _videoExtensions = {
-    'mp4',
-    'mov',
-    'm4v',
-    'webm',
-    'mkv',
-    'avi',
-    '3gp',
-    'flv',
-    'wmv',
-    'ts',
-  };
-
   /// O FFprobe trata uma foto parada (JPG/PNG/...) como um "vídeo" de um
   /// quadro só (por isso `probe()` não rejeita), mas converter isso para
-  /// vídeo de verdade (MP4/WebM/MOV) não faz sentido e falha no FFmpeg — o
-  /// app já tem uma tela própria para fotos ("Colocar moldura"). Mesma
-  /// checagem de `frameCount` que `home_page.dart._pickPhoto` usa, só que
-  /// invertida (aqui rejeita a estática, lá rejeitava a animada).
+  /// vídeo de verdade (MP4) não faz sentido e falha no FFmpeg — o app já
+  /// tem uma tela própria para fotos ("Colocar moldura"). Mesma checagem de
+  /// `frameCount` que `home_page.dart._pickPhoto` usa, só que invertida
+  /// (aqui rejeita a estática, lá rejeitava a animada).
   Future<bool> _isStaticImage(String path) async {
     final extension = path.split('.').last.toLowerCase();
     if (!_imageExtensions.contains(extension)) return false;
@@ -81,15 +66,11 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
   }
 
   Future<void> _pickFile() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() => _loading = true);
 
     try {
       final picked = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: [..._videoExtensions, ..._imageExtensions],
+        type: FileType.media,
         dialogTitle: 'Escolha um arquivo',
       );
 
@@ -100,15 +81,12 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
       }
 
       if (await _isStaticImage(path)) {
-        if (mounted) {
-          setState(() {
-            _loading = false;
-            _error =
-                'Essa é uma foto parada, sem vídeo ou animação. '
-                '"Converter formato" é para vídeos, GIF ou WebP animado — '
-                'para fotos, use "Colocar moldura" na tela inicial.';
-          });
-        }
+        if (mounted) setState(() => _loading = false);
+        _showPickError(
+          'Essa é uma foto parada, sem vídeo ou animação. '
+          '"Converter formato" é para vídeos, GIF ou WebP animado — '
+          'para fotos, use "Colocar moldura" na tela inicial.',
+        );
         return;
       }
 
@@ -122,20 +100,33 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
         ),
       );
     } on FfmpegException catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = e.message;
-        });
-      }
+      if (mounted) setState(() => _loading = false);
+      _showPickError(e.message);
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = 'Não foi possível abrir este arquivo.';
-        });
-      }
+      if (mounted) setState(() => _loading = false);
+      _showPickError('Não foi possível abrir este arquivo.');
     }
+  }
+
+  /// Popup por cima desta mesma tela — em vez de um aviso fixo no layout,
+  /// que ficava exibido até a próxima tentativa. Fechar o popup não navega
+  /// nem reseta nada: a tela continua exatamente como estava, pronta para
+  /// tocar em "Escolher arquivo" de novo.
+  void _showPickError(String message) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Não é possível usar este arquivo'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Entendi'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -143,7 +134,7 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Converter formato')),
+      appBar: AppBar(title: const AppBarTitle('Converter formato')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -175,21 +166,6 @@ class _QuickConvertPickPageState extends State<QuickConvertPickPage> {
                   ),
                 ),
                 const SizedBox(height: 32),
-                if (_error != null) ...[
-                  Card(
-                    color: theme.colorScheme.errorContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: theme.colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
                 FilledButton.icon(
                   onPressed: _loading ? null : _pickFile,
                   icon: _loading

@@ -16,6 +16,7 @@ import '../models/photo_info.dart';
 import '../services/imported_frame_store.dart';
 import '../services/output_service.dart';
 import '../services/photo_frame_compositor.dart';
+import 'widgets/app_bar_title.dart';
 import 'widgets/checkerboard_background.dart';
 import 'widgets/color_adjust_controls.dart';
 import 'widgets/color_picker_sheet.dart';
@@ -321,7 +322,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     final textTabActive = active != null && sections[active].title == 'Texto';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Moldura em foto'),
+        title: const AppBarTitle('Editar imagem'),
         actions: [
           IconButton(
             tooltip: 'Desfazer',
@@ -472,7 +473,6 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
         ),
