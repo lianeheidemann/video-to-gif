@@ -1373,35 +1373,44 @@ class FfmpegService {
     }
   }
 
-  /// Converte [video] para [format], sem nenhuma configuração exposta —
-  /// usado pela tela "Converter formato" (`quick_convert_*`), que é um
-  /// recurso à parte de "Editar GIF": só troca de formato, arquivo inteiro,
-  /// sem corte/moldura/qualidade.
+  /// Converte [video] para [format] — usado pela tela "Converter formato"
+  /// (`quick_convert_*`), que é um recurso à parte de "Editar GIF": sem
+  /// corte nem moldura, só a escolha do formato, um nível de [quality] e,
+  /// opcionalmente, a largura (via [targetWidth] — sem isso, usa a mesma
+  /// recomendação de [ConversionSettings.recommendedFor]).
   ///
-  /// GIF/WebP: monta um [ConversionSettings] fixo (arquivo inteiro, largura
-  /// escolhida do mesmo jeito que [ConversionSettings.recommendedFor], sem
-  /// ampliar) e reaproveita [convert] — mesmo pipeline de paleta/WebP já
+  /// GIF/WebP: monta um [ConversionSettings] fixo (arquivo inteiro) com
+  /// [quality] traduzido para cores/pontilhado (GIF) ou qualidade do libwebp
+  /// (WebP), e reaproveita [convert] — mesmo pipeline de paleta/WebP já
   /// usado por "Editar GIF" (com a mesma correção de velocidade do WebP).
   ///
-  /// MP4: linha de comando própria e simples — só limita a largura (mesmo
-  /// teto de [ConversionSettings.recommendedFor], nunca amplia) e codifica
-  /// o áudio quando existir. Sem `-map` explícito, o FFmpeg já escolhe
-  /// sozinho o melhor stream de vídeo e (se houver) de áudio — se a fonte
-  /// não tiver áudio (ex.: veio de um GIF), as flags de áudio simplesmente
-  /// não têm efeito, sem precisar detectar isso antes.
+  /// MP4: linha de comando própria e simples — [quality] só define o
+  /// bitrate; a largura nunca amplia a original. Codifica o áudio quando
+  /// existir. Sem `-map` explícito, o FFmpeg já escolhe sozinho o melhor
+  /// stream de vídeo e (se houver) de áudio — se a fonte não tiver áudio
+  /// (ex.: veio de um GIF), as flags de áudio simplesmente não têm efeito,
+  /// sem precisar detectar isso antes.
   Future<File> quickConvert({
     required VideoInfo video,
     required QuickConvertFormat format,
+    QuickConvertQuality quality = QuickConvertQuality.standard,
+    int? targetWidth,
     void Function(double progress)? onProgress,
   }) async {
+    final width =
+        targetWidth ?? ConversionSettings.recommendedFor(video).targetWidth;
+
     if (format.isAnimatedImage) {
       final settings = ConversionSettings(
         startSeconds: 0,
         endSeconds: video.durationSeconds,
-        targetWidth: ConversionSettings.recommendedFor(video).targetWidth,
+        targetWidth: width,
         format: format == QuickConvertFormat.gif
             ? OutputFormat.gif
             : OutputFormat.webp,
+        colors: quality.gifColors,
+        dither: quality.gifDither,
+        webpQuality: quality.webpQuality,
       );
       final result = await convert(
         video: video,
@@ -1416,7 +1425,6 @@ class FfmpegService {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final outputPath =
         '${dir.path}/${format.extension}_$stamp.${format.extension}';
-    final width = ConversionSettings.recommendedFor(video).targetWidth;
     final totalMs = video.durationSeconds * 1000;
 
     try {
@@ -1425,6 +1433,7 @@ class FfmpegService {
           video: video,
           format: format,
           width: width,
+          bitrateKbps: quality.mp4BitrateKbps,
           outputPath: outputPath,
         ),
         onTimeMs: (ms) => onProgress?.call(_ratio(ms, totalMs)),
@@ -1455,6 +1464,7 @@ class FfmpegService {
     required VideoInfo video,
     required QuickConvertFormat format, // só mp4 chega aqui hoje
     required int width,
+    required int bitrateKbps,
     required String outputPath,
   }) {
     return [
@@ -1465,6 +1475,8 @@ class FfmpegService {
       'scale=$width:-2:flags=lanczos',
       '-c:v',
       'h264_mediacodec',
+      '-b:v',
+      '${bitrateKbps}k',
       '-c:a',
       'aac',
       '-b:a',

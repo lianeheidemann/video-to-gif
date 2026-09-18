@@ -35,10 +35,12 @@ void main() {
         video: _video,
         format: QuickConvertFormat.mp4,
         width: 720,
+        bitrateKbps: 3000,
         outputPath: '/tmp/saida.mp4',
       );
 
       _expectFlagValue(args, '-c:v', 'h264_mediacodec');
+      _expectFlagValue(args, '-b:v', '3000k');
       _expectFlagValue(args, '-c:a', 'aac');
       _expectFlagValue(args, '-f', 'mp4');
       _expectFlagValue(args, '-vf', 'scale=720:-2:flags=lanczos');
@@ -47,6 +49,18 @@ void main() {
       expect(args, isNot(contains('-preset')));
       expect(args, isNot(contains('-crf')));
       expect(args.last, '/tmp/saida.mp4');
+    });
+
+    test('bitrate reflete o nível de qualidade escolhido', () {
+      final args = ffmpeg.quickConvertVideoArgs(
+        video: _video,
+        format: QuickConvertFormat.mp4,
+        width: 480,
+        bitrateKbps: QuickConvertQuality.low.mp4BitrateKbps,
+        outputPath: '/tmp/saida.mp4',
+      );
+
+      _expectFlagValue(args, '-b:v', '1500k');
     });
   });
 
