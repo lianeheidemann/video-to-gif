@@ -14,7 +14,7 @@ import 'widgets/gif_weight_help_sheet.dart';
 import 'collage_page.dart';
 import 'editor_page.dart';
 import 'photo_frame_page.dart';
-import 'quick_convert_pick_page.dart';
+import 'quick_convert_page.dart';
 import 'svg_edit_page.dart';
 
 /// Tela inicial: apresenta o app e deixa o usuário escolher um vídeo para
@@ -419,7 +419,7 @@ class _HomePageState extends State<HomePage> {
                       ? null
                       : () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => const QuickConvertPickPage(),
+                            builder: (_) => const QuickConvertPage(),
                           ),
                         ),
                   icon: const Icon(Icons.cached_outlined),
