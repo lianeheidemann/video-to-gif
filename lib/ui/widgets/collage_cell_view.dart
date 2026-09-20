@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/collage_background.dart';
 import '../../models/collage_cell.dart';
+import 'background_image_view.dart';
 
 /// Célula interativa de uma montagem: mostra a foto recortada ("cover") ou
 /// inteira ("contain") com deslocamento/zoom/rotação livre/espelhamento/
@@ -285,7 +286,7 @@ class _CollageCellViewState extends State<CollageCellView> {
       case CollageBackgroundMode.image:
         final path = background.imagePath;
         if (path == null) return const SizedBox.shrink();
-        return Image.file(File(path), fit: BoxFit.cover);
+        return BackgroundImageView(path: path);
     }
   }
 }

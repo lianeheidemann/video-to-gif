@@ -146,5 +146,27 @@ class ImageFrameLibrary {
       nativeReferenceWidth: 1080,
       contentRect: NormalizedRect(0.0935, 0.0318, 0.8130, 0.9365),
     ),
+    ImageFrameAsset(
+      id: 'bundled_janela',
+      label: 'Janela',
+      source: ImageFrameSource.bundledSvg,
+      svgAssetPath: 'assets/frame/moldura_06_janela_vertival.svg',
+      nativeAspectRatio: 984 / 1536,
+      nativeReferenceWidth: 984,
+      // Janela do SVG: x=32, y=82, 920x1418 sobre o canvas de 984x1536.
+      contentRect: NormalizedRect(0.0325, 0.0534, 0.9350, 0.9232),
+    ),
+    ImageFrameAsset(
+      id: 'bundled_navegador',
+      label: 'Navegador',
+      source: ImageFrameSource.bundledSvg,
+      svgAssetPath: 'assets/frame/moldura_07_navegador_desktop.svg',
+      // Única deitada da biblioteca: a barra de endereço ocupa o topo, e a
+      // janela sobra larga e baixa.
+      nativeAspectRatio: 1920 / 1080,
+      nativeReferenceWidth: 1920,
+      // Janela do SVG: x=24, y=132, 1872x932 sobre o canvas de 1920x1080.
+      contentRect: NormalizedRect(0.0125, 0.1222, 0.9750, 0.8630),
+    ),
   ];
 }

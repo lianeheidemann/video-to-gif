@@ -30,6 +30,13 @@ jobs:
 
       - run: flutter pub get
 
+      # Antes do resto: sem isso, uma subpasta nova de asset ficaria fora do
+      # APK sem ninguém notar, porque a declaração de pasta do Flutter não é
+      # recursiva e o build não reclama do que falta.
+      - name: Conferir lista de assets
+        if: ${{ !cancelled() }}
+        run: python3 tool/sincronizar_assets.py --conferir
+
       # Os três passos abaixo rodam sempre, mesmo depois de um falhar. Sem
       # isso, um deslize de formatação aborta o job e esconde os erros de
       # análise e de teste, que só aparecem no push seguinte.
