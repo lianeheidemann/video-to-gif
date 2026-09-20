@@ -2434,31 +2434,40 @@ class _EditorPageState extends State<EditorPage> {
 
   /// Seção de resolução: larguras maiores que o vídeo original ficam
   /// desabilitadas, para não deixar o usuário tentar ampliar a imagem.
+  /// Slider de "Resolução": 100% mantém o tamanho original do vídeo — o
+  /// padrão desde que a tela abre — e arrastar para a esquerda reduz.
+  /// Antes eram chips de larguras fixas (160, 240, 320...px), começando já
+  /// numa sugestão menor que o original; agora o ponto de partida é sempre
+  /// a resolução cheia, e reduzir é uma escolha explícita.
   LabeledSection _resolutionSection() {
-    final available = ConversionSettings.widthOptions
-        .where((w) => w <= _video.width)
-        .toList();
-    if (available.isEmpty) available.add(_video.width);
-
+    final percent = ConversionSettings.percentForWidth(
+      _video,
+      _settings.targetWidth,
+    );
     final (width, height) = _settings.contentDimensions(_video);
-    final selected = available.contains(_settings.targetWidth)
-        ? _settings.targetWidth
-        : available.last;
 
     return LabeledSection(
       icon: Icons.photo_size_select_large_rounded,
       title: 'Resolução',
-      value: '$width×$height',
+      value: '$percent% · $width×$height',
       originalValue: '${_video.width}×${_video.height}',
       tip:
-          '720 px preserva melhor textos e cantos de molduras; '
-          '480 px gera arquivos menores.',
-      child: OptionChips<int>(
-        options: ConversionSettings.widthOptions,
-        selected: selected,
-        labelBuilder: (w) => '$w px',
-        isEnabled: (w) => w <= _video.width,
-        onSelected: (w) => _update(_settings.copyWith(targetWidth: w)),
+          '100% preserva a nitidez original; reduzir gera arquivos mais '
+          'leves, mas com menos detalhe.',
+      child: Slider(
+        min: ConversionSettings.minResolutionPercent.toDouble(),
+        max: 100,
+        divisions: 100 - ConversionSettings.minResolutionPercent,
+        value: percent.toDouble(),
+        label: '$percent%',
+        onChangeStart: (_) => _pushUndoCheckpoint(),
+        onChanged: (value) {
+          final (newWidth, _) = ConversionSettings.dimensionsForPercent(
+            _video,
+            value.round(),
+          );
+          _update(_settings.copyWith(targetWidth: newWidth), pushUndo: false);
+        },
       ),
     );
   }

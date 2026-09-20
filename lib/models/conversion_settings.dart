@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'color_adjustments.dart';
 import 'crop_rect.dart';
 import 'frame_settings.dart';
@@ -354,10 +356,9 @@ class ConversionSettings {
   }
 
   /// Configurações iniciais sugeridas para um vídeo recém-carregado: corta
-  /// em até 10 segundos e escolhe a maior largura de até 720px que caiba
-  /// no vídeo original — 720px preserva melhor textos e cantos de molduras
-  /// (ver dica em [widthOptions]), mesmo padrão que uma pessoa teria que
-  /// escolher manualmente em "Ajustar" hoje.
+  /// em até 10 segundos e mantém a largura original do vídeo (100%) — quem
+  /// quiser um arquivo mais leve reduz manualmente no slider de "Resolução",
+  /// em vez de a tela já abrir com uma largura menor escolhida sozinha.
   ///
   /// [format] não entra nessa recomendação: continua GIF por padrão (valor
   /// default do construtor) — WebP é uma escolha explícita do usuário na
@@ -368,14 +369,43 @@ class ConversionSettings {
         ? video.durationSeconds
         : maxSeconds;
 
-    final width = ConversionSettings.widthOptions
-        .where((w) => w <= video.width)
-        .fold<int>(160, (best, w) => w <= 720 && w > best ? w : best);
-
     return ConversionSettings(
       startSeconds: 0,
       endSeconds: end,
-      targetWidth: width,
+      targetWidth: video.width,
     );
+  }
+
+  /// Menor porcentagem que o slider de "Resolução" aceita — abaixo disso o
+  /// vídeo fica pequeno demais para valer a pena.
+  static const minResolutionPercent = 10;
+
+  /// Largura e altura, em pixels, para [percent]% da resolução de [video].
+  ///
+  /// Usado pelo slider de "Resolução" tanto em "Editar GIF" quanto em
+  /// "Converter formato", para as duas telas nunca divergirem na conta.
+  /// Arredonda para um número par (exigência do FFmpeg, mesma regra de
+  /// [contentDimensions]) e nunca deixa a largura cair a zero, mesmo no
+  /// piso do slider com um vídeo bem estreito.
+  static (int width, int height) dimensionsForPercent(
+    VideoInfo video,
+    int percent,
+  ) {
+    final rawWidth = (video.width * percent / 100).round();
+    final width = math.max(2, rawWidth - rawWidth % 2);
+    final rawHeight = video.width == 0
+        ? 0
+        : (width * video.height / video.width).round();
+    final height = math.max(2, rawHeight - rawHeight % 2);
+    return (width, height);
+  }
+
+  /// Porcentagem da largura de [video] que [targetWidth] representa — o
+  /// inverso de [dimensionsForPercent], usado para posicionar o slider a
+  /// partir de um `targetWidth` já salvo (por exemplo, ao reabrir o editor).
+  static int percentForWidth(VideoInfo video, int targetWidth) {
+    if (video.width <= 0) return 100;
+    final percent = (targetWidth / video.width * 100).round();
+    return percent.clamp(minResolutionPercent, 100);
   }
 }

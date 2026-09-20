@@ -1403,13 +1403,14 @@ class FfmpegService {
   Future<File> quickConvert({
     required VideoInfo video,
     required QuickConvertFormat format,
+    required int targetWidth,
     void Function(double progress)? onProgress,
   }) async {
     if (format.isAnimatedImage) {
       final settings = ConversionSettings(
         startSeconds: 0,
         endSeconds: video.durationSeconds,
-        targetWidth: ConversionSettings.recommendedFor(video).targetWidth,
+        targetWidth: targetWidth,
         format: format == QuickConvertFormat.gif
             ? OutputFormat.gif
             : OutputFormat.webp,
@@ -1427,7 +1428,7 @@ class FfmpegService {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final outputPath =
         '${dir.path}/${format.extension}_$stamp.${format.extension}';
-    final width = ConversionSettings.recommendedFor(video).targetWidth;
+    final width = targetWidth;
     final totalMs = video.durationSeconds * 1000;
 
     try {
