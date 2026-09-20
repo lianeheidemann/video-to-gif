@@ -19,6 +19,7 @@ import '../models/image_frame.dart';
 import '../models/quick_convert_format.dart';
 import '../models/size_estimate.dart';
 import '../models/video_info.dart';
+import 'mp4_rotation.dart';
 import '../ui/widgets/frame_painter.dart';
 import 'size_estimator.dart';
 import 'text_overlay_render.dart';
@@ -116,6 +117,16 @@ class FfmpegService {
       throw FfmpegException('Não foi possível descobrir a duração do vídeo.');
     }
 
+    // Desempate, não substituto: quando o FFprobe informa uma rotação, ela
+    // vale. O leitor do container só entra quando o FFprobe não informou
+    // nada — existe vídeo de celular cuja rotação está só na matriz de
+    // exibição do MP4, e tratá-lo como sem rotação deixa um vídeo gravado
+    // em pé achatado na prévia e na exportação.
+    final probeRotation = _rotationOf(video);
+    final rotation = probeRotation != 0
+        ? probeRotation
+        : (await readMp4Rotation(path) ?? 0);
+
     return VideoInfo(
       path: path,
       fileName: path.split('/').last,
@@ -126,7 +137,7 @@ class FfmpegService {
       bitrateBps: int.tryParse(info.getBitrate() ?? '') ?? 0,
       fileSizeBytes: file.lengthSync(),
       codec: video.getCodec() ?? 'desconhecido',
-      rotationDegrees: _rotationOf(video),
+      rotationDegrees: rotation,
     );
   }
 
