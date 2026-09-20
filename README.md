@@ -20,16 +20,16 @@ directly on Android — privately and offline.**
 
 ## About
 
-Android app built with Flutter with three editors that share the same
-editor shell, the same frame library and the same on-device export
-pipeline, plus a fourth, no-settings tool for quick format swaps:
+Android app built with Flutter, with three editors that share the same
+editor shell, frame library and on-device export pipeline, plus a fourth
+tool for quick format swaps:
 
 | Tool | What it does |
 |---|---|
 | **Video to GIF/WebP** | Converts MP4, MOV, AVI, MKV, WebM and 3GP to **GIF or animated WebP** — trim, crop, speed, resolution, frame rate, colors and a decorative frame. For GIF it also **estimates the final file size before converting**. |
 | **Frame on a photo** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes, color adjustment and a transparent or colored background. |
-| **Photo collage** | Assembles several photos into one composition — layouts, margins, per-photo borders and backgrounds, stickers (in folders you create), text with imported fonts, crop and color adjustment. If any photo is an animated GIF/WebP, the whole collage can be exported **animated**. |
-| **Convert format** | Picks any video, GIF or WebP and re-encodes it straight to GIF, animated WebP or MP4 — no trimming, quality or preview settings, just a source file and a target format. |
+| **Photo collage** | Assembles several photos into one composition — layouts, margins, borders, stickers, imported fonts, crop and color adjustment. If any photo is animated, the whole collage exports **animated**. |
+| **Convert format** | Picks any video, GIF or WebP and re-encodes it to GIF, animated WebP or MP4, with a resolution slider — no trim, quality or preview otherwise. |
 
 Choose the format that best fits your destination:
 
@@ -46,93 +46,68 @@ Choose the format that best fits your destination:
 
 ## The problem it solves
 
-Converting video to GIF is slow, and the output size is unpredictable: the
-same settings that produce 800 KB for one video produce 14 MB for another,
-because it depends on how much the scene moves. The usual workflow is
-convert, see it came out too big, adjust and convert again — several minutes
-per attempt.
-
-This app estimates the size **while you adjust the controls**, without
-converting anything. The **Measure** button converts two clips of up to one
-second with the chosen settings and uses their real size to calibrate the
-calculation, narrowing the displayed range from ±40–55% to ±15%.
+Converting video to GIF is slow, and the output size is unpredictable — the
+same settings can produce 800 KB for one video and 14 MB for another,
+depending on how much the scene moves. This app estimates the size **while
+you adjust the controls**, without converting anything, and the **Measure**
+button refines that estimate by converting two short clips and calibrating
+on their real size.
 
 > [!WARNING]
 > **The estimate is still being refined.** Before measuring it relies on
 > bitrate alone, and a few content types (e.g. moving gradients) can fall
-> outside the range even after. How the model works, and how accurate it
-> actually is, are documented in
+> outside the range even after. Full methodology and accuracy in
 > [`docs/en/HOW_THE_ESTIMATE_WORKS.md`](docs/en/HOW_THE_ESTIMATE_WORKS.md).
 
-### Everywhere
+### Shared across the app
 
-The three editors share the same shell: a **bottom tab bar** where each tab
-opens its own panel over the preview, **save / share / convert** icons in the
-top-right corner, and **undo / redo**. Each panel is capped in height and
-scrolls inside itself, and the handle at the top **collapses it out of the
-way** without dropping the selection — a sticker or a text box stays
-draggable in the preview while its controls are hidden.
-
-They also share the same **color adjustment** panel: brightness, exposure,
-contrast, highlights, shadows, saturation, hue and temperature. One color
-matrix drives both the live preview and the export (through FFmpeg's `eq` and
-`colorchannelmixer` on video), so what you see is what gets encoded.
+The three editors share one shell: a bottom tab bar where each tab opens its
+own panel over the preview, save/share/convert actions, and undo/redo. Every
+panel scrolls within a height cap, and collapsing it never drops the current
+selection. They also share one **color adjustment** panel — brightness,
+exposure, contrast, highlights, shadows, saturation, hue and temperature —
+driven by a single color matrix that the live preview and the FFmpeg export
+both use, so what you see is what gets encoded.
 
 ### Video → GIF / WebP
 
-- **Preview** with a timeline, **duration trim** and **crop** — Original,
-  1:1, 4:5, 9:16, 16:9 or custom, resized directly on the preview
-- **Speed** 0.25x–2x, **resolution** 160–800 px, **frame rate** 5–24 fps,
-  infinite loop or play once
-- **Output format** — GIF, with a 256-color palette and two-pass conversion
-  (`palettegen` + `paletteuse`), or animated WebP, with full color,
-  transparency and its own quality slider
-- **Color quality** (GIF) — 64, 128 or 256 colors, five dithering levels and
-  three palette strategies
-- **Size tab** — the estimate, its confidence range and the destination
-  traffic light, next to the "Measure" button
-- **Progress with cancellation**, then save to the gallery or share
+- Preview with a timeline, duration trim and crop (presets or custom)
+- Speed 0.25x–4x, resolution as a percentage of the original (with pixel
+  preview), frame rate 5–24 fps, loop or play once
+- Output as GIF (256-color palette, two-pass conversion) or animated WebP
+  (full color, transparency, its own quality slider)
+- GIF color quality — up to 256 colors, five dithering levels, three
+  palette strategies
+- Size tab with the estimate, its confidence range and a destination
+  compatibility check, next to the "Measure" button
 
 ### Frames (video and single photo)
 
-- **Procedural border** — thin, medium or thick, with color and corner
-  rounding
-- **Image frame** — bundled phone mockups, or your own image with an
+- Procedural border — thin, medium or thick, with color and corner rounding
+- Image frame — bundled phone mockups, or your own with an
   automatically-detected transparent window
-- **Content fit** — auto, fill, fit or expand with zoom
-- **Background** — transparent (real alpha on WebP and PNG, a reserved color
-  on GIF) or a solid color
+- Content fit — auto, fill, fit or expand with zoom
+- Transparent (real alpha on WebP/PNG) or solid-color background
 
 ### Photo collage
 
-- **Layouts** — row, column, 2x2, 2x3, 3x3 or a free grid with the number of
-  rows and columns you pick
-- **Aspect ratio**, **margins** (outer, between photos or both at once) and
-  **borders**, for the whole montage or per photo
-- **Background** — transparent, a solid color (swatches, HSV wheel or an
-  eyedropper on the preview) or an imported image, chosen separately for the
-  montage and for the photos inside the cells
-- **Per photo**, from the cell's `⋯` menu — replace, swap, crop, rotate 90°,
-  flip, recenter; double tap centers the photo, a second tap fills the cell
-- **Color adjustment** for one photo from that menu, or for **every photo at
-  once** from its own tab; either way background, borders, stickers and text
-  stay as they are
-- **Stickers** — bundled SVGs (Reactions, Symbols, Effects and GitHub) or
-  your own, organized in folders you can create, rename and delete
-- **Text** — written straight in the panel, with color, an optional
-  background box and bundled or imported `.ttf`/`.otf` fonts
-- **Rotate handle** on the selected sticker or text
-- **Animated export** — when any photo is an animated GIF/WebP, the whole
-  montage exports as PNG, GIF or WebP, matching the longest or the shortest
-  animation, with a progress dialog and cancel
+- Layouts from a single row to a free grid, with aspect ratio, margins and
+  borders per photo or for the whole montage
+- Background — transparent, solid color or an imported image, set
+  separately for the montage and for the photos inside it
+- Per-photo replace, crop, rotate and flip from the cell menu; color
+  adjustment for one photo or for all of them at once
+- Stickers (bundled or your own, organized in folders) and text with
+  imported fonts
+- Animated export (PNG, GIF or WebP) whenever a photo in the collage is
+  itself animated
 
 ### Convert format
 
-- **Any input FFmpeg can read** — video, GIF or animated WebP — picked from
-  the system media gallery, with static photos rejected up front since
-  there's already a dedicated tool for those
-- **Three output formats** — GIF, animated WebP or MP4 — with the source's
-  own format disabled in the picker
+Picks up any video, GIF or animated WebP from the system gallery and
+re-encodes it to GIF, WebP or MP4, with a resolution slider and the
+source's own format disabled in the picker. Static photos are rejected
+up front — there is a dedicated tool for those.
 
 ## How to run it
 
@@ -153,15 +128,13 @@ flutter run
 
 ### Build the release APK
 
-To generate a release APK you can install on a device without `flutter run`:
-
 ```bash
 flutter build apk --release
 ```
 
-The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. To
-build split APKs per ABI instead of a single universal one (smaller
-downloads, closer to what the [Release](https://github.com/lianeheidemann/video-to-gif/releases) page ships), add `--split-per-abi`:
+The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. For
+split APKs per ABI instead of one universal build (smaller downloads, closer
+to what [Releases](https://github.com/lianeheidemann/video-to-gif/releases) ship), add `--split-per-abi`:
 
 ```bash
 flutter build apk --release --split-per-abi
@@ -169,8 +142,7 @@ flutter build apk --release --split-per-abi
 
 CI pins the Flutter version to **3.47.0** (`FLUTTER_VERSION` in
 `.github/workflows/ci.yml`). If `dart format` complains there but passes on
-your machine, it's almost always a version mismatch — run it on the same
-one.
+your machine, run it on that same version.
 
 ## Structure
 
@@ -180,8 +152,8 @@ lib/
 ├── services/   # size estimation, FFmpeg, compositing and the import stores
 └── ui/         # the three editors, the crop screen and the shared widgets
 
-test/           # 252 tests, see "Quality" below
-tool/           # icon generation and the accuracy measurement script
+test/           # see "Quality" below
+tool/           # icon generation, the accuracy script and the asset-list sync
 
 assets/
 ├── background/ # ready-made backgrounds for the collage
@@ -196,56 +168,44 @@ assets/
 
 ### Adding art to the app
 
-Drop the file into `assets/fonts`, `assets/frame` or `assets/sticker` and
-build. The app reads those folders at startup, so the new file shows up on
-its own — no code change:
-
-- **Fonts** are registered by `FontLoader`, and the family name comes from
-  the file name: `PlayfairDisplay-Regular.ttf` becomes "Playfair Display".
-- **Frames** get their content window detected the same way an imported
-  frame does. A frame listed in `ImageFrameLibrary.bundled` keeps the
-  hand-written name and window instead, which are more precise.
-- **Stickers** land in the "Novos" folder, which only appears once there is
-  something in it. The curated lists in `collage_page.dart` keep their
-  hand-picked Portuguese names.
-
-A new **sub-folder** is the one case that needs a command, because Flutter's
-asset declaration is not recursive and the build does not warn about what it
-leaves out:
+Drop a file into `assets/fonts`, `assets/frame` or `assets/sticker` and
+build — the app reads those folders at startup, so it shows up on its own.
+Fonts are registered under a family name derived from the filename;
+frames get their transparent window auto-detected; stickers land in a
+"Novos" folder that only appears once it has something in it. A **new
+sub-folder** is the one case needing a command first, since Flutter's asset
+declaration isn't recursive:
 
 ```bash
 python3 tool/sincronizar_assets.py   # rewrites the assets: list in pubspec.yaml
 ```
 
-CI runs `--conferir` on every push and fails if `pubspec.yaml` is out of
-date, so a forgotten sub-folder cannot reach a release unnoticed.
+CI runs this in check mode on every push, so a forgotten sub-folder can't
+reach a release unnoticed.
 
-`size_estimator.dart` is pure Dart, with no dependency on Flutter or
-FFmpeg — which is why it can be fully tested without an emulator. The same
-applies to `collage_painter.dart`: the live preview and the exported file
-call into it, so the two can never drift apart.
+`size_estimator.dart` is pure Dart, with no Flutter or FFmpeg dependency,
+so it's fully testable without an emulator — the same is true of
+`collage_painter.dart`, which draws both the live preview and the exported
+frames from one code path.
 
 ## Quality
 
-**252 automated tests** cover the estimation model (including 7 that compare
-the prediction against files FFmpeg actually generated), the size and WebP
-panels, frame and crop geometry, the WebP and quick-convert export
-arguments, the imported-font and sticker-folder stores, and the
-collage — cell framing and color matrices, layout, compositing against golden
-pixels, the animation timeline and the editor itself.
+**353 automated tests** cover the estimation model against real FFmpeg
+output, the size and quality panels, frame and crop geometry, the export
+arguments for every format, the import stores, and the collage — framing,
+color, layout, compositing against golden pixels and the animation
+timeline.
 
-The measurement group deserves a special mention: `tool/medir_precisao.py`
-produces five synthetic videos ranging from a static title card to
-incompressible noise, converts each one and records the sizes; the test feeds
-the model those measurements and checks the error. Once calibrated, the
-prediction lands within **±1% for three of the five cases and −7% for the
-fourth**. The full table, including the cases that still miss and why, is in
+`tool/medir_precisao.py` produces five synthetic videos, from a static title
+card to incompressible noise, converts each and records the sizes; a test
+feeds those measurements back through the model and checks the error. Once
+calibrated, the prediction lands within **±1% for three of the five cases,
+−7% for the fourth**. Full table, including the cases that still miss, in
 [`docs/en/HOW_THE_ESTIMATE_WORKS.md`](docs/en/HOW_THE_ESTIMATE_WORKS.md).
 
-The workflow in `.github/workflows/ci.yml` runs `dart format`, `flutter
-analyze`, `flutter test` and a debug APK build on every push — the latter
-catches Gradle errors, manifest-merging issues and packaging problems with
-FFmpeg's native libraries.
+`.github/workflows/ci.yml` runs formatting, analysis, the full test suite
+and a debug APK build on every push — the APK build catches Gradle,
+manifest-merging and native-packaging issues the other steps can't see.
 
 ## Download the APK
 

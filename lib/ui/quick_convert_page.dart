@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
+import '../models/conversion_settings.dart';
 import '../models/quick_convert_format.dart';
 import '../models/size_estimate.dart';
 import '../models/video_info.dart';
@@ -47,6 +48,10 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
   bool _loading = false;
   VideoInfo? _video;
   QuickConvertFormat? _selected;
+
+  /// Porcentagem da resolução original — 100% por padrão, então nenhum
+  /// arquivo sai menor que o original sem a pessoa arrastar o slider.
+  int _resolutionPercent = 100;
 
   @override
   void initState() {
@@ -141,6 +146,10 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
         // GIF fica com uma seleção apontando para o formato do próprio
         // arquivo.
         _selected = null;
+        // Cada arquivo novo recomeça em 100%: um ajuste feito para o
+        // arquivo anterior não devia sobreviver silenciosamente para o
+        // próximo.
+        _resolutionPercent = 100;
       });
     } on FfmpegException catch (e) {
       if (mounted) setState(() => _loading = false);
@@ -205,6 +214,8 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
                     : const Icon(Icons.folder_open_outlined),
                 label: Text(_loading ? 'Abrindo…' : 'Escolher outro arquivo'),
               ),
+              const SizedBox(height: 28),
+              _resolutionSection(video),
             ],
             // Sem o botão contornado ocupando espaço, o estado vazio precisa
             // de um vão maior para o miolo não subir.
@@ -247,8 +258,14 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
                       // Só fecha pelos botões do próprio popup: tocar fora
                       // durante a conversão abandonaria o FFmpeg rodando.
                       barrierDismissible: false,
-                      builder: (_) =>
-                          _QuickConvertDialog(video: video, format: _selected!),
+                      builder: (_) => _QuickConvertDialog(
+                        video: video,
+                        format: _selected!,
+                        targetWidth: ConversionSettings.dimensionsForPercent(
+                          video,
+                          _resolutionPercent,
+                        ).$1,
+                      ),
                     ),
               icon: const Icon(Icons.auto_fix_high_rounded),
               label: const Text('Converter'),
@@ -256,6 +273,52 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Slider de resolução: 100% (o arquivo original) por padrão, e a única
+  /// configuração que esta tela oferece — o resto (formato) continua sendo a
+  /// única outra escolha. Reduzir gera um arquivo mais leve, ao custo de
+  /// nitidez.
+  Widget _resolutionSection(VideoInfo video) {
+    final theme = Theme.of(context);
+    final (width, height) = ConversionSettings.dimensionsForPercent(
+      video,
+      _resolutionPercent,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Resolução',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Text(
+              '$_resolutionPercent% · $width×$height px',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          min: ConversionSettings.minResolutionPercent.toDouble(),
+          max: 100,
+          divisions: 100 - ConversionSettings.minResolutionPercent,
+          value: _resolutionPercent.toDouble(),
+          // O balão que segue o dedo já mostra o tamanho em pixels, não só a
+          // porcentagem — não precisa soltar o slider para ver o resultado.
+          label: '$_resolutionPercent% · $width×$height',
+          onChanged: (value) =>
+              setState(() => _resolutionPercent = value.round()),
+        ),
+      ],
     );
   }
 }
@@ -399,10 +462,18 @@ enum _ConvertPhase { converting, failed, done }
 /// "Converter formato": progresso, erro e resultado sem nunca sair de onde
 /// o arquivo e o formato foram escolhidos.
 class _QuickConvertDialog extends StatefulWidget {
-  const _QuickConvertDialog({required this.video, required this.format});
+  const _QuickConvertDialog({
+    required this.video,
+    required this.format,
+    required this.targetWidth,
+  });
 
   final VideoInfo video;
   final QuickConvertFormat format;
+
+  /// Já calculado a partir do slider de resolução da tela anterior — este
+  /// popup só executa a conversão, não decide o tamanho.
+  final int targetWidth;
 
   @override
   State<_QuickConvertDialog> createState() => _QuickConvertDialogState();
@@ -435,6 +506,7 @@ class _QuickConvertDialogState extends State<_QuickConvertDialog> {
       final file = await _ffmpeg.quickConvert(
         video: widget.video,
         format: widget.format,
+        targetWidth: widget.targetWidth,
         onProgress: (value) {
           if (mounted) setState(() => _progress = value);
         },

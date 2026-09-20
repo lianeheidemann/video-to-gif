@@ -48,6 +48,75 @@ void main() {
       expect(settings.format, OutputFormat.gif);
     });
 
+    test('recommendedFor mantém a largura original — 100%, não uma sugestão '
+        'menor', () {
+      // Antes escolhia a maior largura de até 720px; agora o padrão é o
+      // tamanho do vídeo, e reduzir é uma escolha explícita no slider.
+      final settings = ConversionSettings.recommendedFor(_video);
+      expect(settings.targetWidth, _video.width);
+    });
+  });
+
+  group('slider de resolução (porcentagem ↔ pixels)', () {
+    test('100% devolve a largura e a altura originais', () {
+      final (width, height) = ConversionSettings.dimensionsForPercent(
+        _video,
+        100,
+      );
+      expect(width, _video.width);
+      expect(height, _video.height);
+    });
+
+    test('50% é a metade, arredondada para um número par', () {
+      final (width, _) = ConversionSettings.dimensionsForPercent(_video, 50);
+      expect(width, _video.width ~/ 2);
+      expect(width.isEven, isTrue);
+    });
+
+    test('nunca deixa a largura cair a zero no piso do slider', () {
+      const estreito = VideoInfo(
+        path: '/tmp/estreito.mp4',
+        fileName: 'estreito.mp4',
+        rawWidth: 12,
+        rawHeight: 40,
+        durationSeconds: 5,
+        frameRate: 30,
+        bitrateBps: 500000,
+        fileSizeBytes: 100000,
+        codec: 'h264',
+      );
+      final (width, height) = ConversionSettings.dimensionsForPercent(
+        estreito,
+        ConversionSettings.minResolutionPercent,
+      );
+      expect(width, greaterThanOrEqualTo(2));
+      expect(height, greaterThanOrEqualTo(2));
+    });
+
+    test('percentForWidth é o inverso de dimensionsForPercent', () {
+      for (final percent in [10, 25, 50, 75, 100]) {
+        final (width, _) = ConversionSettings.dimensionsForPercent(
+          _video,
+          percent,
+        );
+        expect(
+          ConversionSettings.percentForWidth(_video, width),
+          percent,
+          reason: 'percent=$percent',
+        );
+      }
+    });
+
+    test('percentForWidth nunca sai do intervalo do slider', () {
+      expect(ConversionSettings.percentForWidth(_video, _video.width * 2), 100);
+      expect(
+        ConversionSettings.percentForWidth(_video, 1),
+        ConversionSettings.minResolutionPercent,
+      );
+    });
+  });
+
+  group('formato de saída (continuação)', () {
     test('copyWith(format: ...) só muda o formato', () {
       final base = ConversionSettings(startSeconds: 0, endSeconds: 5);
       final webp = base.copyWith(format: OutputFormat.webp);

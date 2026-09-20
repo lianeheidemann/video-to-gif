@@ -22,9 +22,10 @@ const _video = VideoInfo(
 );
 
 Future<void> _openTab(WidgetTester tester, String tab) async {
-  // Largura de celular: no padrão largo do flutter_test os chips caberiam
-  // todos em duas linhas e não sobraria nada para rolar.
-  tester.view.physicalSize = const Size(400, 900);
+  // Largura de celular estreito: com 400 de largura os chips de "Janela"
+  // ainda cabiam com folga de poucos pixels (frágil entre plataformas);
+  // 320 força mais quebra de linha e deixa uma margem de sobra confortável.
+  tester.view.physicalSize = const Size(320, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -62,15 +63,18 @@ double _panelHeight(WidgetTester tester) => tester
     .height;
 
 void main() {
-  testWidgets('"Resolução" mostra as primeiras linhas e rola o resto', (
+  testWidgets('"Janela" mostra as primeiras linhas e rola o resto', (
     tester,
   ) async {
-    await _openTab(tester, 'Resolução');
+    // "Resolução" virou um slider (uma linha só, nunca estoura o teto) desde
+    // que passou a mostrar porcentagem em vez de uma lista de larguras fixas
+    // — "Janela" tem a lista mais longa que sobra no editor (12 proporções +
+    // "Personalizados"), sempre habilitada por inteiro, sem depender da
+    // largura do vídeo de teste.
+    await _openTab(tester, 'Janela');
 
     expect(_panelHeight(tester), lessThanOrEqualTo(200));
 
-    // Com um vídeo 1920 de largura todas as opções estão habilitadas, então
-    // a lista é longa o bastante para sobrar gente fora da área visível.
     final panelBottom = tester
         .getRect(
           find.descendant(
@@ -82,16 +86,19 @@ void main() {
 
     // O começo da lista aparece inteiro (a alça de recolher come uns 20 do
     // teto, então a segunda linha fica pela metade)...
-    expect(tester.getRect(find.text('160 px')).bottom, lessThan(panelBottom));
+    expect(tester.getRect(find.text('Original')).bottom, lessThan(panelBottom));
     // ...e a última opção fica abaixo do corte, alcançável rolando.
-    expect(tester.getRect(find.text('1920 px')).top, greaterThan(panelBottom));
+    expect(
+      tester.getRect(find.text('Personalizados')).top,
+      greaterThan(panelBottom),
+    );
 
     // Rolar o painel traz a opção escondida para dentro.
-    await tester.ensureVisible(find.text('1920 px'));
+    await tester.ensureVisible(find.text('Personalizados'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(
-      tester.getRect(find.text('1920 px')).bottom,
+      tester.getRect(find.text('Personalizados')).bottom,
       lessThanOrEqualTo(panelBottom),
     );
   });

@@ -99,5 +99,32 @@ void main() {
 
       expect(_convertEnabled(tester), isTrue);
     });
+
+    testWidgets('resolução começa em 100%, sem reduzir o arquivo sozinha', (
+      tester,
+    ) async {
+      await _pumpPage(tester, video: _mp4);
+
+      expect(find.text('Resolução'), findsOneWidget);
+      expect(find.text('100% · 2274×1352 px'), findsOneWidget);
+      expect(tester.widget<Slider>(find.byType(Slider)).value, 100.0);
+    });
+
+    testWidgets('arrastar o slider reduz a resolução mostrada', (tester) async {
+      await _pumpPage(tester, video: _mp4);
+
+      await tester.drag(find.byType(Slider), const Offset(-250, 0));
+      await tester.pump();
+
+      final slider = tester.widget<Slider>(find.byType(Slider));
+      expect(slider.value, lessThan(100.0));
+      expect(find.text('100% · 2274×1352 px'), findsNothing);
+
+      // O balão que aparece preso ao dedo durante o arrasto também mostra o
+      // tamanho em pixels, não só a porcentagem — não precisa soltar o
+      // slider para conferir o resultado.
+      expect(slider.label, contains('×'));
+      expect(slider.label, startsWith('${slider.value.round()}%'));
+    });
   });
 }
