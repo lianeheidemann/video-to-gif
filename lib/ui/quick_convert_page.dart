@@ -242,13 +242,13 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
               // garantia no próprio botão.
               onPressed: video == null || _selected == null
                   ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => _QuickConvertConvertingPage(
-                          video: video,
-                          format: _selected!,
-                        ),
-                      ),
+                  : () => showDialog<void>(
+                      context: context,
+                      // Só fecha pelos botões do próprio popup: tocar fora
+                      // durante a conversão abandonaria o FFmpeg rodando.
+                      barrierDismissible: false,
+                      builder: (_) =>
+                          _QuickConvertDialog(video: video, format: _selected!),
                     ),
               icon: const Icon(Icons.auto_fix_high_rounded),
               label: const Text('Converter'),
@@ -391,31 +391,38 @@ class _DashedBorderPainter extends CustomPainter {
       oldDelegate.color != color || oldDelegate.radius != radius;
 }
 
-/// Tela de progresso da conversão — mesmo desenho visual de
-/// `ConvertingPage`, mas chamando `quickConvert` em vez de `convert`, já que
-/// aqui não existe `ConversionSettings`/estimativa de tamanho nenhuma.
-class _QuickConvertConvertingPage extends StatefulWidget {
-  const _QuickConvertConvertingPage({
-    required this.video,
-    required this.format,
-  });
+/// Em que ponto a conversão está. As três fases moram no mesmo popup, em
+/// vez das duas telas cheias que o fluxo empilhava antes.
+enum _ConvertPhase { converting, failed, done }
+
+/// Popup que conduz a conversão do começo ao fim por cima da tela de
+/// "Converter formato": progresso, erro e resultado sem nunca sair de onde
+/// o arquivo e o formato foram escolhidos.
+class _QuickConvertDialog extends StatefulWidget {
+  const _QuickConvertDialog({required this.video, required this.format});
 
   final VideoInfo video;
   final QuickConvertFormat format;
 
   @override
-  State<_QuickConvertConvertingPage> createState() =>
-      _QuickConvertConvertingPageState();
+  State<_QuickConvertDialog> createState() => _QuickConvertDialogState();
 }
 
-class _QuickConvertConvertingPageState
-    extends State<_QuickConvertConvertingPage> {
+class _QuickConvertDialogState extends State<_QuickConvertDialog> {
   final _ffmpeg = FfmpegService();
+  static const _output = OutputService();
 
+  _ConvertPhase _phase = _ConvertPhase.converting;
   double _progress = 0;
+  bool _cancelling = false;
+
+  File? _file;
   String? _error;
   String? _errorLogs;
-  bool _cancelling = false;
+
+  bool _saving = false;
+  bool _saved = false;
+  String? _saveError;
 
   @override
   void initState() {
@@ -434,14 +441,13 @@ class _QuickConvertConvertingPageState
       );
 
       if (!mounted) return;
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              _QuickConvertResultPage(file: file, format: widget.format),
-        ),
-      );
+      setState(() {
+        _file = file;
+        _phase = _ConvertPhase.done;
+      });
     } on FfmpegException catch (e) {
       if (!mounted) return;
+      // Cancelar faz o FFmpeg falhar de propósito: aí o popup só fecha.
       if (_cancelling) {
         Navigator.of(context).pop();
         return;
@@ -449,10 +455,14 @@ class _QuickConvertConvertingPageState
       setState(() {
         _error = e.message;
         _errorLogs = e.logs.trim().isEmpty ? null : e.logs;
+        _phase = _ConvertPhase.failed;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'Algo deu errado durante a conversão.');
+      setState(() {
+        _error = 'Algo deu errado durante a conversão.';
+        _phase = _ConvertPhase.failed;
+      });
     }
   }
 
@@ -461,32 +471,67 @@ class _QuickConvertConvertingPageState
     await _ffmpeg.cancel();
   }
 
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      await _output.saveToGallery(
+        _file!,
+        asVideo: !widget.format.isAnimatedImage,
+      );
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saved = true;
+      });
+    } on OutputException catch (e) {
+      if (!mounted) return;
+      // Dentro de um popup o SnackBar sairia atrás do véu do diálogo, por
+      // isso o aviso vem aqui no corpo. O sucesso não precisa de aviso: o
+      // próprio botão passa a dizer "Salvo na galeria".
+      setState(() {
+        _saving = false;
+        _saveError = e.message;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return PopScope(
-      canPop: _error != null,
-      child: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: _error != null ? _errorView(theme) : _progressView(theme),
-            ),
+      // Durante a conversão o "voltar" do sistema não fecha o popup: parar
+      // é pelo botão Cancelar, que também encerra o FFmpeg.
+      canPop: _phase != _ConvertPhase.converting,
+      child: Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        // A fase de resultado tem cartão e três botões: em tela baixa, ou
+        // com fonte grande do sistema, precisa rolar em vez de estourar.
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: switch (_phase) {
+              _ConvertPhase.converting => _converting(theme),
+              _ConvertPhase.failed => _failed(theme),
+              _ConvertPhase.done => _done(theme),
+            },
           ),
         ),
       ),
     );
   }
 
-  Widget _progressView(ThemeData theme) {
+  List<Widget> _converting(ThemeData theme) {
     final percent = (_progress * 100).clamp(0, 100).round();
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
+    return [
+      Center(
+        child: SizedBox(
           width: 120,
           height: 120,
           child: Stack(
@@ -496,6 +541,7 @@ class _QuickConvertConvertingPageState
                 width: 120,
                 height: 120,
                 child: CircularProgressIndicator(
+                  // Sem progresso ainda, roda indefinido em vez de fingir 0%.
                   value: _progress > 0.01 ? _progress : null,
                   strokeWidth: 8,
                 ),
@@ -509,50 +555,138 @@ class _QuickConvertConvertingPageState
             ],
           ),
         ),
-        const SizedBox(height: 28),
-        Text(
-          _cancelling
-              ? 'Cancelando…'
-              : 'Convertendo para ${widget.format.label}',
-          style: theme.textTheme.titleLarge,
-        ),
-        const SizedBox(height: 32),
-        TextButton.icon(
-          onPressed: _cancelling ? null : _cancel,
-          icon: const Icon(Icons.close),
-          label: const Text('Cancelar'),
-        ),
-      ],
-    );
+      ),
+      const SizedBox(height: 28),
+      Text(
+        _cancelling ? 'Cancelando…' : 'Convertendo para ${widget.format.label}',
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleLarge,
+      ),
+      const SizedBox(height: 20),
+      TextButton.icon(
+        onPressed: _cancelling ? null : _cancel,
+        icon: const Icon(Icons.close),
+        label: const Text('Cancelar'),
+      ),
+    ];
   }
 
-  Widget _errorView(ThemeData theme) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.error_outline, size: 64, color: theme.colorScheme.error),
-        const SizedBox(height: 20),
-        Text('Não deu certo', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 8),
-        Text(
-          _error!,
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium,
+  List<Widget> _failed(ThemeData theme) {
+    return [
+      Icon(Icons.error_outline, size: 56, color: theme.colorScheme.error),
+      const SizedBox(height: 16),
+      Text(
+        'Não deu certo',
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleLarge,
+      ),
+      const SizedBox(height: 8),
+      Text(
+        _error!,
+        textAlign: TextAlign.center,
+        style: theme.textTheme.bodyMedium,
+      ),
+      if (_errorLogs != null)
+        TextButton(
+          onPressed: () => _showLogs(context),
+          child: const Text('Ver detalhes técnicos'),
         ),
-        if (_errorLogs != null) ...[
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: () => _showLogs(context),
-            child: const Text('Ver detalhes técnicos'),
+      const SizedBox(height: 12),
+      FilledButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Fechar'),
+      ),
+    ];
+  }
+
+  List<Widget> _done(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final bytes = _file!.lengthSync();
+
+    return [
+      Text(
+        '${widget.format.label} pronto',
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      const SizedBox(height: 18),
+      Container(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.55),
           ),
-        ],
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Voltar'),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.check_circle_outline_rounded,
+              size: 52,
+              color: scheme.primary,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              SizeEstimate.formatBytes(bytes),
+              style: theme.textTheme.displaySmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.format.label,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (_saveError != null) ...[
+        const SizedBox(height: 14),
+        Text(
+          _saveError!,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(color: scheme.error),
         ),
       ],
-    );
+      const SizedBox(height: 20),
+      FilledButton.icon(
+        onPressed: _saving || _saved ? null : _save,
+        icon: _saving
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(_saved ? Icons.check_rounded : Icons.download_rounded),
+        label: Text(
+          _saving
+              ? 'Salvando…'
+              : _saved
+              ? 'Salvo na galeria'
+              : 'Salvar na galeria',
+        ),
+      ),
+      const SizedBox(height: 12),
+      OutlinedButton.icon(
+        onPressed: () => _output.share(
+          _file!,
+          mimeType: widget.format.mimeType,
+          text: '${widget.format.label} feito com o app Video to GIF',
+        ),
+        icon: const Icon(Icons.share_outlined),
+        label: const Text('Compartilhar'),
+      ),
+      const SizedBox(height: 4),
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Fechar'),
+      ),
+    ];
   }
 
   void _showLogs(BuildContext context) {
@@ -587,131 +721,6 @@ class _QuickConvertConvertingPageState
             child: const Text('Fechar'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Tela final simples — nome, tamanho e as ações de salvar/compartilhar,
-/// sem a linha de estimativa de tamanho de `ResultPage` (específica do GIF).
-class _QuickConvertResultPage extends StatefulWidget {
-  const _QuickConvertResultPage({required this.file, required this.format});
-
-  final File file;
-  final QuickConvertFormat format;
-
-  @override
-  State<_QuickConvertResultPage> createState() =>
-      _QuickConvertResultPageState();
-}
-
-class _QuickConvertResultPageState extends State<_QuickConvertResultPage> {
-  static const _output = OutputService();
-
-  bool _saving = false;
-  bool _saved = false;
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
-      await _output.saveToGallery(
-        widget.file,
-        asVideo: !widget.format.isAnimatedImage,
-      );
-      if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _saved = true;
-      });
-      _message('${widget.format.label} salvo na galeria.');
-    } on OutputException catch (e) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      _message(e.message);
-    }
-  }
-
-  void _message(String text) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final bytes = widget.file.lengthSync();
-
-    return Scaffold(
-      appBar: AppBar(title: Text('${widget.format.label} pronto')),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 28),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: scheme.outlineVariant.withValues(alpha: 0.55),
-                ),
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.check_circle_outline_rounded,
-                    size: 56,
-                    color: scheme.primary,
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    SizeEstimate.formatBytes(bytes),
-                    style: theme.textTheme.displaySmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.format.label,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: _saving || _saved ? null : _save,
-              icon: _saving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(_saved ? Icons.check_rounded : Icons.download_rounded),
-              label: Text(
-                _saving
-                    ? 'Salvando…'
-                    : _saved
-                    ? 'Salvo na galeria'
-                    : 'Salvar na galeria',
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => _output.share(
-                widget.file,
-                mimeType: widget.format.mimeType,
-                text: '${widget.format.label} feito com o app Video to GIF',
-              ),
-              icon: const Icon(Icons.share_outlined),
-              label: const Text('Compartilhar'),
-            ),
-          ],
-        ),
       ),
     );
   }
