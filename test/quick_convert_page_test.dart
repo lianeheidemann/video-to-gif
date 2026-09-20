@@ -116,9 +116,15 @@ void main() {
       await tester.drag(find.byType(Slider), const Offset(-250, 0));
       await tester.pump();
 
-      final value = tester.widget<Slider>(find.byType(Slider)).value;
-      expect(value, lessThan(100.0));
+      final slider = tester.widget<Slider>(find.byType(Slider));
+      expect(slider.value, lessThan(100.0));
       expect(find.text('100% · 2274×1352 px'), findsNothing);
+
+      // O balão que aparece preso ao dedo durante o arrasto também mostra o
+      // tamanho em pixels, não só a porcentagem — não precisa soltar o
+      // slider para conferir o resultado.
+      expect(slider.label, contains('×'));
+      expect(slider.label, startsWith('${slider.value.round()}%'));
     });
   });
 }

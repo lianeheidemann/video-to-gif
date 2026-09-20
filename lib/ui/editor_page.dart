@@ -2459,7 +2459,9 @@ class _EditorPageState extends State<EditorPage> {
         max: 100,
         divisions: 100 - ConversionSettings.minResolutionPercent,
         value: percent.toDouble(),
-        label: '$percent%',
+        // O balão que segue o dedo já mostra o tamanho em pixels, não só a
+        // porcentagem — não precisa soltar o slider para ver o resultado.
+        label: '$percent% · $width×$height',
         onChangeStart: (_) => _pushUndoCheckpoint(),
         onChanged: (value) {
           final (newWidth, _) = ConversionSettings.dimensionsForPercent(

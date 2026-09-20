@@ -312,7 +312,9 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
           max: 100,
           divisions: 100 - ConversionSettings.minResolutionPercent,
           value: _resolutionPercent.toDouble(),
-          label: '$_resolutionPercent%',
+          // O balão que segue o dedo já mostra o tamanho em pixels, não só a
+          // porcentagem — não precisa soltar o slider para ver o resultado.
+          label: '$_resolutionPercent% · $width×$height',
           onChanged: (value) =>
               setState(() => _resolutionPercent = value.round()),
         ),
