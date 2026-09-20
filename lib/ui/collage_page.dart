@@ -26,6 +26,8 @@ import '../services/collage_compositor.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/imported_asset_store.dart';
 import '../services/imported_font_store.dart';
+import '../services/bundled_assets.dart';
+import '../services/bundled_sticker_store.dart';
 import '../services/output_service.dart';
 import '../services/sticker_folder_store.dart';
 import 'photo_crop_page.dart';
@@ -106,7 +108,15 @@ enum _CollageTab {
 /// enquanto ela vale como pasta de importados: o botão "Importar" aparece
 /// dentro e o que entrar ali fica marcado com o id dela. "GitHub" tem arte
 /// embutida e também aceita importados.
-enum _StickerFolder { reactions, symbols, effects, github, black, imported }
+enum _StickerFolder {
+  reactions,
+  symbols,
+  effects,
+  github,
+  black,
+  novos,
+  imported,
+}
 
 extension on _StickerFolder {
   /// `true` nas pastas que recebem stickers importados — "Importados" e as
@@ -128,6 +138,7 @@ extension on _StickerFolder {
     _StickerFolder.effects => 'Efeitos',
     _StickerFolder.github => 'GitHub',
     _StickerFolder.black => 'Black',
+    _StickerFolder.novos => 'Novos',
     _StickerFolder.imported => 'Importados',
   };
 }
@@ -318,16 +329,58 @@ class _CollagePageState extends State<CollagePage> {
   /// disso (ver [_stickersPanelContent]).
   static List<(String path, String label)> _bundledStickersFor(
     _StickerFolder folder,
-  ) => switch (folder) {
-    _StickerFolder.reactions => _stickerFolderReactions,
-    _StickerFolder.symbols => _stickerFolderSymbols,
-    _StickerFolder.effects => _stickerFolderEffects,
-    _StickerFolder.github => _stickerFolderGithub,
-    // Sem arte embutida ainda: se comporta como pasta de importados até os
-    // arquivos chegarem.
-    _StickerFolder.black => const [],
-    _StickerFolder.imported => const [],
+  ) {
+    final curados = switch (folder) {
+      _StickerFolder.reactions => _stickerFolderReactions,
+      _StickerFolder.symbols => _stickerFolderSymbols,
+      _StickerFolder.effects => _stickerFolderEffects,
+      _StickerFolder.github => _stickerFolderGithub,
+      // Sem arte embutida ainda: se comporta como pasta de importados até os
+      // arquivos chegarem.
+      _StickerFolder.black => const <(String, String)>[],
+      _StickerFolder.novos => const <(String, String)>[],
+      _StickerFolder.imported => const <(String, String)>[],
+    };
+    return [...curados, ..._descobertosFor(folder)];
+  }
+
+  /// Todo caminho que aparece em alguma das listas curadas — o que estiver
+  /// fora daqui foi solto na pasta depois e entra por descoberta.
+  static final Set<String> _curatedStickerPaths = {
+    for (final lista in [
+      _stickerFolderReactions,
+      _stickerFolderSymbols,
+      _stickerFolderEffects,
+      _stickerFolderGithub,
+    ])
+      for (final (path, _) in lista) path,
   };
+
+  /// Stickers achados em `assets/sticker` que nenhuma lista curada cita.
+  ///
+  /// A pasta do arquivo decide onde ele aparece: `assets/sticker/github/` e
+  /// `assets/sticker/black/` caem nas abas de mesmo nome, e todo o resto vai
+  /// para "Novos" — inclusive arquivo solto na raiz e subpasta que ainda não
+  /// tem aba própria. Assim, soltar um SVG na pasta e gerar o APK basta para
+  /// ele aparecer, sem passar por aqui.
+  static List<(String path, String label)> _descobertosFor(
+    _StickerFolder folder,
+  ) {
+    bool pertence(String path) => switch (folder) {
+      _StickerFolder.github => path.startsWith('assets/sticker/github/'),
+      _StickerFolder.black => path.startsWith('assets/sticker/black/'),
+      _StickerFolder.novos =>
+        !path.startsWith('assets/sticker/github/') &&
+            !path.startsWith('assets/sticker/black/'),
+      _ => false,
+    };
+
+    return [
+      for (final path in bundledStickerAssets)
+        if (!_curatedStickerPaths.contains(path) && pertence(path))
+          (path, labelFromFileName(path)),
+    ];
+  }
 
   late CollageSettings _settings = CollageSettings.forLayout(
     _defaultLayoutFor(widget.photos.length),
@@ -2305,6 +2358,18 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Stickers" / "Texto"
   // ---------------------------------------------------------------------
 
+  /// Abas embutidas que aparecem na fileira.
+  ///
+  /// "Novos" fica de fora enquanto está vazia: ela só existe para receber
+  /// sticker solto em `assets/sticker` depois, e uma aba vazia a mais em
+  /// toda instalação só empurraria o botão de criar pasta para fora da tela.
+  static List<_StickerFolder> get _visibleBundledFolders => [
+    for (final folder in _StickerFolder.values)
+      if (folder != _StickerFolder.novos ||
+          _descobertosFor(_StickerFolder.novos).isNotEmpty)
+        folder,
+  ];
+
   /// Pasta embutida aberta agora, ou `null` quando a aberta é uma criada
   /// pelo usuário.
   _StickerFolder? get _openBundledFolder {
@@ -2354,18 +2419,19 @@ class _CollagePageState extends State<CollagePage> {
             // onde a área visível + cache padrão pode não chegar até ela.
             scrollCacheExtent: const ScrollCacheExtent.pixels(2000),
             // +1 pelo botão de criar pasta, sempre no fim da linha.
-            itemCount: _StickerFolder.values.length + _customFolders.length + 1,
+            itemCount:
+                _visibleBundledFolders.length + _customFolders.length + 1,
             separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
-              if (index < _StickerFolder.values.length) {
-                final folder = _StickerFolder.values[index];
+              if (index < _visibleBundledFolders.length) {
+                final folder = _visibleBundledFolders[index];
                 return FolderTab(
                   label: folder.label,
                   selected: folder.id == _stickerFolderId,
                   onTap: () => setState(() => _stickerFolderId = folder.id),
                 );
               }
-              final customIndex = index - _StickerFolder.values.length;
+              final customIndex = index - _visibleBundledFolders.length;
               if (customIndex < _customFolders.length) {
                 final folder = _customFolders[customIndex];
                 // A pasta recém-criada rola até ficar visível sozinha (ver

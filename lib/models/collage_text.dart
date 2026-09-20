@@ -146,14 +146,14 @@ extension CollageTextListOps on List<CollageTextItem> {
       where((t) => t.id != id).toList();
 }
 
-/// Fontes embutidas no app (offline, sem baixar nada em tempo de execução —
-/// mesmo espírito dos 5 stickers embutidos em `assets/sticker/`), oferecidas
-/// como opção para o texto da montagem. `null` é "Padrão" (a fonte do tema).
-const bundledCollageFonts = <(String? family, String label)>[
+/// Fontes oferecidas para o texto da montagem: "Padrão" (`null`, a fonte do
+/// tema) seguida das que vieram empacotadas em `assets/fonts`.
+///
+/// Preenchida no `main()` por `BundledFontStore`, que varre a pasta e
+/// registra cada arquivo. Antes era uma lista fixa aqui, que precisava ser
+/// editada junto com o `pubspec.yaml` a cada fonte nova — soltar um `.ttf`
+/// na pasta não fazia efeito nenhum. Fica aqui como variável, e não como
+/// `const`, justamente para o model não depender do serviço.
+var bundledCollageFonts = const <(String? family, String label)>[
   (null, 'Padrão'),
-  ('Poppins', 'Poppins'),
-  ('Playfair Display', 'Playfair Display'),
-  ('Pacifico', 'Pacifico'),
-  ('Bebas Neue', 'Bebas Neue'),
-  ('Space Mono', 'Space Mono'),
 ];

@@ -183,10 +183,42 @@ lib/
 test/           # 252 tests, see "Quality" below
 tool/           # icon generation and the accuracy measurement script
 
+assets/
+├── background/ # ready-made backgrounds for the collage
+├── fonts/      # fonts offered for collage text
+├── frame/      # ready-made image frames
+└── sticker/    # ready-made stickers, one folder per theme
+
 .github/workflows/
 ├── ci.yml      # formatting, analysis, tests and a debug APK
 └── release.yml # publishes the APKs to a Release
 ```
+
+### Adding art to the app
+
+Drop the file into `assets/fonts`, `assets/frame` or `assets/sticker` and
+build. The app reads those folders at startup, so the new file shows up on
+its own — no code change:
+
+- **Fonts** are registered by `FontLoader`, and the family name comes from
+  the file name: `PlayfairDisplay-Regular.ttf` becomes "Playfair Display".
+- **Frames** get their content window detected the same way an imported
+  frame does. A frame listed in `ImageFrameLibrary.bundled` keeps the
+  hand-written name and window instead, which are more precise.
+- **Stickers** land in the "Novos" folder, which only appears once there is
+  something in it. The curated lists in `collage_page.dart` keep their
+  hand-picked Portuguese names.
+
+A new **sub-folder** is the one case that needs a command, because Flutter's
+asset declaration is not recursive and the build does not warn about what it
+leaves out:
+
+```bash
+python3 tool/sincronizar_assets.py   # rewrites the assets: list in pubspec.yaml
+```
+
+CI runs `--conferir` on every push and fails if `pubspec.yaml` is out of
+date, so a forgotten sub-folder cannot reach a release unnoticed.
 
 `size_estimator.dart` is pure Dart, with no dependency on Flutter or
 FFmpeg — which is why it can be fully tested without an emulator. The same

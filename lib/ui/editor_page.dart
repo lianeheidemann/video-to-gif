@@ -12,6 +12,7 @@ import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
 import '../models/size_estimate.dart';
 import '../models/video_info.dart';
+import '../services/bundled_frame_store.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/imported_frame_store.dart';
 import '../services/size_estimator.dart';
@@ -1115,7 +1116,7 @@ class _EditorPageState extends State<EditorPage> {
   /// é assim que dá para ver que escolher de um lado desativou o outro.
   Widget _imageFrameThumbnails() {
     final selected = _settings.frame.imageFrame;
-    final assets = [...ImageFrameLibrary.bundled, ..._importedImageFrames];
+    final assets = [...bundledImageFrames, ..._importedImageFrames];
     return SizedBox(
       height: 84,
       child: ListView.separated(

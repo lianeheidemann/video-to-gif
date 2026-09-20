@@ -77,9 +77,11 @@ void main() {
     });
 
     test('bundledCollageFonts começa com "Padrão" (fontFamily null)', () {
+      // O resto da lista vem de `assets/fonts` no `main()`, então aqui só
+      // vale a primeira entrada — quantas fontes existem é assunto de
+      // `bundled_assets_test.dart`.
       expect(bundledCollageFonts.first.$1, isNull);
       expect(bundledCollageFonts.first.$2, 'Padrão');
-      expect(bundledCollageFonts.length, 6);
     });
   });
 

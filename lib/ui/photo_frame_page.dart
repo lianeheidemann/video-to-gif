@@ -13,6 +13,7 @@ import '../models/crop_rect.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
 import '../models/photo_info.dart';
+import '../services/bundled_frame_store.dart';
 import '../services/imported_frame_store.dart';
 import '../services/output_service.dart';
 import '../services/photo_frame_compositor.dart';
@@ -1123,7 +1124,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
 
   Widget _imageFrameThumbnails() {
     final selected = _frame.imageFrame;
-    final assets = [...ImageFrameLibrary.bundled, ..._importedImageFrames];
+    final assets = [...bundledImageFrames, ..._importedImageFrames];
     return SizedBox(
       height: 84,
       child: ListView.separated(

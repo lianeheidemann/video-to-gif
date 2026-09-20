@@ -9,6 +9,7 @@ import 'package:video_to_gif/models/collage_background.dart';
 import 'package:video_to_gif/models/collage_cell.dart';
 import 'package:video_to_gif/models/collage_color_adjustment.dart';
 import 'package:video_to_gif/models/photo_info.dart';
+import 'package:video_to_gif/services/bundled_sticker_store.dart';
 import 'package:video_to_gif/ui/collage_page.dart';
 import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
 import 'package:video_to_gif/ui/widgets/collage_overlay_view.dart';
@@ -927,6 +928,44 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.widgetWithText(FolderTab, 'Reações'), findsOneWidget);
+  });
+
+  /// Abre a aba "Stickers" numa árvore nova, com [bundledStickerAssets] já
+  /// no valor desejado: o seletor de pasta é montado a partir dele.
+  Future<void> abrirStickers(WidgetTester tester, List<String> assets) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    addTearDown(() => bundledStickerAssets = const []);
+
+    bundledStickerAssets = assets;
+    await tester.pumpWidget(MaterialApp(home: CollagePage(photos: photos)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stickers'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('"Novos" fica escondida quando nada sobra das listas curadas', (
+    tester,
+  ) async {
+    await abrirStickers(tester, const ['assets/sticker/heart.svg']);
+
+    // Uma aba vazia a mais em toda instalação só empurraria o botão de
+    // criar pasta para fora da tela.
+    expect(find.widgetWithText(FolderTab, 'Novos'), findsNothing);
+  });
+
+  testWidgets('"Novos" aparece com sticker que nenhuma lista cita', (
+    tester,
+  ) async {
+    // É o que acontece ao soltar um SVG em assets/sticker e gerar o APK: o
+    // arquivo não está em lista nenhuma e mesmo assim precisa aparecer.
+    await abrirStickers(tester, const [
+      'assets/sticker/heart.svg',
+      'assets/sticker/solto_pelo_usuario.svg',
+    ]);
+
+    expect(find.widgetWithText(FolderTab, 'Novos'), findsOneWidget);
   });
 
   testWidgets('pastas "GitHub" e "Black" existem e recebem importados', (
