@@ -10,6 +10,7 @@ import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../models/background_image.dart';
 import '../models/collage_background.dart';
 import '../models/collage_cell.dart';
 import '../models/collage_export.dart';
@@ -30,6 +31,7 @@ import '../services/sticker_folder_store.dart';
 import 'photo_crop_page.dart';
 import 'widgets/app_bar_title.dart';
 import 'widgets/aspect_ratio_number_input.dart';
+import 'widgets/background_image_view.dart';
 import 'widgets/checkerboard_background.dart';
 import 'widgets/collage_cell_view.dart';
 import 'widgets/collage_overlay_view.dart';
@@ -892,7 +894,7 @@ class _CollagePageState extends State<CollagePage> {
       case CollageBackgroundMode.image:
         final path = background.imagePath;
         if (path == null) return const SizedBox.shrink();
-        return Image.file(File(path), fit: BoxFit.cover);
+        return BackgroundImageView(path: path);
     }
   }
 
@@ -2097,20 +2099,44 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Widget _backgroundImagePicker() {
+    // Os fundos prontos vêm primeiro, depois os importados e por último o
+    // "Importar" — mesma ordem dos stickers, onde os do app também abrem a
+    // lista.
+    const bundled = BackgroundImageLibrary.bundled;
+
     return SizedBox(
       height: 70,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _importedBackgrounds.length + 1,
+        itemCount: bundled.length + _importedBackgrounds.length + 1,
         separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
-          if (index == _importedBackgrounds.length) {
+          if (index < bundled.length) {
+            final background = bundled[index];
+            return GestureDetector(
+              // Sem onLongPress: fundo que vem com o app não se remove, ao
+              // contrário dos importados.
+              onTap: () => _applyBackground(
+                _targetBackground.copyWith(
+                  mode: CollageBackgroundMode.image,
+                  imagePath: background.assetPath,
+                ),
+              ),
+              child: _bundledBackgroundThumb(
+                background,
+                selected: _targetBackground.imagePath == background.assetPath,
+              ),
+            );
+          }
+
+          final importedIndex = index - bundled.length;
+          if (importedIndex == _importedBackgrounds.length) {
             return _importTile(
               onTap: _importBackgroundImage,
               label: 'Importar',
             );
           }
-          final asset = _importedBackgrounds[index];
+          final asset = _importedBackgrounds[importedIndex];
           final selected = _targetBackground.imagePath == asset.filePath;
           return GestureDetector(
             onTap: () => _applyBackground(
@@ -3168,6 +3194,36 @@ class _CollagePageState extends State<CollagePage> {
       );
     }
     if (!identical(updated, _settings)) _update(updated);
+  }
+
+  /// Miniatura de um fundo pronto do app — mesma moldura de [_assetThumb],
+  /// mas lendo de asset e preenchendo o quadro (`cover`), que é como a foto
+  /// vai aparecer no fundo de verdade.
+  Widget _bundledBackgroundThumb(
+    BundledBackground background, {
+    required bool selected,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      width: 62,
+      height: 46,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: Image.asset(
+        background.assetPath,
+        fit: BoxFit.cover,
+        semanticLabel: background.label,
+      ),
+    );
   }
 
   Widget _assetThumb(

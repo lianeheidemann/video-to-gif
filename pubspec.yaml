@@ -58,6 +58,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/icon-v4.png
+    - assets/background/
     - assets/frame/
     - assets/sticker/
     - assets/sticker/github/

@@ -3,8 +3,10 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../models/background_image.dart';
 import '../models/collage_background.dart';
 import '../models/collage_settings.dart';
 import '../models/collage_sticker.dart';
@@ -275,8 +277,21 @@ Future<ui.Image?> _tryDecodeImageFile(String path) async {
   }
 }
 
+/// Lê os bytes de [path], venha ele de um fundo pronto do app ou de um
+/// arquivo do aparelho — as duas origens convivem em
+/// `CollageBackground.imagePath` (ver [isBundledBackgroundPath]). Foto de
+/// célula e sticker importado sempre caem no ramo de arquivo, porque o
+/// caminho deles é absoluto.
+Future<Uint8List> readImageBytes(String path) async {
+  if (isBundledBackgroundPath(path)) {
+    final data = await rootBundle.load(path);
+    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  }
+  return File(path).readAsBytes();
+}
+
 Future<ui.Image> _decodeImageFile(String path) async {
-  final bytes = await File(path).readAsBytes();
+  final bytes = await readImageBytes(path);
   final codec = await ui.instantiateImageCodec(bytes);
   try {
     final frame = await codec.getNextFrame();

@@ -430,7 +430,8 @@ Future<_AnimatedPhoto?> _decodeAnimated(String path) async {
 
 Future<ui.Image?> _decodeStill(String path) async {
   try {
-    final bytes = await File(path).readAsBytes();
+    // Fundo pode ser um asset do app, não só arquivo — ver [readImageBytes].
+    final bytes = await readImageBytes(path);
     final codec = await ui.instantiateImageCodec(bytes);
     try {
       final frame = await codec.getNextFrame();
