@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
@@ -26,7 +27,12 @@ import 'widgets/source_file_card.dart';
 /// `FileType.media` (seletor de mídia estilo galeria, aceitando vídeo e imagem
 /// no mesmo seletor), validando depois se o conteúdo pode ser convertido.
 class QuickConvertPage extends StatefulWidget {
-  const QuickConvertPage({super.key});
+  const QuickConvertPage({super.key, this.initialVideo});
+
+  /// Só para teste: o estado com arquivo depende de um `probe()` de verdade,
+  /// que não roda em `flutter test`. Em produção a tela sempre nasce vazia.
+  @visibleForTesting
+  final VideoInfo? initialVideo;
 
   @override
   State<QuickConvertPage> createState() => _QuickConvertPageState();
@@ -41,6 +47,12 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
   bool _loading = false;
   VideoInfo? _video;
   QuickConvertFormat? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _video = widget.initialVideo;
+  }
 
   /// Extensões de imagem que podem ser estáticas ou animadas — só para elas
   /// vale a pena decodificar o arquivo e conferir `frameCount` (ver
@@ -168,132 +180,215 @@ class _QuickConvertPageState extends State<QuickConvertPage> {
     return Scaffold(
       appBar: AppBar(title: const AppBarTitle('Converter formato')),
       body: SafeArea(
-        // Sem arquivo o conteúdo fica centralizado, como era na tela de
-        // escolha; com arquivo, alinhado no topo. O `ConstrainedBox` dá ao
-        // `Column` a altura da tela para poder centralizar, e o
-        // `SingleChildScrollView` por fora evita estouro em tela baixa.
-        child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                // Menos o padding vertical, para o estado vazio preencher a
-                // viewport exatamente e não sobrar rolagem. O clamp cobre a
-                // viewport mais baixa que o próprio padding, que faria um
-                // minHeight negativo estourar a asserção do BoxConstraints.
-                minHeight: (constraints.maxHeight - 48).clamp(
-                  0.0,
-                  double.infinity,
-                ),
+        // Os dois estados têm a mesma estrutura, alinhada ao topo: anexar um
+        // arquivo troca só o bloco de cima e liga os controles de baixo, que
+        // nunca mudam de lugar.
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            if (video == null)
+              _PickDropzone(
+                loading: _loading,
+                onTap: _loading ? null : _pickFile,
+              )
+            else ...[
+              SourceFileCard(video: video, extension: _sourceExtension),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _loading ? null : _pickFile,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.folder_open_outlined),
+                label: Text(_loading ? 'Abrindo…' : 'Escolher outro arquivo'),
               ),
-              child: Column(
-                mainAxisAlignment: video == null
-                    ? MainAxisAlignment.center
-                    : MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (video == null) ...[
-                    Icon(
-                      Icons.cached_outlined,
-                      size: 72,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Escolha o arquivo',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+            ],
+            // Sem o botão contornado ocupando espaço, o estado vazio precisa
+            // de um vão maior para o miolo não subir.
+            SizedBox(height: video == null ? 40 : 28),
+            Text(
+              'Formato de saída',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final format in QuickConvertFormat.values)
+                  ChoiceChip(
+                    label: Text(format.label),
+                    selected: _selected == format,
+                    // Desligado enquanto não há arquivo, e desligado para o
+                    // formato do próprio arquivo: converter algo para o
+                    // formato que ele já tem não faz sentido aqui.
+                    onSelected:
+                        video == null || format.extension == _sourceExtension
+                        ? null
+                        : (value) =>
+                              setState(() => _selected = value ? format : null),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              // O `video == null` é redundante hoje (sem arquivo não dá para
+              // marcar chip, e `_pickFile` zera a escolha), mas deixa a
+              // garantia no próprio botão.
+              onPressed: video == null || _selected == null
+                  ? null
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => _QuickConvertConvertingPage(
+                          video: video,
+                          format: _selected!,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Vídeo, GIF ou WebP — depois de escolher, o formato de '
-                      'saída aparece aqui mesmo.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                  ] else ...[
-                    SourceFileCard(video: video, extension: _sourceExtension),
-                    const SizedBox(height: 16),
-                  ],
-                  _pickButton(video != null),
-                  if (video != null) ...[
-                    const SizedBox(height: 28),
-                    Text(
-                      'Formato de saída',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        for (final format in QuickConvertFormat.values)
-                          ChoiceChip(
-                            label: Text(format.label),
-                            selected: _selected == format,
-                            onSelected: format.extension == _sourceExtension
-                                ? null
-                                : (value) => setState(
-                                    () => _selected = value ? format : null,
-                                  ),
+              icon: const Icon(Icons.auto_fix_high_rounded),
+              label: const Text('Converter'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Área tracejada que convida a anexar o arquivo, no lugar do cartão de
+/// informações enquanto não há nenhum escolhido. A área inteira é o alvo do
+/// toque, não só o "+".
+class _PickDropzone extends StatelessWidget {
+  const _PickDropzone({required this.loading, required this.onTap});
+
+  final bool loading;
+  final VoidCallback? onTap;
+
+  static const _radius = 22.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Material(
+      // Mesmo raio dos Card do tema, para a área vazia e o cartão que a
+      // substitui terem a mesma silhueta.
+      color: scheme.primary.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(_radius),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(_radius),
+        child: CustomPaint(
+          painter: _DashedBorderPainter(
+            color: scheme.primary.withValues(alpha: 0.55),
+            radius: _radius,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: loading
+                      ? SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: scheme.onPrimary,
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-                    FilledButton.icon(
-                      onPressed: _selected == null
-                          ? null
-                          : () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => _QuickConvertConvertingPage(
-                                  video: video,
-                                  format: _selected!,
-                                ),
-                              ),
-                            ),
-                      icon: const Icon(Icons.auto_fix_high_rounded),
-                      label: const Text('Converter'),
-                    ),
-                  ],
-                ],
-              ),
+                        )
+                      : Icon(
+                          Icons.add_rounded,
+                          size: 30,
+                          color: scheme.onPrimary,
+                        ),
+                ),
+                const SizedBox(width: 16),
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        loading ? 'Abrindo…' : 'Escolher arquivo',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: scheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Vídeo, GIF ou WebP',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  /// Escolher arquivo é a ação principal enquanto não há nenhum; depois que
-  /// há, "Converter" assume o destaque e trocar de arquivo vira secundário.
-  Widget _pickButton(bool hasVideo) {
-    final icon = _loading
-        ? const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : const Icon(Icons.folder_open_outlined);
-    final label = Text(
-      _loading
-          ? 'Abrindo…'
-          : hasVideo
-          ? 'Escolher outro arquivo'
-          : 'Escolher arquivo',
-    );
-    final onPressed = _loading ? null : _pickFile;
+/// Contorno tracejado de canto arredondado. O `_DashedLine` da tela inicial
+/// não serve aqui: ele é uma fileira de quadradinhos, que não acompanha
+/// curva. Este percorre o contorno com `computeMetrics` e desenha pedaços.
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color, required this.radius});
 
-    return hasVideo
-        ? OutlinedButton.icon(onPressed: onPressed, icon: icon, label: label)
-        : FilledButton.icon(onPressed: onPressed, icon: icon, label: label);
+  final Color color;
+  final double radius;
+
+  static const _stroke = 1.6;
+  static const _dash = 7.0;
+  static const _gap = 5.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..strokeCap = StrokeCap.round;
+
+    // Encolhe meio traço para dentro: o traço é centrado no caminho, então
+    // sem isso metade dele cairia fora da área do widget.
+    final rect = (Offset.zero & size).deflate(_stroke / 2);
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = math.min(distance + _dash, metric.length);
+        canvas.drawPath(metric.extractPath(distance, next), paint);
+        distance = next + _gap;
+      }
+    }
   }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.radius != radius;
 }
 
 /// Tela de progresso da conversão — mesmo desenho visual de
