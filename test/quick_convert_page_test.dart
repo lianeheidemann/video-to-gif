@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/video_info.dart';
-import 'package:video_to_gif/ui/quick_convert_page.dart';
-import 'package:video_to_gif/ui/widgets/source_file_card.dart';
+import 'package:video_to_gif/core/models/video_info.dart';
+import 'package:video_to_gif/features/quick_convert/quick_convert_page.dart';
+import 'package:video_to_gif/features/quick_convert/widgets/source_file_card.dart';
 
 const _mp4 = VideoInfo(
   path: '/tmp/preview-v2.mp4',

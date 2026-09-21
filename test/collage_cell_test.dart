@@ -4,9 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart'
     show Canvas, Color, ColorFilter, Offset, Paint, Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/collage_background.dart';
-import 'package:video_to_gif/models/collage_cell.dart';
-import 'package:video_to_gif/models/crop_rect.dart';
+import 'package:video_to_gif/features/collage/models/collage_background.dart';
+import 'package:video_to_gif/features/collage/models/collage_cell.dart';
+import 'package:video_to_gif/core/models/crop_rect.dart';
 
 /// Desenha um retângulo de cor conhecida com [filter] aplicado e devolve o
 /// pixel resultante (R,G,B,A) — evita depender de `ColorFilter` ter

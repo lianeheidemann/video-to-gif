@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/video_info.dart';
+import 'package:video_to_gif/core/models/video_info.dart';
 
 /// Vídeo gravado em pé no celular: o arquivo guarda 1280x720 deitado e conta
 /// a rotação à parte. É o caso que aparecia achatado no editor.

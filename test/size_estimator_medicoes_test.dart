@@ -18,9 +18,9 @@
 // Como reproduzir as medições está em docs/COMO_A_ESTIMATIVA_FUNCIONA.md.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/conversion_settings.dart';
-import 'package:video_to_gif/models/video_info.dart';
-import 'package:video_to_gif/services/size_estimator.dart';
+import 'package:video_to_gif/core/models/conversion_settings.dart';
+import 'package:video_to_gif/core/models/video_info.dart';
+import 'package:video_to_gif/core/services/size_estimator.dart';
 
 const _video = VideoInfo(
   path: '/tmp/sintetico.mp4',

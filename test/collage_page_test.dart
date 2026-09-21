@@ -5,17 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_to_gif/models/collage_background.dart';
-import 'package:video_to_gif/models/collage_cell.dart';
-import 'package:video_to_gif/models/collage_color_adjustment.dart';
-import 'package:video_to_gif/models/photo_info.dart';
-import 'package:video_to_gif/services/bundled_sticker_store.dart';
-import 'package:video_to_gif/ui/collage_page.dart';
-import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
-import 'package:video_to_gif/ui/widgets/collage_overlay_view.dart';
-import 'package:video_to_gif/ui/widgets/color_adjust_controls.dart';
-import 'package:video_to_gif/ui/widgets/folder_tab.dart';
-import 'package:video_to_gif/ui/widgets/target_sub_panel.dart';
+import 'package:video_to_gif/features/collage/models/collage_background.dart';
+import 'package:video_to_gif/features/collage/models/collage_cell.dart';
+import 'package:video_to_gif/core/models/collage_color_adjustment.dart';
+import 'package:video_to_gif/core/models/photo_info.dart';
+import 'package:video_to_gif/core/services/bundled_sticker_store.dart';
+import 'package:video_to_gif/features/collage/collage_page.dart';
+import 'package:video_to_gif/features/collage/widgets/collage_cell_view.dart';
+import 'package:video_to_gif/core/ui/collage_overlay_view.dart';
+import 'package:video_to_gif/core/ui/color_adjust_controls.dart';
+import 'package:video_to_gif/features/collage/widgets/folder_tab.dart';
+import 'package:video_to_gif/features/collage/widgets/target_sub_panel.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
   final recorder = ui.PictureRecorder();

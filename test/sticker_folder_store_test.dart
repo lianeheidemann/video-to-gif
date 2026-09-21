@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_to_gif/services/sticker_folder_store.dart';
+import 'package:video_to_gif/core/services/sticker_folder_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -4,9 +4,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/collage_background.dart';
-import 'package:video_to_gif/models/collage_cell.dart';
-import 'package:video_to_gif/ui/widgets/collage_cell_view.dart';
+import 'package:video_to_gif/features/collage/models/collage_background.dart';
+import 'package:video_to_gif/features/collage/models/collage_cell.dart';
+import 'package:video_to_gif/features/collage/widgets/collage_cell_view.dart';
 
 /// Grava um PNG sólido de verdade em [path] — [CollageCellView] só liga os
 /// gestos quando a célula tem foto, e a prévia usa `Image.file`.

@@ -3,9 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/crop_rect.dart';
-import 'package:video_to_gif/ui/photo_crop_page.dart';
-import 'package:video_to_gif/ui/widgets/crop_overlay.dart';
+import 'package:video_to_gif/core/models/crop_rect.dart';
+import 'package:video_to_gif/core/ui/crop/photo_crop_page.dart';
+import 'package:video_to_gif/core/ui/crop/crop_overlay.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
   final recorder = ui.PictureRecorder();

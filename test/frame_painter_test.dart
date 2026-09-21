@@ -1,8 +1,8 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/frame_settings.dart';
-import 'package:video_to_gif/ui/widgets/frame_painter.dart';
+import 'package:video_to_gif/core/models/frame_settings.dart';
+import 'package:video_to_gif/core/painting/frame_painter.dart';
 
 const _side = 64;
 const _frameColor = ui.Color(0xFFC9A8FF);

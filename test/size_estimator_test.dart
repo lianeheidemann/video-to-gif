@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/conversion_settings.dart';
-import 'package:video_to_gif/models/size_estimate.dart';
-import 'package:video_to_gif/models/video_info.dart';
-import 'package:video_to_gif/services/size_estimator.dart';
+import 'package:video_to_gif/core/models/conversion_settings.dart';
+import 'package:video_to_gif/core/models/size_estimate.dart';
+import 'package:video_to_gif/core/models/video_info.dart';
+import 'package:video_to_gif/core/services/size_estimator.dart';
 
 const _video = VideoInfo(
   path: '/tmp/exemplo.mp4',

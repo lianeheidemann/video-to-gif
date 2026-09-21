@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_to_gif/services/imported_asset_store.dart';
+import 'package:video_to_gif/core/services/imported_asset_store.dart';
 
 /// Mesma forma de `ImportedAssetStore._encode` — reconstruída aqui só para
 /// popular o `SharedPreferences` mockado direto, sem passar por
