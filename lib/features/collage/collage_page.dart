@@ -28,6 +28,7 @@ import 'widgets/background_image_view.dart';
 import '../../core/ui/checkerboard_background.dart';
 import 'widgets/collage_cell_view.dart';
 import '../../core/ui/collage_overlay_view.dart';
+import '../../core/ui/editor_tabs_footer.dart';
 import '../../core/ui/text_overlay_editor.dart';
 import 'painting/collage_painter.dart';
 import 'widgets/export_progress_dialog.dart';
@@ -418,7 +419,7 @@ class _CollagePageState extends State<CollagePage> {
               child: PreviewAreaBackground(child: Center(child: _preview())),
             ),
             ?toolbar,
-            ?_activeTabPanel(),
+            collapsibleEditorPanel(child: _activeTabPanel()),
             _footerTabs(),
           ],
         ),
@@ -431,13 +432,19 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
 
   /// Painel da aba aberta: altura limitada com rolagem própria (seções mais
-  /// longas, como Fundo, não estouram a tela), animado ao trocar/fechar aba.
+  /// longas, como Fundo, não estouram a tela).
+  ///
+  /// Devolve `null` sem aba aberta — quem dá movimento a abrir e fechar é o
+  /// [collapsibleEditorPanel] em volta, no `build`.
   Widget? _activeTabPanel() {
     final tab = _activeTab;
     if (tab == null) return null;
     final theme = Theme.of(context);
     return AnimatedSize(
-      duration: const Duration(milliseconds: 180),
+      // Recolher pela alça e trocar de aba: o painel continua montado e só
+      // muda de altura.
+      duration: editorPanelMotionDuration,
+      curve: editorPanelMotionCurve,
       alignment: Alignment.bottomCenter,
       child: Container(
         // Mesmo teto do rodapé das outras telas (ver
