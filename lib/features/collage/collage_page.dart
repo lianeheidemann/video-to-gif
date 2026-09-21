@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_svg/flutter_svg.dart';
@@ -17,7 +16,6 @@ import 'models/collage_layout.dart';
 import 'models/collage_settings.dart';
 import 'models/collage_sticker.dart';
 import '../../core/models/collage_text.dart';
-import '../../core/models/crop_rect.dart';
 import '../../core/models/default_colors.dart';
 import '../../core/models/photo_info.dart';
 import 'services/collage_animation.dart';
@@ -28,7 +26,6 @@ import '../../core/services/imported_asset_store.dart';
 import '../../core/services/imported_font_store.dart';
 import '../../core/services/output_service.dart';
 import '../../core/services/sticker_folder_store.dart';
-import '../../core/ui/crop/photo_crop_page.dart';
 import '../../core/ui/app_bar_title.dart';
 import 'widgets/aspect_ratio_number_input.dart';
 import 'widgets/background_image_view.dart';
@@ -42,7 +39,9 @@ import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/color_picker_sheet.dart';
 import 'widgets/export_progress_dialog.dart';
 import 'widgets/folder_tab.dart';
+import 'widgets/cell_actions.dart';
 import 'widgets/font_thumb.dart';
+import 'widgets/panels/collage_panel_actions.dart';
 import '../../core/ui/text_input_dialog.dart';
 import 'widgets/panels/layout_panel.dart';
 import '../../core/ui/preview_settings_panel.dart';
@@ -292,6 +291,13 @@ class _CollagePageState extends State<CollagePage> {
     }
     setState(() => _settings = settings);
   }
+
+  /// As três ações que as abas e as ações de célula devolvem para a tela.
+  late final _panelActions = CollagePanelActions(
+    update: _update,
+    pushUndoCheckpoint: _pushUndoCheckpoint,
+    message: _message,
+  );
 
   void _pushUndoCheckpoint() {
     _undoStack.add(_settings);
@@ -667,7 +673,12 @@ class _CollagePageState extends State<CollagePage> {
                                 _settings.replacingCell(i, cell),
                                 pushUndo: false,
                               ),
-                              onMenu: () => _openCellMenu(i),
+                              onMenu: () => openCollageCellMenu(
+                                i,
+                                context,
+                                settings: () => _settings,
+                                actions: _panelActions,
+                              ),
                             ),
                           ),
                       ],
@@ -2855,345 +2866,6 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
   // Menu por célula: substituir / trocar / ajustar cor / girar / espelhar
   // ---------------------------------------------------------------------
-
-  void _openCellMenu(int index) {
-    final cell = _settings.cells[index];
-    if (!cell.hasPhoto) {
-      _pickPhotoForCell(index);
-      return;
-    }
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          // Numa tela baixa (ou com a barra de navegação do sistema
-          // ocupando espaço), a lista de itens pode não caber na altura
-          // disponível — sem isto o `Column` simplesmente estourava por
-          // baixo em vez de rolar (`isScrollControlled: true` deixa a folha
-          // crescer até a tela quase inteira antes disso ser preciso).
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.image_outlined),
-                  title: const Text('Substituir foto'),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _pickPhotoForCell(index);
-                  },
-                ),
-                if (_settings.cells.where((c) => c.hasPhoto).length > 1)
-                  ListTile(
-                    leading: const Icon(Icons.swap_horiz_rounded),
-                    title: const Text('Trocar com…'),
-                    onTap: () {
-                      Navigator.of(sheetContext).pop();
-                      _openSwapPicker(index);
-                    },
-                  ),
-                ListTile(
-                  leading: const Icon(Icons.crop_rounded),
-                  title: const Text('Recortar'),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _openCropTool(index);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.tune_rounded),
-                  title: const Text('Ajustar cor'),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _openCellColorAdjust(index);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.rotate_90_degrees_ccw_rounded),
-                  title: const Text('Girar 90°'),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _rotateCell(index);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.flip_rounded),
-                  title: const Text('Espelhar horizontal'),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _flipCell(index, horizontal: true);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.flip_rounded),
-                  title: const Text('Espelhar vertical'),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _flipCell(index, horizontal: false);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.center_focus_strong_outlined),
-                  title: const Text('Recentralizar'),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _recenterCell(index);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickPhotoForCell(int index) async {
-    try {
-      final picked = await FilePicker.pickFile(
-        type: FileType.image,
-        dialogTitle: 'Escolha uma foto',
-      );
-      final path = picked?.path;
-      if (path == null) return;
-
-      final bytes = await File(path).readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
-      final int width;
-      final int height;
-      try {
-        final frame = await codec.getNextFrame();
-        width = frame.image.width;
-        height = frame.image.height;
-        frame.image.dispose();
-      } finally {
-        codec.dispose();
-      }
-
-      final cell = _settings.cells[index];
-      // O estilo compartilhado entra por cima: uma foto escolhida depois
-      // (numa célula que nasceu vazia, antes de a borda/fundo terem sido
-      // ajustados) tem que aparecer igual às outras, não com os padrões.
-      final replaced = _settings.withSharedCellStyle(
-        cell
-            .copyWith(
-              photoPath: path,
-              photoWidth: width,
-              photoHeight: height,
-              clearManualCrop: true,
-            )
-            .resetFraming(),
-      );
-      _update(_settings.replacingCell(index, replaced));
-    } catch (_) {
-      _message('Não foi possível abrir esta foto.');
-    }
-  }
-
-  void _openSwapPicker(int index) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          // Uma montagem com muitas células (grade livre até 9) pode ter
-          // miniaturas demais para caber na altura da folha sem rolar.
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Trocar com qual foto?',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (var i = 0; i < _settings.cells.length; i++)
-                      if (i != index && _settings.cells[i].hasPhoto)
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.of(sheetContext).pop();
-                            _update(_settings.swappingCells(index, i));
-                          },
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: SizedBox(
-                              width: 62,
-                              height: 62,
-                              child: Image.file(
-                                File(_settings.cells[i].photoPath!),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                        ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Folha de ajuste de cor: uma fileira de bolinhas (uma por ajuste, como
-  /// nos editores de foto), o nome do ajuste escolhido em cima e a régua de
-  /// intensidade embaixo, com o zero no centro. Cada mexida na régua é
-  /// aplicada na hora à célula, então a prévia atrás da folha mostra o
-  /// resultado enquanto o dedo ainda está na tela.
-  void _openCellColorAdjust(int index) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      // Sem véu: a régua muda a prévia da montagem em tempo real (ver
-      // comentário acima), e uma barreira escura por trás escondia
-      // exatamente o resultado que essa mexida deveria mostrar.
-      barrierColor: Colors.transparent,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (sheetContext, sheetSetState) {
-            if (index >= _settings.cells.length) return const SizedBox.shrink();
-            final cell = _settings.cells[index];
-            return SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: ColorAdjustPanel(
-                  title: 'Ajustar cor',
-                  hasAdjustments: cell.hasColorAdjustments,
-                  valueOf: (adjustment) => adjustment.valueOf(cell),
-                  onChangeStart: _pushUndoCheckpoint,
-                  onChanged: (adjustment, value) {
-                    _update(
-                      _settings.replacingCell(
-                        index,
-                        adjustment.apply(cell, value),
-                      ),
-                      pushUndo: false,
-                    );
-                    sheetSetState(() {});
-                  },
-                  onReset: () {
-                    _pushUndoCheckpoint();
-                    _update(
-                      _settings.replacingCell(
-                        index,
-                        cell.withoutColorAdjustments(),
-                      ),
-                      pushUndo: false,
-                    );
-                    sheetSetState(() {});
-                  },
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// Mais um quarto de volta a partir de onde a foto já estiver — continua
-  /// útil como atalho rápido mesmo depois de girar livremente com o dedo.
-  void _rotateCell(int index) {
-    final cell = _settings.cells[index];
-    _update(
-      _settings.replacingCell(
-        index,
-        cell.copyWith(rotation: cell.rotation + math.pi / 2),
-      ),
-    );
-  }
-
-  void _flipCell(int index, {required bool horizontal}) {
-    final cell = _settings.cells[index];
-    _update(
-      _settings.replacingCell(
-        index,
-        horizontal
-            ? cell.copyWith(flipHorizontal: !cell.flipHorizontal)
-            : cell.copyWith(flipVertical: !cell.flipVertical),
-      ),
-    );
-  }
-
-  /// Volta ao enquadramento padrão (deslocamento/zoom/rotação/espelhamento),
-  /// mantendo foto, recorte manual, cor e borda — o antigo comportamento do
-  /// duplo toque, agora um item do menu já que o duplo toque passa a
-  /// alternar preencher/ajustar.
-  void _recenterCell(int index) {
-    final cell = _settings.cells[index];
-    _pushUndoCheckpoint();
-    _update(
-      _settings.replacingCell(index, cell.resetFraming()),
-      pushUndo: false,
-    );
-  }
-
-  /// Proporção que a célula [index] tem no layout atual — todas as células de
-  /// um mesmo layout compartilham a mesma proporção (a grade sempre gera
-  /// larguras/alturas uniformes), então basta calcular contra um canvas de
-  /// referência do mesmo formato da montagem (`_settings.aspectRatio`) em vez
-  /// de depender do tamanho real da prévia na tela.
-  double _cellAspectRatioFor(int index) {
-    const refWidth = 1000.0;
-    final refHeight = refWidth / _settings.aspectRatio;
-    final rects = _settings.layout.cellRectsFor(
-      Size(refWidth, refHeight),
-      outerMarginRatio: _settings.outerMarginRatio,
-      innerMarginRatio: _settings.innerMarginRatio,
-    );
-    if (index >= rects.length) return 1.0;
-    final rect = rects[index];
-    if (rect.width <= 0 || rect.height <= 0) return 1.0;
-    return rect.width / rect.height;
-  }
-
-  /// Abre o recorte de uma foto específica. O recorte é livre por padrão (a
-  /// proporção da célula é só mais uma opção da fileira), então o resultado
-  /// quase nunca tem a mesma proporção da célula: por isso a foto recortada
-  /// entra em "encaixar" e com o enquadramento zerado — aparece inteira,
-  /// centralizada e na horizontal, em vez de ser esticada/cortada pelo
-  /// "preencher" para caber na célula.
-  Future<void> _openCropTool(int index) async {
-    final cell = _settings.cells[index];
-    if (!cell.hasPhoto) return;
-    final crop = await Navigator.of(context).push<CropRect>(
-      MaterialPageRoute(
-        builder: (_) => PhotoCropPage(
-          photoPath: cell.photoPath!,
-          photoWidth: cell.photoWidth,
-          photoHeight: cell.photoHeight,
-          cellAspectRatio: _cellAspectRatioFor(index),
-          initialCrop: cell.manualCrop,
-        ),
-      ),
-    );
-    if (crop == null || !mounted) return;
-    _pushUndoCheckpoint();
-    _update(
-      _settings.replacingCell(
-        index,
-        cell
-            .copyWith(manualCrop: crop, fitMode: CollageCellFitMode.contain)
-            .resetFraming(),
-      ),
-      pushUndo: false,
-    );
-  }
 
   // ---------------------------------------------------------------------
   // Ações
