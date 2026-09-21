@@ -2,8 +2,6 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/models/color_adjustments.dart';
@@ -12,7 +10,6 @@ import '../../core/models/frame_settings.dart';
 import '../../core/models/image_frame.dart';
 import '../../core/models/size_estimate.dart';
 import '../../core/models/video_info.dart';
-import '../../core/services/bundled_frame_store.dart';
 import '../../core/ffmpeg/ffmpeg_service.dart';
 import '../../core/services/imported_frame_store.dart';
 import '../../core/services/size_estimator.dart';
@@ -20,13 +17,17 @@ import 'converting_page.dart';
 import '../../core/ui/app_bar_title.dart';
 import '../../core/ui/checkerboard_background.dart';
 import '../../core/ui/color_adjust_controls.dart';
-import '../../core/ui/color_picker_sheet.dart';
 import '../../core/ui/crop/crop_controller.dart';
+import '../../core/ui/frame/content_fit_picker.dart';
+import '../../core/ui/frame/frame_color_row.dart';
+import '../../core/ui/frame/frame_sliders.dart';
+import '../../core/ui/frame/frame_style_picker.dart';
+import '../../core/ui/frame/frame_thumb_shell.dart';
+import '../../core/ui/frame/image_frame_picker.dart';
 import '../../core/ui/crop/crop_overlay.dart';
 import '../../core/ui/crop/crop_size_fields.dart';
 import '../../core/ui/crop/cropped_view.dart';
 import '../../core/ui/editor_tabs_footer.dart';
-import '../../core/painting/frame_painter.dart';
 import '../../core/ui/labeled_section.dart';
 import '../../core/ui/preview_settings_panel.dart';
 import 'widgets/size_panel.dart';
@@ -732,7 +733,7 @@ class _EditorPageState extends State<EditorPage> {
               ),
               Positioned.fill(
                 child: IgnorePointer(
-                  child: _imageFrameArtwork(asset, fit: BoxFit.fill),
+                  child: ImageFrameArtwork(asset: asset, fit: BoxFit.fill),
                 ),
               ),
             ],
@@ -802,26 +803,41 @@ class _EditorPageState extends State<EditorPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _frameStyleThumbnails(),
+          FrameStylePicker(
+            active: _settings.frame.style,
+            onSelected: _selectFrameStyle,
+          ),
           if (style != FrameStyle.none) ...[
             const SizedBox(height: 18),
-            _sectionCard(
+            SectionCard(
               children: [
-                _frameColorRow(),
+                FrameColorRow(
+                  label: 'Cor da moldura',
+                  color: _settings.frame.color,
+                  onTap: _pickFrameColor,
+                ),
                 Divider(
                   height: 13,
                   color: theme.colorScheme.outlineVariant.withValues(
                     alpha: 0.45,
                   ),
                 ),
-                _frameThicknessRow(),
+                FrameThicknessRow(
+                  frame: _settings.frame,
+                  onChangeStart: _pushUndoCheckpoint,
+                  onChanged: (next) => _updateFrame(next, pushUndo: false),
+                ),
                 Divider(
                   height: 13,
                   color: theme.colorScheme.outlineVariant.withValues(
                     alpha: 0.45,
                   ),
                 ),
-                _cornerRadiusRow(),
+                CornerRadiusRow(
+                  frame: _settings.frame,
+                  onChangeStart: _pushUndoCheckpoint,
+                  onChanged: (next) => _updateFrame(next, pushUndo: false),
+                ),
               ],
             ),
           ],
@@ -850,12 +866,20 @@ class _EditorPageState extends State<EditorPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _imageFrameThumbnails(),
+          ImageFramePicker(
+            selected: _settings.frame.imageFrame,
+            imported: _importedImageFrames,
+            onSelected: _selectImageFrame,
+            onClear: () =>
+                _updateFrame(_settings.frame.copyWith(clearImageFrame: true)),
+            onImport: _importFrameImage,
+            onRemoveImported: _confirmRemoveImportedFrame,
+          ),
           if (hasFixedAspect) ...[
             const SizedBox(height: 18),
-            _sectionCard(children: [_contentFitSubsection()]),
+            SectionCard(children: [_contentFitSubsection()]),
             const SizedBox(height: 18),
-            _sectionCard(children: [_frameResolutionSelector()]),
+            SectionCard(children: [_frameResolutionSelector()]),
           ],
         ],
       ),
@@ -907,7 +931,7 @@ class _EditorPageState extends State<EditorPage> {
       // Mesma folga inferior dos Cards de [LabeledSection], já que aqui a
       // caixa é um item da lista, não o conteúdo de uma seção.
       padding: const EdgeInsets.only(bottom: 16),
-      child: _sectionCard(
+      child: SectionCard(
         children: [
           SwitchListTile(
             key: const ValueKey('transparentBackgroundSwitch'),
@@ -919,325 +943,22 @@ class _EditorPageState extends State<EditorPage> {
           ),
           if (!frame.transparentBackground) ...[
             const Divider(height: 1),
-            _backgroundColorRow(),
+            FrameColorRow(
+              key: const ValueKey('backgroundColorRow'),
+              label: 'Cor do fundo',
+              color: _settings.frame.backgroundColor,
+              onTap: _pickBackgroundColor,
+            ),
           ],
         ],
       ),
     );
   }
 
-  /// Linha horizontal com uma miniatura por [FrameStyle], cada uma já
-  /// desenhada com o [FramePainter] real do estilo — a miniatura é a
-  /// prévia, não um ícone genérico. A marcação segue [_activeFrameStyle],
-  /// então com uma moldura de imagem ativa quem fica marcada aqui é "Sem
-  /// moldura".
-  Widget _frameStyleThumbnails() {
-    final active = _activeFrameStyle;
-    return SizedBox(
-      height: 84,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: FrameStyle.values.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final style = FrameStyle.values[index];
-          return _frameStyleThumb(style, selected: style == active);
-        },
-      ),
-    );
-  }
-
-  Widget _frameStyleThumb(FrameStyle style, {required bool selected}) {
-    return _frameThumbShell(
-      key: ValueKey('frameStyleThumb_${style.name}'),
-      label: style.label,
-      selected: selected,
-      padding: const EdgeInsets.all(8),
-      onTap: () => _selectFrameStyle(style),
-      child: _frameStyleGlyph(
-        style,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-    );
-  }
-
-  /// A casca visual de todas as miniaturas de moldura: quadrado de 62px com
-  /// borda, o selo de check quando marcada e o rótulo embaixo. Só o miolo
-  /// ([child]) muda entre as fileiras — sem isto, as três variações
-  /// (estilo procedural, "Sem moldura" da fileira de imagem, arte de
-  /// imagem) seriam o mesmo layout copiado três vezes.
-  Widget _frameThumbShell({
-    required Key key,
-    required String label,
-    required bool selected,
-    required EdgeInsets padding,
-    required VoidCallback onTap,
-    required Widget child,
-    VoidCallback? onLongPress,
-  }) {
-    final theme = Theme.of(context);
-    return GestureDetector(
-      key: key,
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: SizedBox(
-        width: 46,
-        child: Column(
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  padding: padding,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: selected
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.outlineVariant.withValues(
-                              alpha: 0.5,
-                            ),
-                      width: selected ? 2 : 1,
-                    ),
-                  ),
-                  child: child,
-                ),
-                if (selected)
-                  Positioned(
-                    top: -4,
-                    right: -4,
-                    child: Container(
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: theme.colorScheme.surface,
-                          width: 2,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.check_rounded,
-                        size: 9,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Miniatura de um [FrameStyle]: para "Sem moldura", um ícone simples;
-  /// para os demais, o [FramePainter] real do estilo (mesmos padrões de
-  /// canto/espessura, fundo transparente para os cantos ficarem visíveis)
-  /// com uma "tela" escura desenhada por cima da janela de conteúdo — sem
-  /// ela, estilos com espessura pequena (ex. "Bordas finas") ou canto pouco
-  /// arredondado (ex. "Celular Clássico") ficam indistinguíveis de um
-  /// bloco sólido, já que não há vídeo por baixo nesta miniatura.
-  ///
-  /// A margem da "tela" é fixa (proporção do tamanho da própria miniatura),
-  /// não a espessura real do estilo: a espessura real é calibrada para o
-  /// canvas de exportação (centenas de pixels) e, escalada para os ~40px
-  /// desta miniatura, ficaria sub-pixel — a moldura pareceria um bloco
-  /// sólido de novo, exatamente o problema que essa margem resolve.
-  Widget _frameStyleGlyph(FrameStyle style, {required Color color}) {
-    if (style == FrameStyle.none) {
-      return Icon(
-        Icons.crop_free_rounded,
-        size: 16,
-        color: color.withValues(alpha: 0.6),
-      );
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = constraints.biggest;
-        final outerRadius = style.defaultCornerRatio * size.shortestSide;
-        final inset = size.shortestSide * 0.22;
-        final innerRadius = (outerRadius - inset).clamp(0.0, outerRadius);
-        return Stack(
-          children: [
-            CustomPaint(
-              size: size,
-              painter: FramePainter(
-                FrameSettings(
-                  style: style,
-                  color: color,
-                  thicknessAtReference: style.defaultThickness,
-                  cornerRatio: style.defaultCornerRatio,
-                  transparentBackground: true,
-                ),
-              ),
-            ),
-            Positioned(
-              left: inset,
-              top: inset,
-              right: inset,
-              bottom: inset,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(innerRadius),
-                child: ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Aplica o estilo de moldura escolhido, adotando os padrões de
-  /// espessura e arredondamento sugeridos por ele (o usuário ainda pode
-  /// ajustar cada um nos sliders depois). Cor, ajuste de conteúdo e fundo
-  /// transparente são mantidos. Sempre limpa a moldura de imagem
-  /// selecionada, já que as duas famílias são mutuamente exclusivas.
   void _selectFrameStyle(FrameStyle style) {
-    final current = _settings.frame;
     _updateFrameKeepingAnchorPosition(
-      current.copyWith(
-        style: style,
-        cornerRatio: style.defaultCornerRatio,
-        thicknessAtReference: style.defaultThickness,
-        clearImageFrame: true,
-      ),
+      frameWithStyle(_settings.frame, style),
       anchorKey: _frameStyleAnchorKey,
-    );
-  }
-
-  /// Fileira horizontal com "Sem moldura", as molduras de imagem prontas do
-  /// app ([ImageFrameLibrary.bundled]), as importadas pelo usuário, e um
-  /// botão "+" para importar mais.
-  ///
-  /// "Sem moldura" na frente é o par da miniatura de mesmo nome na fileira
-  /// procedural: cada fileira mostra sempre exatamente uma opção marcada, e
-  /// é assim que dá para ver que escolher de um lado desativou o outro.
-  Widget _imageFrameThumbnails() {
-    final selected = _settings.frame.imageFrame;
-    final assets = [...bundledImageFrames, ..._importedImageFrames];
-    return SizedBox(
-      height: 84,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: assets.length + 2,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          if (index == 0) return _noImageFrameThumb(selected: selected == null);
-          if (index == assets.length + 1) return _importFrameThumb();
-          final asset = assets[index - 1];
-          return _imageFrameThumb(asset, selected: asset.id == selected?.id);
-        },
-      ),
-    );
-  }
-
-  /// Miniatura "Sem moldura" da fileira de molduras de imagem: desmarca a
-  /// arte ativa sem mexer no estilo procedural (que já está em
-  /// [FrameStyle.none] sempre que há uma moldura de imagem selecionada).
-  Widget _noImageFrameThumb({required bool selected}) {
-    final theme = Theme.of(context);
-    return _frameThumbShell(
-      key: const ValueKey('imageFrameThumb_none'),
-      label: FrameStyle.none.label,
-      selected: selected,
-      padding: const EdgeInsets.all(8),
-      onTap: () => _updateFrameKeepingAnchorPosition(
-        _settings.frame.copyWith(clearImageFrame: true),
-        anchorKey: _imageFrameAnchorKey,
-      ),
-      child: Icon(
-        Icons.crop_free_rounded,
-        size: 16,
-        color: theme.colorScheme.primary.withValues(alpha: 0.6),
-      ),
-    );
-  }
-
-  Widget _imageFrameThumb(ImageFrameAsset asset, {required bool selected}) {
-    return _frameThumbShell(
-      key: ValueKey('imageFrameThumb_${asset.id}'),
-      label: asset.label,
-      selected: selected,
-      padding: const EdgeInsets.all(4),
-      onTap: () => _selectImageFrame(asset),
-      onLongPress: asset.source == ImageFrameSource.bundledSvg
-          ? null
-          : () => _confirmRemoveImportedFrame(asset),
-      child: _imageFrameArtwork(asset, fit: BoxFit.contain),
-    );
-  }
-
-  /// Desenha a arte de uma moldura de imagem, seja ela um SVG empacotado no
-  /// app, um SVG importado pelo usuário, ou (formato legado) um PNG
-  /// importado antes de o import passar a exigir SVG.
-  Widget _imageFrameArtwork(ImageFrameAsset asset, {required BoxFit fit}) {
-    return switch (asset.source) {
-      ImageFrameSource.bundledSvg => SvgPicture.asset(
-        asset.svgAssetPath!,
-        fit: fit,
-      ),
-      ImageFrameSource.importedSvg => SvgPicture.file(
-        File(asset.imageFilePath!),
-        fit: fit,
-      ),
-      ImageFrameSource.importedImage => Image.file(
-        File(asset.imageFilePath!),
-        fit: fit,
-      ),
-    };
-  }
-
-  Widget _importFrameThumb() {
-    final theme = Theme.of(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _importFrameImage,
-      child: SizedBox(
-        width: 46,
-        child: Column(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.5,
-                  ),
-                ),
-              ),
-              child: Icon(
-                Icons.add_photo_alternate_outlined,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Importar',
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall,
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1264,26 +985,8 @@ class _EditorPageState extends State<EditorPage> {
     }
   }
 
-  /// Confirma e remove uma moldura de imagem importada.
   Future<void> _confirmRemoveImportedFrame(ImageFrameAsset asset) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Remover moldura?'),
-        content: Text('"${asset.label}" vai ser removida da lista.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Remover'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
+    if (!await confirmRemoveImportedFrame(context, asset)) return;
 
     await _importedFrameStore.remove(asset.id);
     if (!mounted) return;
@@ -1295,53 +998,6 @@ class _EditorPageState extends State<EditorPage> {
         _updateFrame(_settings.frame.copyWith(clearImageFrame: true));
       }
     });
-  }
-
-  Widget _frameColorRow() => _colorPickerRow(
-    label: 'Cor da moldura',
-    color: _settings.frame.color,
-    onTap: _pickFrameColor,
-  );
-
-  Widget _backgroundColorRow() => _colorPickerRow(
-    key: const ValueKey('backgroundColorRow'),
-    label: 'Cor do fundo',
-    color: _settings.frame.backgroundColor,
-    onTap: _pickBackgroundColor,
-  );
-
-  Widget _colorPickerRow({
-    Key? key,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return InkWell(
-      key: key,
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant,
-                  width: 1.5,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _pickFrameColor() => _pickColor(
@@ -1360,134 +1016,27 @@ class _EditorPageState extends State<EditorPage> {
     ),
   );
 
-  /// Mesma folha de cor da Montagem (swatches + conta-gotas na prévia atual
-  /// + roda HSV completa) para os dois seletores de cor do editor — antes
-  /// esta tela tinha sua própria folha, só com swatches fixos.
-  ///
-  /// O checkpoint de desfazer entra na primeira cor escolhida, não na
-  /// abertura do painel nem em cada mexida da roda HSV/conta-gotas — mesmo
-  /// cuidado que `CollagePage._pickBorderColor` já tinha: sem isso, arrastar
-  /// pela roda de cor empilharia um passo de desfazer por quadro.
+  /// Folha de cor da Montagem (swatches + conta-gotas na prévia atual + roda
+  /// HSV completa) para os dois seletores de cor desta tela.
   void _pickColor({
     required String title,
     required Color selectedColor,
     required ValueChanged<Color> onSelected,
   }) {
-    var checkpointPushed = false;
-    showCollageColorPickerSheet(
+    showFrameColorPicker(
       context: context,
       title: title,
-      initialColor: selectedColor,
-      onColorSelected: (color) {
-        if (!checkpointPushed) {
-          checkpointPushed = true;
-          _pushUndoCheckpoint();
-        }
-        onSelected(color);
-      },
+      selectedColor: selectedColor,
+      onSelected: onSelected,
+      onFirstChange: _pushUndoCheckpoint,
       previewImageBuilder: _renderPreviewImage,
     );
   }
 
-  /// Rasteriza a prévia atual (já cortada/na moldura, o que estiver na tela)
-  /// para o conta-gotas da folha de cor poder amostrar um pixel dela — mesma
-  /// técnica de `CollagePage._renderPreviewImage`, mas capturando o que já
-  /// está desenhado na tela em vez de recompor do zero.
-  Future<ui.Image> _renderPreviewImage() async {
-    final renderObject = _colorPreviewKey.currentContext?.findRenderObject();
-    if (renderObject is! RenderRepaintBoundary) {
-      throw StateError('Prévia indisponível para o conta-gotas.');
-    }
-    return renderObject.toImage(
-      pixelRatio: MediaQuery.of(context).devicePixelRatio,
-    );
-  }
-
-  Widget _frameThicknessRow() {
-    final theme = Theme.of(context);
-    final frame = _settings.frame;
-    final thickness = frame.thicknessAtReference.clamp(0, 24).toDouble();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Espessura da borda',
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
-            Text(
-              '${thickness.round()}px',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-        Slider(
-          min: 0,
-          max: 24,
-          divisions: 24,
-          value: thickness,
-          label: '${thickness.round()}px',
-          onChangeStart: (_) => _pushUndoCheckpoint(),
-          onChanged: (v) => _updateFrame(
-            frame.copyWith(thicknessAtReference: v),
-            pushUndo: false,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Slider contínuo do arredondamento dos cantos: no mínimo não há
-  /// arredondamento nenhum (canto reto); no máximo
-  /// ([FrameSettings.maxCornerRatio]) a moldura fica completamente
-  /// arredondada. O valor é mostrado como porcentagem desse máximo, não em
-  /// pixels — o arredondamento é proporcional ao canvas, não absoluto.
-  Widget _cornerRadiusRow() {
-    final theme = Theme.of(context);
-    final frame = _settings.frame;
-    const max = FrameSettings.maxCornerRatio;
-    final ratio = frame.cornerRatio.clamp(0.0, max).toDouble();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Arredondamento dos cantos',
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
-            Text(
-              '${(ratio / max * 100).round()}%',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-        Slider(
-          min: 0,
-          max: max,
-          divisions: 25,
-          value: ratio,
-          label: '${(ratio / max * 100).round()}%',
-          onChangeStart: (_) => _pushUndoCheckpoint(),
-          onChanged: (v) =>
-              _updateFrame(frame.copyWith(cornerRatio: v), pushUndo: false),
-        ),
-      ],
-    );
-  }
+  /// Rasteriza exatamente o que está desenhado na prévia para o conta-gotas
+  /// da folha de cor poder amostrar um pixel dela.
+  Future<ui.Image> _renderPreviewImage() =>
+      renderPreviewImage(context, _colorPreviewKey);
 
   /// Subseção recolhível "Ajuste do conteúdo", aninhada dentro de
   /// "Moldura de imagem": como o vídeo se encaixa quando a proporção da
@@ -1505,57 +1054,22 @@ class _EditorPageState extends State<EditorPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final mode in _selectableContentFitModes) ...[
-            _contentFitTile(mode, selected: mode == selected),
+            ContentFitTile(
+              mode: mode,
+              selected: mode == selected,
+              onSelected: (m) =>
+                  _updateFrame(_settings.frame.copyWith(contentFit: m)),
+              zoomRow: ContentZoomRow(
+                frame: _settings.frame,
+                onChangeStart: _pushUndoCheckpoint,
+                onChanged: (next) => _updateFrame(next, pushUndo: false),
+              ),
+            ),
             if (mode != _selectableContentFitModes.last)
               const SizedBox(height: 8),
           ],
         ],
       ),
-    );
-  }
-
-  /// Slider disponível somente em "Expandir sem cortar". De 10% a 300%, ele
-  /// reduz ou amplia o vídeo nítido central sobre o fundo preto.
-  Widget _contentZoomRow() {
-    final theme = Theme.of(context);
-    final frame = _settings.frame;
-    final zoom = frame.contentZoom
-        .clamp(FrameSettings.minContentZoom, FrameSettings.maxContentZoom)
-        .toDouble();
-    final percent = (zoom * 100).round();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Zoom do conteúdo',
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
-            Text(
-              '$percent%',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-        Slider(
-          key: const ValueKey('frameContentZoomSlider'),
-          min: FrameSettings.minContentZoom,
-          max: FrameSettings.maxContentZoom,
-          divisions: 58,
-          value: zoom,
-          label: '$percent%',
-          onChangeStart: (_) => _pushUndoCheckpoint(),
-          onChanged: (v) =>
-              _updateFrame(frame.copyWith(contentZoom: v), pushUndo: false),
-        ),
-      ],
     );
   }
 
@@ -1602,97 +1116,6 @@ class _EditorPageState extends State<EditorPage> {
       ),
     );
   }
-
-  Widget _contentFitTile(ContentFitMode mode, {required bool selected}) {
-    final theme = Theme.of(context);
-    final showZoom = selected && mode == ContentFitMode.expand;
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: selected
-            ? theme.colorScheme.primary.withValues(alpha: 0.10)
-            : theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary.withValues(alpha: 0.4)
-              : theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
-        ),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            key: ValueKey('contentFitTile_${mode.name}'),
-            onTap: () =>
-                _updateFrame(_settings.frame.copyWith(contentFit: mode)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: _contentFitTileHeader(mode, selected: selected),
-            ),
-          ),
-          if (showZoom)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: Column(
-                children: [
-                  Divider(
-                    height: 1,
-                    color: theme.colorScheme.outlineVariant.withValues(
-                      alpha: 0.55,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _contentZoomRow(),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _contentFitTileHeader(ContentFitMode mode, {required bool selected}) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            _contentFitIcon(mode),
-            size: 16,
-            color: theme.colorScheme.primary,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            mode.label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        if (selected)
-          Icon(
-            Icons.check_circle_rounded,
-            color: theme.colorScheme.primary,
-            size: 20,
-          ),
-      ],
-    );
-  }
-
-  IconData _contentFitIcon(ContentFitMode mode) => switch (mode) {
-    ContentFitMode.auto => Icons.auto_fix_high_rounded,
-    ContentFitMode.fill => Icons.crop_free_rounded,
-    ContentFitMode.fit => Icons.fit_screen_rounded,
-    ContentFitMode.expand => Icons.open_in_full_rounded,
-  };
 
   /// Prévia da aba "Ajustar": o vídeo inteiro com o overlay de recorte
   /// arrastável. A linha do tempo é adicionada depois, por [_timelined],
@@ -2377,7 +1800,7 @@ class _EditorPageState extends State<EditorPage> {
                 _update(_settings.copyWith(webpQuality: value)),
           ),
           const SizedBox(height: 12),
-          _sectionCard(
+          SectionCard(
             children: [
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -2424,7 +1847,7 @@ class _EditorPageState extends State<EditorPage> {
             onSelected: (value) => _update(_settings.copyWith(colors: value)),
           ),
           const SizedBox(height: 12),
-          _sectionCard(
+          SectionCard(
             children: [
               _collapsibleSubsection(
                 label: 'Suavização de cor',
@@ -2459,7 +1882,7 @@ class _EditorPageState extends State<EditorPage> {
             ],
           ),
           const SizedBox(height: 12),
-          _sectionCard(
+          SectionCard(
             children: [
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -2484,20 +1907,6 @@ class _EditorPageState extends State<EditorPage> {
   /// toque no [Material] mais próximo, e uma caixa decorada no meio do
   /// caminho esconderia esses efeitos (o framework chega a avisar disso em
   /// tempo de execução).
-  Widget _sectionCard({required List<Widget> children}) {
-    final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: children,
-        ),
-      ),
-    );
-  }
 
   /// Linha "rótulo à esquerda, valor à direita" usada nos resumos de seção.
   Widget _metricRow(String label, String value) {

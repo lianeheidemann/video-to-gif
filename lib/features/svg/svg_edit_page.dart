@@ -6,7 +6,6 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -20,8 +19,8 @@ import 'services/svg_xml_editor.dart';
 import '../../core/ui/app_bar_title.dart';
 import '../../core/ui/checkerboard_background.dart';
 import '../../core/ui/color_adjust_controls.dart';
-import '../../core/ui/color_picker_sheet.dart';
 import '../../core/ui/crop/crop_controller.dart';
+import '../../core/ui/frame/frame_color_row.dart';
 import '../../core/ui/crop/crop_overlay.dart';
 import '../../core/ui/crop/crop_size_fields.dart';
 import '../../core/ui/crop/cropped_view.dart';
@@ -830,47 +829,13 @@ class _SvgEditPageState extends State<SvgEditPage> {
             height: 13,
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
-          _backgroundColorRow(),
+          FrameColorRow(
+            label: 'Cor do fundo',
+            color: _settings.backgroundColor,
+            onTap: _pickBackgroundColor,
+          ),
         ],
       ],
-    );
-  }
-
-  Widget _backgroundColorRow() => _colorPickerRow(
-    label: 'Cor do fundo',
-    color: _settings.backgroundColor,
-    onTap: _pickBackgroundColor,
-  );
-
-  Widget _colorPickerRow({
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant,
-                  width: 1.5,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -888,31 +853,20 @@ class _SvgEditPageState extends State<SvgEditPage> {
     required Color selectedColor,
     required ValueChanged<Color> onSelected,
   }) {
-    var checkpointPushed = false;
-    showCollageColorPickerSheet(
+    showFrameColorPicker(
       context: context,
       title: title,
-      initialColor: selectedColor,
-      onColorSelected: (color) {
-        if (!checkpointPushed) {
-          checkpointPushed = true;
-          _pushUndoCheckpoint();
-        }
-        onSelected(color);
-      },
+      selectedColor: selectedColor,
+      onSelected: onSelected,
+      onFirstChange: _pushUndoCheckpoint,
       previewImageBuilder: _renderPreviewImage,
     );
   }
 
-  Future<ui.Image> _renderPreviewImage() async {
-    final renderObject = _colorPreviewKey.currentContext?.findRenderObject();
-    if (renderObject is! RenderRepaintBoundary) {
-      throw StateError('Prévia indisponível para o conta-gotas.');
-    }
-    return renderObject.toImage(
-      pixelRatio: MediaQuery.of(context).devicePixelRatio,
-    );
-  }
+  /// Rasteriza a prévia atual para o conta-gotas da folha de cor poder
+  /// amostrar um pixel dela.
+  Future<ui.Image> _renderPreviewImage() =>
+      renderPreviewImage(context, _colorPreviewKey);
 
   // ---------------------------------------------------------------------
   // Seção "Filtro"
