@@ -7,10 +7,7 @@ import 'crop_overlay.dart';
 /// fixo: Editar GIF (vídeo), Moldura (foto) e Editar SVG.
 ///
 /// Guarda só o que as três compartilham — os limites da fonte, o mínimo de
-/// cada lado e a sobra fracionária do arrasto, que é acumulada de um frame de
-/// gesto para o próximo em vez de descartada: sem isso, uma fonte exibida bem
-/// maior que o tamanho nativo faz o arrasto parecer travado e depois "pular",
-/// porque cada frame sozinho não fecha um pixel inteiro da fonte. Quem grava o recorte continua
+/// cada lado e a sobra fracionária do arrasto. Quem grava o recorte continua
 /// sendo a página, porque cada uma o guarda num lugar diferente
 /// (`ConversionSettings.crop`, `FrameSettings.crop`, `SvgEditSettings.crop`)
 /// e com a própria pilha de desfazer.
@@ -23,6 +20,7 @@ class CropController {
     required this.sourceWidth,
     required this.sourceHeight,
     this.evenOnly = false,
+    this.accumulateDragRemainder = true,
     this.minHandleSize,
   });
 
@@ -33,6 +31,15 @@ class CropController {
   /// mínimo 2. Exigência dos filtros `crop`/`scale` do FFmpeg, então só a
   /// tela de vídeo liga isso — foto e SVG aceitam qualquer inteiro ≥ 1.
   final bool evenOnly;
+
+  /// Acumula a sobra fracionária de um frame de gesto para o próximo, em vez
+  /// de descartá-la. Sem isso, uma fonte de baixa resolução exibida bem maior
+  /// que o tamanho nativo faz o arrasto parecer travado e depois "pular",
+  /// porque cada frame sozinho não fecha um pixel inteiro da fonte.
+  ///
+  /// A tela de vídeo não acumula — mantido como estava para não mudar o
+  /// comportamento dela nesta refatoração.
+  final bool accumulateDragRemainder;
 
   /// Janela mínima arrastável pela alça, quando diferente do padrão de
   /// [resizeFreeCrop]/[resizeLockedCrop]. O SVG usa um valor menor: 32
@@ -113,8 +120,8 @@ class CropController {
   }
 
   /// Recalcula o recorte a partir do arrasto de uma alça, livre ou travado a
-  /// [ratio]. Devolve `null` quando nada mudou — a sobra fica guardada para o
-  /// próximo frame do gesto.
+  /// [ratio]. Devolve `null` quando nada mudou — com [accumulateDragRemainder]
+  /// ligado, a sobra fica guardada para o próximo frame do gesto.
   CropRect? resizeBy({
     required CropRect crop,
     required CropHandle handle,
@@ -149,7 +156,7 @@ class CropController {
         next.height == crop.height &&
         next.x == crop.x &&
         next.y == crop.y) {
-      _resizeRemainder = Offset(dx, dy);
+      if (accumulateDragRemainder) _resizeRemainder = Offset(dx, dy);
       return null;
     }
 
@@ -163,16 +170,23 @@ class CropController {
     final maxX = (sourceWidth - crop.width).clamp(0, sourceWidth);
     final maxY = (sourceHeight - crop.height).clamp(0, sourceHeight);
 
-    final dx = sourceDelta.dx + _moveRemainder.dx;
-    final dy = sourceDelta.dy + _moveRemainder.dy;
-    final rawX = (crop.x + dx).clamp(0.0, maxX.toDouble());
-    final rawY = (crop.y + dy).clamp(0.0, maxY.toDouble());
-    final x = rawX.round();
-    final y = rawY.round();
-    // Guarda só o resto do arredondamento, nunca o quanto passou do limite já
-    // clampado — senão arrastar bem além da borda exigiria arrastar de volta o
-    // mesmo tanto antes da janela voltar a se mexer.
-    _moveRemainder = Offset(rawX - x, rawY - y);
+    int x;
+    int y;
+    if (accumulateDragRemainder) {
+      final dx = sourceDelta.dx + _moveRemainder.dx;
+      final dy = sourceDelta.dy + _moveRemainder.dy;
+      final rawX = (crop.x + dx).clamp(0.0, maxX.toDouble());
+      final rawY = (crop.y + dy).clamp(0.0, maxY.toDouble());
+      x = rawX.round();
+      y = rawY.round();
+      // Guarda só o resto do arredondamento, nunca o quanto passou do limite
+      // já clampado — senão arrastar bem além da borda exigiria arrastar de
+      // volta o mesmo tanto antes da janela voltar a se mexer.
+      _moveRemainder = Offset(rawX - x, rawY - y);
+    } else {
+      x = (crop.x + sourceDelta.dx.round()).clamp(0, maxX);
+      y = (crop.y + sourceDelta.dy.round()).clamp(0, maxY);
+    }
 
     if (x == crop.x && y == crop.y) return null;
     return crop.copyWith(x: x, y: y);

@@ -101,12 +101,14 @@ class _EditorPageState extends State<EditorPage> {
   final List<ConversionSettings> _undoStack = [];
   final List<ConversionSettings> _redoStack = [];
 
-  /// Regras de recorte compartilhadas com as telas de foto e SVG. Só o vídeo
-  /// arredonda para par, exigência do filtro `crop` do FFmpeg.
+  /// Regras de recorte compartilhadas com as telas de foto e SVG. O vídeo
+  /// arredonda para par (exigência do filtro `crop` do FFmpeg) e, ao
+  /// contrário das outras duas, não acumula a sobra fracionária do arrasto.
   late final _crop = CropController(
     sourceWidth: _video.width,
     sourceHeight: _video.height,
     evenOnly: true,
+    accumulateDragRemainder: false,
   );
 
   final _widthController = TextEditingController();
