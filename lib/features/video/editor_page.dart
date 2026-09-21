@@ -285,8 +285,8 @@ class _EditorPageState extends State<EditorPage> {
       EditorSection.fromLabeled(_durationSection(), label: 'Duração'),
       EditorSection.fromLabeled(_aspectSection(), label: 'Janela'),
       EditorSection.fromLabeled(_speedSection(), label: 'Velocidade'),
-      EditorSection.fromLabeled(_resolutionSection(), label: 'Resolução'),
       EditorSection.fromLabeled(_fpsSection(), label: 'FPS'),
+      EditorSection.fromLabeled(_resolutionSection(), label: 'Resolução'),
       if (isWebp)
         EditorSection.fromLabeled(_webpQualitySection(), label: 'Qualidade')
       else

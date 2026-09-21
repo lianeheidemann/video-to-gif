@@ -719,6 +719,26 @@ class _SvgEditPageState extends State<SvgEditPage> {
     return parts.isEmpty ? 'Nenhum' : parts.join(' · ');
   }
 
+  /// Os quatro botões de girar/espelhar ficam dois a dois numa linha, então
+  /// cada um tem menos da metade da largura da tela. O padding padrão do
+  /// botão comia quase todo esse espaço e sobrava tão pouco para o texto que
+  /// "90° à esquerda" quebrava em três linhas num celular estreito — e até
+  /// "Horizontal" quebrava em duas. Apertar o padding e travar em uma linha
+  /// resolve; o `FittedBox` encolhe a fonte só quando ainda assim não couber
+  /// (texto do sistema aumentado), em vez de cortar a palavra.
+  /// Só o padding: serve tanto ao contornado quanto ao preenchido (o de
+  /// espelhar troca de tipo quando está ligado), então não pode carregar
+  /// nada específico de um dos dois.
+  static const ButtonStyle _transformButtonStyle = ButtonStyle(
+    padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
+  );
+
+  Widget _transformLabel(String label) => FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: Alignment.centerLeft,
+    child: Text(label, maxLines: 1),
+  );
+
   Widget _rotateFlipSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -733,8 +753,9 @@ class _SvgEditPageState extends State<SvgEditPage> {
                         (_settings.rotationQuarterTurns + 3) % 4,
                   ),
                 ),
+                style: _transformButtonStyle,
                 icon: const Icon(Icons.rotate_left_rounded),
-                label: const Text('Girar'),
+                label: _transformLabel('90° à esquerda'),
               ),
             ),
             const SizedBox(width: 12),
@@ -746,8 +767,9 @@ class _SvgEditPageState extends State<SvgEditPage> {
                         (_settings.rotationQuarterTurns + 1) % 4,
                   ),
                 ),
+                style: _transformButtonStyle,
                 icon: const Icon(Icons.rotate_right_rounded),
-                label: const Text('Girar'),
+                label: _transformLabel('90° à direita'),
               ),
             ),
           ],
@@ -757,7 +779,7 @@ class _SvgEditPageState extends State<SvgEditPage> {
           children: [
             Expanded(
               child: _flipToggleButton(
-                label: 'Espelhar horizontal',
+                label: 'Horizontal',
                 icon: Icons.swap_horiz_rounded,
                 selected: _settings.flipHorizontal,
                 onTap: () => _update(
@@ -768,7 +790,7 @@ class _SvgEditPageState extends State<SvgEditPage> {
             const SizedBox(width: 12),
             Expanded(
               child: _flipToggleButton(
-                label: 'Espelhar vertical',
+                label: 'Vertical',
                 icon: Icons.swap_vert_rounded,
                 selected: _settings.flipVertical,
                 onTap: () => _update(
@@ -791,13 +813,15 @@ class _SvgEditPageState extends State<SvgEditPage> {
     return selected
         ? FilledButton.tonalIcon(
             onPressed: onTap,
+            style: _transformButtonStyle,
             icon: Icon(icon),
-            label: Text(label),
+            label: _transformLabel(label),
           )
         : OutlinedButton.icon(
             onPressed: onTap,
+            style: _transformButtonStyle,
             icon: Icon(icon),
-            label: Text(label),
+            label: _transformLabel(label),
           );
   }
 
