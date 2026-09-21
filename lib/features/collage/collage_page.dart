@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'models/collage_background.dart';
@@ -32,8 +31,6 @@ import '../../core/ui/collage_overlay_view.dart';
 import '../../core/ui/text_overlay_editor.dart';
 import 'painting/collage_painter.dart';
 import 'widgets/export_progress_dialog.dart';
-import 'widgets/folder_tab.dart';
-import 'widgets/asset_thumbs.dart';
 import 'widgets/cell_actions.dart';
 import 'widgets/font_thumb.dart';
 import 'widgets/panels/collage_panel_actions.dart';
@@ -42,6 +39,7 @@ import 'widgets/panels/background_panel.dart';
 import 'widgets/panels/border_panel.dart';
 import 'widgets/panels/color_panel.dart';
 import 'widgets/panels/margin_panel.dart';
+import 'widgets/panels/stickers_panel.dart';
 import 'widgets/panels/text_panel.dart';
 import '../../core/ui/text_input_dialog.dart';
 import 'widgets/panels/layout_panel.dart';
@@ -552,7 +550,22 @@ class _CollagePageState extends State<CollagePage> {
       settings: _settings,
       actions: _panelActions,
     ),
-    _CollageTab.stickers => _stickersPanelContent(),
+    _CollageTab.stickers => CollageStickersPanel(
+      stickerFolderId: _stickerFolderId,
+      customFolders: _customFolders,
+      importedStickers: _importedStickers,
+      pendingFolderScrollId: _pendingFolderScrollId,
+      // Atribuição simples de propósito: quem consome é o `Builder` da
+      // fileira, durante o build, e `setState` ali lançaria exceção.
+      onPendingScrollConsumed: () => _pendingFolderScrollId = null,
+      onFolderSelected: (id) => setState(() => _stickerFolderId = id),
+      onOpenFolderMenu: _openFolderMenu,
+      onCreateFolder: _createStickerFolder,
+      onAddBundledSticker: _addBundledSticker,
+      onAddImportedSticker: _addStickerFromAsset,
+      onRemoveSticker: _confirmRemoveSticker,
+      onImportSticker: _importSticker,
+    ),
     _CollageTab.text => CollageTextPanel(
       selectedText: _selectedOverlayId == null
           ? null
@@ -1286,188 +1299,6 @@ class _CollagePageState extends State<CollagePage> {
   // Seção "Stickers" / "Texto"
   // ---------------------------------------------------------------------
 
-  /// Abas embutidas que aparecem na fileira.
-  ///
-  /// "Novos" fica de fora enquanto está vazia: ela só existe para receber
-  /// sticker solto em `assets/sticker` depois, e uma aba vazia a mais em
-  /// toda instalação só empurraria o botão de criar pasta para fora da tela.
-  static List<BundledStickerFolder> get _visibleBundledFolders => [
-    for (final folder in BundledStickerFolder.values)
-      if (folder != BundledStickerFolder.novos ||
-          descobertosFor(BundledStickerFolder.novos).isNotEmpty)
-        folder,
-  ];
-
-  /// Pasta embutida aberta agora, ou `null` quando a aberta é uma criada
-  /// pelo usuário.
-  BundledStickerFolder? get _openBundledFolder {
-    for (final folder in BundledStickerFolder.values) {
-      if (folder.id == _stickerFolderId) return folder;
-    }
-    return null;
-  }
-
-  /// Stickers importados que moram na pasta aberta: os sem pasta ficam em
-  /// "Importados", o resto em cada pasta criada pelo usuário.
-  List<ImportedAsset> get _stickersInOpenFolder {
-    final bundled = _openBundledFolder;
-    if (bundled != null && !bundled.acceptsImports) return const [];
-    // "Importados" é a pasta sem id (também onde caem as entradas antigas);
-    // as demais guardam o próprio id em cada sticker.
-    final folderId = bundled == BundledStickerFolder.imported
-        ? null
-        : _stickerFolderId;
-    return _importedStickers.where((a) => a.folderId == folderId).toList();
-  }
-
-  Widget _stickersPanelContent() {
-    final bundledFolder = _openBundledFolder;
-    // A pasta pode ter arte embutida, stickers importados, ou os dois.
-    final bundledStickers = bundledFolder == null
-        ? const <(String path, String label)>[]
-        : bundledStickersFor(bundledFolder);
-    final showsImports = bundledFolder == null || bundledFolder.acceptsImports;
-    final imported = _stickersInOpenFolder;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Fileira de pastas e miniaturas de sticker bem menores que o
-        // padrão do resto do app — este é o único lugar com tanta coisa
-        // pequena lado a lado, então o tamanho das outras miniaturas
-        // (seletor de fundo, trocar foto) fica como está.
-        SizedBox(
-          height: 44,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            // Fileira curta (embutidas + poucas dezenas de pastas no
-            // máximo): manter mais itens construídos fora da tela custa
-            // pouco e garante que uma pasta recém-criada já exista na árvore
-            // (e portanto seja alcançável por `Scrollable.ensureVisible`,
-            // ver o `Builder` abaixo) mesmo numa tela estreita de celular,
-            // onde a área visível + cache padrão pode não chegar até ela.
-            scrollCacheExtent: const ScrollCacheExtent.pixels(2000),
-            // +1 pelo botão de criar pasta, sempre no fim da linha.
-            itemCount:
-                _visibleBundledFolders.length + _customFolders.length + 1,
-            separatorBuilder: (_, _) => const SizedBox(width: 6),
-            itemBuilder: (context, index) {
-              if (index < _visibleBundledFolders.length) {
-                final folder = _visibleBundledFolders[index];
-                return FolderTab(
-                  label: folder.label,
-                  selected: folder.id == _stickerFolderId,
-                  onTap: () => setState(() => _stickerFolderId = folder.id),
-                );
-              }
-              final customIndex = index - _visibleBundledFolders.length;
-              if (customIndex < _customFolders.length) {
-                final folder = _customFolders[customIndex];
-                // A pasta recém-criada rola até ficar visível sozinha (ver
-                // [_createStickerFolder]) — igual ao ícone de ajuste
-                // selecionado em [ColorAdjustPanel], um `Builder` dá a este
-                // item específico o próprio `BuildContext`, que
-                // `Scrollable.ensureVisible` usa para centralizar exatamente
-                // ele na fileira. Calcular a posição na mão (por
-                // `maxScrollExtent`) dependia do layout já estar pronto no
-                // frame seguinte; isto usa a posição real do item, então
-                // funciona mesmo se o painel ainda estiver se ajustando
-                // (ex.: o teclado fechando ao mesmo tempo).
-                return Builder(
-                  builder: (itemContext) {
-                    if (_pendingFolderScrollId == folder.id) {
-                      _pendingFolderScrollId = null;
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!itemContext.mounted) return;
-                        Scrollable.ensureVisible(
-                          itemContext,
-                          alignment: 0.5,
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOut,
-                        );
-                      });
-                    }
-                    return FolderTab(
-                      label: folder.name,
-                      selected: folder.id == _stickerFolderId,
-                      onTap: () => setState(() => _stickerFolderId = folder.id),
-                      onLongPress: () => _openFolderMenu(folder),
-                    );
-                  },
-                );
-              }
-              return FolderTab(
-                label: 'Nova pasta',
-                selected: false,
-                icon: Icons.create_new_folder_outlined,
-                onTap: _createStickerFolder,
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 58,
-          // Uma fileira só: primeiro a arte embutida da pasta, depois o que
-          // foi importado para ela e, no fim, o tile de importar (nas pastas
-          // que aceitam importação). Antes eram dois caminhos separados, e
-          // uma pasta com as duas coisas — como "GitHub" — só mostrava uma.
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount:
-                bundledStickers.length +
-                imported.length +
-                (showsImports ? 1 : 0),
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              if (index < bundledStickers.length) {
-                final sticker = bundledStickers[index];
-                // `Center`: dentro de um `ListView` horizontal, o filho
-                // direto é estirado para a altura inteira da fileira,
-                // ignorando a altura que o `Container` pede — sem isto a
-                // miniatura saía do tamanho da fileira (58), não dos 36
-                // pedidos.
-                return Center(
-                  child: GestureDetector(
-                    onTap: () => _addBundledSticker(sticker),
-                    child: _bundledStickerThumb(sticker, size: 44, height: 36),
-                  ),
-                );
-              }
-              final importedIndex = index - bundledStickers.length;
-              if (importedIndex < imported.length) {
-                final asset = imported[importedIndex];
-                return Center(
-                  child: GestureDetector(
-                    onTap: () => _addStickerFromAsset(asset),
-                    onLongPress: () => _confirmRemoveSticker(asset),
-                    child: ImportedAssetThumb(
-                      asset: asset,
-                      selected: false,
-                      size: 44,
-                      height: 36,
-                    ),
-                  ),
-                );
-              }
-              return ImportAssetTile(
-                // Importar de dentro de uma pasta já põe o sticker nela; em
-                // "Importados" a pasta é nula.
-                onTap: () => _importSticker(
-                  folderId: bundledFolder == BundledStickerFolder.imported
-                      ? null
-                      : _stickerFolderId,
-                ),
-                label: 'Importar',
-                size: 44,
-                height: 36,
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
   Future<void> _createStickerFolder() async {
     final name = await _promptTextInput(
       initial: '',
@@ -1602,27 +1433,6 @@ class _CollagePageState extends State<CollagePage> {
       ];
       _dropStickerFolderIfGone();
     });
-  }
-
-  Widget _bundledStickerThumb(
-    (String path, String label) sticker, {
-    double size = 62,
-    double height = 46,
-  }) {
-    final theme = Theme.of(context);
-    return Container(
-      width: size,
-      height: height,
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: SvgPicture.asset(sticker.$1, fit: BoxFit.contain),
-    );
   }
 
   void _addBundledSticker((String path, String label) sticker) {
