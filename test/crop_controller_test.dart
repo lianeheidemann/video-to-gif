@@ -9,7 +9,6 @@ void main() {
       sourceWidth: 1920,
       sourceHeight: 1080,
       evenOnly: true,
-      accumulateDragRemainder: false,
     );
     final foto = CropController(sourceWidth: 1920, sourceHeight: 1080);
 
@@ -112,14 +111,17 @@ void main() {
       expect(c.moveBy(crop: crop, sourceDelta: const Offset(0.4, 0))?.x, 101);
     });
 
-    test('sem acumular, deltas pequenos são descartados', () {
-      final c = CropController(
-        sourceWidth: 1000,
-        sourceHeight: 1000,
-        accumulateDragRemainder: false,
-      );
-      for (var i = 0; i < 3; i++) {
+    test('as três telas acumulam igual — nenhuma descarta a sobra', () {
+      // O vídeo arredonda para par e tem a fonte maior, mas a regra da sobra
+      // é a mesma das outras duas: dois passos de 0,4px movem um pixel.
+      final telas = [
+        CropController(sourceWidth: 1920, sourceHeight: 1080, evenOnly: true),
+        CropController(sourceWidth: 1000, sourceHeight: 1000),
+        CropController(sourceWidth: 512, sourceHeight: 512, minHandleSize: 8),
+      ];
+      for (final c in telas) {
         expect(c.moveBy(crop: crop, sourceDelta: const Offset(0.4, 0)), isNull);
+        expect(c.moveBy(crop: crop, sourceDelta: const Offset(0.4, 0))?.x, 101);
       }
     });
 
@@ -137,16 +139,10 @@ void main() {
       expect(arrastar(acumula, 0.55), isNull);
       expect(arrastar(acumula, 0.55)?.width, 202);
 
-      // Sem acumular, os mesmos passos são descartados um a um e a janela
-      // nunca se mexe — é a diferença que a tela de vídeo mantém.
-      final descarta = CropController(
-        sourceWidth: 1000,
-        sourceHeight: 1000,
-        accumulateDragRemainder: false,
-      );
-      for (var i = 0; i < 3; i++) {
-        expect(arrastar(descarta, 0.55), isNull);
-      }
+      // E um passo único do mesmo tamanho total não mexe: é a sobra
+      // acumulada que fecha o pixel, não o delta de um frame só.
+      final passoUnico = CropController(sourceWidth: 1000, sourceHeight: 1000);
+      expect(arrastar(passoUnico, 0.55), isNull);
     });
 
     test('moveBy não deixa a janela sair da fonte', () {
