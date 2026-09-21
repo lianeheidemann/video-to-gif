@@ -9,7 +9,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/models/aspect_preset.dart';
 import '../../core/models/color_adjustments.dart';
-import '../../core/models/crop_rect.dart';
 import '../../core/models/frame_settings.dart';
 import '../../core/models/image_frame.dart';
 import '../../core/models/photo_info.dart';
@@ -21,7 +20,9 @@ import '../../core/ui/app_bar_title.dart';
 import '../../core/ui/checkerboard_background.dart';
 import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/color_picker_sheet.dart';
+import '../../core/ui/crop/crop_controller.dart';
 import '../../core/ui/crop/crop_overlay.dart';
+import '../../core/ui/crop/crop_size_fields.dart';
 import '../../core/ui/crop/cropped_view.dart';
 import '../../core/ui/editor_tabs_footer.dart';
 import '../../core/painting/frame_painter.dart';
@@ -76,12 +77,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   /// continuar sendo o que foi tocado. Mesma ideia de `SvgEditPage._aspect`.
   AspectPreset _aspect = AspectPreset.presets.first;
 
-  /// Sobra fracionária do arrasto de recorte, de um frame de gesto pro
-  /// próximo — mesmo motivo de `SvgEditPage._resizeDragRemainder`/
-  /// `_moveDragRemainder`: sem acumular, arrastos pequenos em fotos de baixa
-  /// resolução ficam parados a maior parte do tempo e depois "pulam".
-  Offset _resizeDragRemainder = Offset.zero;
-  Offset _moveDragRemainder = Offset.zero;
+  /// Regras de recorte compartilhadas com as telas de vídeo e SVG.
+  late final _crop = CropController(
+    sourceWidth: widget.photo.width,
+    sourceHeight: widget.photo.height,
+  );
 
   final _widthController = TextEditingController();
   final _heightController = TextEditingController();
@@ -630,9 +630,17 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         if (crop != null) ...[
           const SizedBox(height: 18),
           if (_aspect == _customAspectPreset) ...[
-            _cropSizeSummary(crop),
+            CropSizeSummary(crop: crop),
             const SizedBox(height: 12),
-            _cropSizeInputs(crop),
+            CropSizeInputs(
+              crop: crop,
+              widthController: _widthController,
+              heightController: _heightController,
+              widthFocus: _widthFocus,
+              heightFocus: _heightFocus,
+              onSubmitWidth: _applyCropWidth,
+              onSubmitHeight: _applyCropHeight,
+            ),
             const SizedBox(height: 12),
           ],
           Align(
@@ -656,7 +664,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       _aspect = preset;
 
       if (preset == _customAspectPreset) {
-        _frame = _frame.copyWith(crop: _frame.crop ?? _defaultCustomCrop());
+        _frame = _frame.copyWith(
+          crop: _frame.crop ?? _crop.defaultCustomCrop(),
+        );
         return;
       }
 
@@ -665,121 +675,13 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         return;
       }
 
-      _frame = _frame.copyWith(
-        crop: CropRect.centeredIn(
-          widget.photo.width,
-          widget.photo.height,
-          preset.ratio!,
-        ),
-      );
+      _frame = _frame.copyWith(crop: _crop.forRatio(preset.ratio!));
     });
   }
 
-  /// Recorte inicial do preset "Personalizado": 80% da foto, centralizado.
-  CropRect _defaultCustomCrop() {
-    final width = (widget.photo.width * 0.8).round().clamp(
-      1,
-      widget.photo.width,
-    );
-    final height = (widget.photo.height * 0.8).round().clamp(
-      1,
-      widget.photo.height,
-    );
-    return _cropAroundCenter(width, height);
-  }
-
-  Widget _cropSizeSummary(CropRect crop) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.25),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.aspect_ratio_rounded,
-            size: 18,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Janela de recorte',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Text(
-            '${crop.width}×${crop.height}',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Campos numéricos de largura/altura do recorte, sincronizados com o
-  /// estado atual enquanto não estão em foco — mesmo padrão de
-  /// `EditorPage._cropSizeInputs`/`SvgEditPage._cropSizeInputs`.
-  Widget _cropSizeInputs(CropRect crop) {
-    if (!_widthFocus.hasFocus) _syncSizeField(_widthController, crop.width);
-    if (!_heightFocus.hasFocus) {
-      _syncSizeField(_heightController, crop.height);
-    }
-
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _widthController,
-            focusNode: _widthFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Largura',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: _applyCropWidth,
-            onTapOutside: (_) => _applyCropWidth(_widthController.text),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: TextField(
-            controller: _heightController,
-            focusNode: _heightFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Altura',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: _applyCropHeight,
-            onTapOutside: (_) => _applyCropHeight(_heightController.text),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _syncSizeField(TextEditingController controller, int value) {
-    final text = value.toString();
-    if (controller.text == text) return;
-    controller.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
+  /// Proporção travada pelo preset atual, ou `null` em "Personalizado".
+  double? get _lockedRatio =>
+      _aspect == _customAspectPreset ? null : _aspect.ratio;
 
   void _applyCropWidth(String value) {
     final parsed = int.tryParse(value.trim());
@@ -789,7 +691,13 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     } else if (parsed < 1) {
       _message('A largura mínima é 1.');
     }
-    _setCropWidth(parsed);
+    final crop = _frame.crop;
+    if (crop == null) return;
+    _updateFrame(
+      _frame.copyWith(
+        crop: _crop.withWidth(parsed, crop: crop, ratio: _lockedRatio),
+      ),
+    );
   }
 
   void _applyCropHeight(String value) {
@@ -800,88 +708,33 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     } else if (parsed < 1) {
       _message('A altura mínima é 1.');
     }
-    _setCropHeight(parsed);
-  }
-
-  void _setCropWidth(int width) {
     final crop = _frame.crop;
     if (crop == null) return;
-
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    var w = width.clamp(1, widget.photo.width);
-    int h;
-    if (ratio != null) {
-      h = (w / ratio).round().clamp(1, widget.photo.height);
-      w = (h * ratio).round().clamp(1, widget.photo.width);
-    } else {
-      h = crop.height;
-    }
-
-    _updateFrame(_frame.copyWith(crop: _cropAroundCenter(w, h, around: crop)));
-  }
-
-  void _setCropHeight(int height) {
-    final crop = _frame.crop;
-    if (crop == null) return;
-
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    var h = height.clamp(1, widget.photo.height);
-    int w;
-    if (ratio != null) {
-      w = (h * ratio).round().clamp(1, widget.photo.width);
-      h = (w / ratio).round().clamp(1, widget.photo.height);
-    } else {
-      w = crop.width;
-    }
-
-    _updateFrame(_frame.copyWith(crop: _cropAroundCenter(w, h, around: crop)));
+    _updateFrame(
+      _frame.copyWith(
+        crop: _crop.withHeight(parsed, crop: crop, ratio: _lockedRatio),
+      ),
+    );
   }
 
   void _resetCurrentCrop() {
     if (_aspect == _customAspectPreset) {
-      _updateFrame(_frame.copyWith(crop: _defaultCustomCrop()));
+      _updateFrame(_frame.copyWith(crop: _crop.defaultCustomCrop()));
       return;
     }
     if (_aspect.ratio == null) {
       _updateFrame(_frame.copyWith(clearCrop: true));
       return;
     }
-    _updateFrame(
-      _frame.copyWith(
-        crop: CropRect.centeredIn(
-          widget.photo.width,
-          widget.photo.height,
-          _aspect.ratio!,
-        ),
-      ),
-    );
+    _updateFrame(_frame.copyWith(crop: _crop.forRatio(_aspect.ratio!)));
   }
 
-  CropRect _cropAroundCenter(int width, int height, {CropRect? around}) {
-    final safeWidth = width.clamp(1, widget.photo.width);
-    final safeHeight = height.clamp(1, widget.photo.height);
-
-    final centerX = around == null
-        ? widget.photo.width / 2
-        : around.x + around.width / 2;
-    final centerY = around == null
-        ? widget.photo.height / 2
-        : around.y + around.height / 2;
-
-    final maxX = widget.photo.width - safeWidth;
-    final maxY = widget.photo.height - safeHeight;
-    final x = (centerX - safeWidth / 2).round().clamp(0, maxX);
-    final y = (centerY - safeHeight / 2).round().clamp(0, maxY);
-
-    return CropRect(x: x, y: y, width: safeWidth, height: safeHeight);
-  }
-
-  /// Converte o arraste de uma alça (em pixels da prévia exibida) para
-  /// pixels da foto e recalcula o recorte, livre ou travado à proporção
-  /// selecionada. Acumula a sobra fracionária de um frame de gesto pro
-  /// próximo (ver [_resizeDragRemainder]) — sem isso, fotos de baixa
-  /// resolução exibidas bem maiores que o tamanho nativo fariam o arrasto
-  /// parecer travado e depois "pular".
+  /// Converte o arraste de uma alça (em pixels da prévia exibida) para pixels
+  /// da foto e recalcula o recorte, livre ou travado à proporção selecionada.
+  /// A sobra fracionária de cada frame de gesto fica guardada no
+  /// [CropController] — sem isso, fotos de baixa resolução exibidas bem
+  /// maiores que o tamanho nativo fariam o arrasto parecer travado e depois
+  /// "pular".
   void _resizeCropFromHandle(
     CropHandle handle,
     Offset displayDelta,
@@ -892,80 +745,37 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       return;
     }
 
-    final dx =
-        _resizeDragRemainder.dx +
-        displayDelta.dx * widget.photo.width / previewSize.width;
-    final dy =
-        _resizeDragRemainder.dy +
-        displayDelta.dy * widget.photo.height / previewSize.height;
-
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    final next = ratio == null
-        ? resizeFreeCrop(
-            crop,
-            handle,
-            dx,
-            dy,
-            boundsWidth: widget.photo.width,
-            boundsHeight: widget.photo.height,
-          )
-        : resizeLockedCrop(
-            crop,
-            handle,
-            dx,
-            dy,
-            ratio,
-            boundsWidth: widget.photo.width,
-            boundsHeight: widget.photo.height,
-          );
-
-    if (next.width == crop.width &&
-        next.height == crop.height &&
-        next.x == crop.x &&
-        next.y == crop.y) {
-      _resizeDragRemainder = Offset(dx, dy);
-      return;
-    }
-
-    _resizeDragRemainder = Offset.zero;
+    final next = _crop.resizeBy(
+      crop: crop,
+      handle: handle,
+      sourceDelta: _toSourceDelta(displayDelta, previewSize),
+      ratio: _lockedRatio,
+    );
+    if (next == null) return;
     _updateFrame(_frame.copyWith(crop: next));
   }
 
-  /// Mesma lógica de sobra fracionária de [_resizeCropFromHandle], para o
-  /// botão de mover a janela inteira.
+  /// Mesma conversão de [_resizeCropFromHandle], para o botão de mover a
+  /// janela inteira.
   void _moveCropFromHandle(Offset displayDelta, Size previewSize) {
     final crop = _frame.crop;
     if (crop == null || previewSize.width <= 0 || previewSize.height <= 0) {
       return;
     }
 
-    final dx =
-        displayDelta.dx * widget.photo.width / previewSize.width +
-        _moveDragRemainder.dx;
-    final dy =
-        displayDelta.dy * widget.photo.height / previewSize.height +
-        _moveDragRemainder.dy;
-
-    final maxX = (widget.photo.width - crop.width).clamp(0, widget.photo.width);
-    final maxY = (widget.photo.height - crop.height).clamp(
-      0,
-      widget.photo.height,
+    final next = _crop.moveBy(
+      crop: crop,
+      sourceDelta: _toSourceDelta(displayDelta, previewSize),
     );
-    final rawX = (crop.x + dx).clamp(0.0, maxX.toDouble());
-    final rawY = (crop.y + dy).clamp(0.0, maxY.toDouble());
-    final x = rawX.round();
-    final y = rawY.round();
-
-    _moveDragRemainder = Offset(rawX - x, rawY - y);
-
-    if (x == crop.x && y == crop.y) return;
-
-    _updateFrame(
-      _frame.copyWith(
-        crop: crop.copyWith(x: x, y: y),
-      ),
-    );
+    if (next == null) return;
+    _updateFrame(_frame.copyWith(crop: next));
   }
+
+  /// Converte um arraste em pixels da prévia exibida para pixels da foto.
+  Offset _toSourceDelta(Offset displayDelta, Size previewSize) => Offset(
+    displayDelta.dx * widget.photo.width / previewSize.width,
+    displayDelta.dy * widget.photo.height / previewSize.height,
+  );
 
   // ---------------------------------------------------------------------
   // Seção "Moldura" (procedural)

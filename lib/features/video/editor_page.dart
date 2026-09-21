@@ -21,7 +21,9 @@ import '../../core/ui/app_bar_title.dart';
 import '../../core/ui/checkerboard_background.dart';
 import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/color_picker_sheet.dart';
+import '../../core/ui/crop/crop_controller.dart';
 import '../../core/ui/crop/crop_overlay.dart';
+import '../../core/ui/crop/crop_size_fields.dart';
 import '../../core/ui/crop/cropped_view.dart';
 import '../../core/ui/editor_tabs_footer.dart';
 import '../../core/painting/frame_painter.dart';
@@ -96,6 +98,16 @@ class _EditorPageState extends State<EditorPage> {
   /// contínuos (sliders) empilhando um checkpoint só no começo.
   final List<ConversionSettings> _undoStack = [];
   final List<ConversionSettings> _redoStack = [];
+
+  /// Regras de recorte compartilhadas com as telas de foto e SVG. O vídeo
+  /// arredonda para par (exigência do filtro `crop` do FFmpeg) e, ao
+  /// contrário das outras duas, não acumula a sobra fracionária do arrasto.
+  late final _crop = CropController(
+    sourceWidth: _video.width,
+    sourceHeight: _video.height,
+    evenOnly: true,
+    accumulateDragRemainder: false,
+  );
 
   final _widthController = TextEditingController();
   final _heightController = TextEditingController();
@@ -1849,36 +1861,13 @@ class _EditorPageState extends State<EditorPage> {
       return;
     }
 
-    final dx = displayDelta.dx * _video.width / previewSize.width;
-    final dy = displayDelta.dy * _video.height / previewSize.height;
-
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    final next = ratio == null
-        ? resizeFreeCrop(
-            crop,
-            handle,
-            dx,
-            dy,
-            boundsWidth: _video.width,
-            boundsHeight: _video.height,
-          )
-        : resizeLockedCrop(
-            crop,
-            handle,
-            dx,
-            dy,
-            ratio,
-            boundsWidth: _video.width,
-            boundsHeight: _video.height,
-          );
-
-    if (next.width == crop.width &&
-        next.height == crop.height &&
-        next.x == crop.x &&
-        next.y == crop.y) {
-      return;
-    }
-
+    final next = _crop.resizeBy(
+      crop: crop,
+      handle: handle,
+      sourceDelta: _toSourceDelta(displayDelta, previewSize),
+      ratio: _lockedRatio,
+    );
+    if (next == null) return;
     _update(_settings.copyWith(crop: next));
   }
 
@@ -1891,22 +1880,19 @@ class _EditorPageState extends State<EditorPage> {
       return;
     }
 
-    final dx = displayDelta.dx * _video.width / previewSize.width;
-    final dy = displayDelta.dy * _video.height / previewSize.height;
-
-    final maxX = (_video.width - crop.width).clamp(0, _video.width);
-    final maxY = (_video.height - crop.height).clamp(0, _video.height);
-    final x = (crop.x + dx.round()).clamp(0, maxX);
-    final y = (crop.y + dy.round()).clamp(0, maxY);
-
-    if (x == crop.x && y == crop.y) return;
-
-    _update(
-      _settings.copyWith(
-        crop: crop.copyWith(x: x, y: y),
-      ),
+    final next = _crop.moveBy(
+      crop: crop,
+      sourceDelta: _toSourceDelta(displayDelta, previewSize),
     );
+    if (next == null) return;
+    _update(_settings.copyWith(crop: next));
   }
+
+  /// Converte um arraste em pixels da prévia exibida para pixels do vídeo.
+  Offset _toSourceDelta(Offset displayDelta, Size previewSize) => Offset(
+    displayDelta.dx * _video.width / previewSize.width,
+    displayDelta.dy * _video.height / previewSize.height,
+  );
 
   /// Barra de progresso do vídeo com o trecho selecionado destacado; toca
   /// em qualquer ponto para pular a prévia para lá, e volta ao início do
@@ -2125,9 +2111,18 @@ class _EditorPageState extends State<EditorPage> {
           if (crop != null) ...[
             const SizedBox(height: 18),
             if (_aspect == _customAspectPreset) ...[
-              _cropSizeSummary(crop),
+              CropSizeSummary(crop: crop, showPixelUnit: true),
               const SizedBox(height: 12),
-              _cropSizeInputs(crop),
+              CropSizeInputs(
+                crop: crop,
+                widthController: _widthController,
+                heightController: _heightController,
+                widthFocus: _widthFocus,
+                heightFocus: _heightFocus,
+                onSubmitWidth: _applyCropWidth,
+                onSubmitHeight: _applyCropHeight,
+                showPixelUnit: true,
+              ),
               const SizedBox(height: 12),
             ],
             Align(
@@ -2153,7 +2148,7 @@ class _EditorPageState extends State<EditorPage> {
 
       if (preset == _customAspectPreset) {
         _settings = _settings.copyWith(
-          crop: _settings.crop ?? _defaultCustomCrop(),
+          crop: _settings.crop ?? _crop.defaultCustomCrop(),
         );
         return;
       }
@@ -2163,114 +2158,13 @@ class _EditorPageState extends State<EditorPage> {
         return;
       }
 
-      _settings = _settings.copyWith(
-        crop: CropRect.centeredIn(_video.width, _video.height, preset.ratio!),
-      );
+      _settings = _settings.copyWith(crop: _crop.forRatio(preset.ratio!));
     });
   }
 
-  /// Recorte inicial do preset "Personalizado": 80% do vídeo, centralizado.
-  CropRect _defaultCustomCrop() {
-    final width = _even(((_video.width * 0.8).round()).clamp(2, _video.width));
-    final height = _even(
-      ((_video.height * 0.8).round()).clamp(2, _video.height),
-    );
-    return _cropAroundCenter(width, height);
-  }
-
-  /// Faixa de destaque mostrando as dimensões atuais da janela de recorte.
-  Widget _cropSizeSummary(CropRect crop) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.25),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.aspect_ratio_rounded,
-            size: 18,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Janela de recorte',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Text(
-            '${crop.width}×${crop.height} px',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Campos numéricos de largura/altura do recorte, sincronizados com o
-  /// estado atual enquanto não estão em foco (para não atrapalhar a
-  /// digitação do usuário).
-  Widget _cropSizeInputs(CropRect crop) {
-    if (!_widthFocus.hasFocus) _syncSizeField(_widthController, crop.width);
-    if (!_heightFocus.hasFocus) _syncSizeField(_heightController, crop.height);
-
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _widthController,
-            focusNode: _widthFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Largura (px)',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: _applyCropWidth,
-            onTapOutside: (_) => _applyCropWidth(_widthController.text),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: TextField(
-            controller: _heightController,
-            focusNode: _heightFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Altura (px)',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: _applyCropHeight,
-            onTapOutside: (_) => _applyCropHeight(_heightController.text),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Atualiza o texto de um campo sem mexer se já estiver correto, evitando
-  /// perder a posição do cursor à toa.
-  void _syncSizeField(TextEditingController controller, int value) {
-    final text = value.toString();
-    if (controller.text == text) return;
-    controller.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
+  /// Proporção travada pelo preset atual, ou `null` em "Personalizados".
+  double? get _lockedRatio =>
+      _aspect == _customAspectPreset ? null : _aspect.ratio;
 
   /// Interpreta o texto digitado no campo de largura e aplica, se válido.
   /// Avisa quando o valor é ajustado por passar dos limites do vídeo.
@@ -2284,7 +2178,13 @@ class _EditorPageState extends State<EditorPage> {
     } else if (parsed < 2) {
       _showMessage('A largura mínima é 2px.');
     }
-    _setCropWidth(parsed);
+    final crop = _settings.crop;
+    if (crop == null) return;
+    _update(
+      _settings.copyWith(
+        crop: _crop.withWidth(parsed, crop: crop, ratio: _lockedRatio),
+      ),
+    );
   }
 
   /// Interpreta o texto digitado no campo de altura e aplica, se válido.
@@ -2299,51 +2199,19 @@ class _EditorPageState extends State<EditorPage> {
     } else if (parsed < 2) {
       _showMessage('A altura mínima é 2px.');
     }
-    _setCropHeight(parsed);
-  }
-
-  /// Aplica uma nova largura ao recorte, ajustando a altura para manter a
-  /// proporção quando um preset fixo está selecionado.
-  void _setCropWidth(int width) {
     final crop = _settings.crop;
     if (crop == null) return;
-
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    var w = _even(width.clamp(2, _video.width));
-    int h;
-    if (ratio != null) {
-      h = _even((w / ratio).round().clamp(2, _video.height));
-      w = _even((h * ratio).round().clamp(2, _video.width));
-    } else {
-      h = crop.height;
-    }
-
-    _update(_settings.copyWith(crop: _cropAroundCenter(w, h, around: crop)));
-  }
-
-  /// Aplica uma nova altura ao recorte, ajustando a largura para manter a
-  /// proporção quando um preset fixo está selecionado.
-  void _setCropHeight(int height) {
-    final crop = _settings.crop;
-    if (crop == null) return;
-
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    var h = _even(height.clamp(2, _video.height));
-    int w;
-    if (ratio != null) {
-      w = _even((h * ratio).round().clamp(2, _video.width));
-      h = _even((w / ratio).round().clamp(2, _video.height));
-    } else {
-      w = crop.width;
-    }
-
-    _update(_settings.copyWith(crop: _cropAroundCenter(w, h, around: crop)));
+    _update(
+      _settings.copyWith(
+        crop: _crop.withHeight(parsed, crop: crop, ratio: _lockedRatio),
+      ),
+    );
   }
 
   /// Recentraliza o recorte no tamanho padrão do preset atual.
   void _resetCurrentCrop() {
     if (_aspect == _customAspectPreset) {
-      _update(_settings.copyWith(crop: _defaultCustomCrop()));
+      _update(_settings.copyWith(crop: _crop.defaultCustomCrop()));
       return;
     }
 
@@ -2352,41 +2220,7 @@ class _EditorPageState extends State<EditorPage> {
       return;
     }
 
-    _update(
-      _settings.copyWith(
-        crop: CropRect.centeredIn(_video.width, _video.height, _aspect.ratio!),
-      ),
-    );
-  }
-
-  /// Monta um [CropRect] com o tamanho dado, centralizado em [around] (ou
-  /// no centro do vídeo, se omitido), sem ultrapassar as bordas.
-  CropRect _cropAroundCenter(int width, int height, {CropRect? around}) {
-    var safeWidth = width.clamp(2, _video.width);
-    var safeHeight = height.clamp(2, _video.height);
-    safeWidth = _even(safeWidth);
-    safeHeight = _even(safeHeight);
-
-    final centerX = around == null
-        ? _video.width / 2
-        : around.x + around.width / 2;
-    final centerY = around == null
-        ? _video.height / 2
-        : around.y + around.height / 2;
-
-    final maxX = _video.width - safeWidth;
-    final maxY = _video.height - safeHeight;
-    final x = (centerX - safeWidth / 2).round().clamp(0, maxX);
-    final y = (centerY - safeHeight / 2).round().clamp(0, maxY);
-
-    return CropRect(x: x, y: y, width: safeWidth, height: safeHeight);
-  }
-
-  /// Arredonda para o número par mais próximo abaixo (mínimo 2), exigido
-  /// pelos filtros de crop/scale do FFmpeg.
-  int _even(int value) {
-    if (value <= 2) return 2;
-    return value.isEven ? value : value - 1;
+    _update(_settings.copyWith(crop: _crop.forRatio(_aspect.ratio!)));
   }
 
   /// Seção de velocidade de reprodução do GIF.

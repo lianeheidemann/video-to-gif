@@ -21,7 +21,9 @@ import '../../core/ui/app_bar_title.dart';
 import '../../core/ui/checkerboard_background.dart';
 import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/color_picker_sheet.dart';
+import '../../core/ui/crop/crop_controller.dart';
 import '../../core/ui/crop/crop_overlay.dart';
+import '../../core/ui/crop/crop_size_fields.dart';
 import '../../core/ui/crop/cropped_view.dart';
 import '../../core/ui/editor_tabs_footer.dart';
 import '../../core/ui/labeled_section.dart';
@@ -59,10 +61,14 @@ class _SvgEditPageState extends State<SvgEditPage> {
 
   SvgEditSettings _settings = const SvgEditSettings();
 
-  /// Sobra fracionária do arrasto de recorte, de um frame de gesto pro
-  /// próximo — ver o porquê em [_resizeCropFromHandle]/[_moveCropFromHandle].
-  Offset _resizeDragRemainder = Offset.zero;
-  Offset _moveDragRemainder = Offset.zero;
+  /// Regras de recorte compartilhadas com as telas de vídeo e foto. O SVG
+  /// usa uma janela mínima menor que o padrão: 32 quebraria um ícone de
+  /// 24x24, bem comum no formato.
+  late final _crop = CropController(
+    sourceWidth: _sourceWidth,
+    sourceHeight: _sourceHeight,
+    minHandleSize: _minCropSize,
+  );
 
   /// Preset de proporção travado na aba "Recorte" — guardado à parte de
   /// `_settings.crop` porque "Personalizado" e um preset podem cair no
@@ -429,9 +435,17 @@ class _SvgEditPageState extends State<SvgEditPage> {
         if (crop != null) ...[
           const SizedBox(height: 18),
           if (_aspect == _customAspectPreset) ...[
-            _cropSizeSummary(crop),
+            CropSizeSummary(crop: crop),
             const SizedBox(height: 12),
-            _cropSizeInputs(crop),
+            CropSizeInputs(
+              crop: crop,
+              widthController: _widthController,
+              heightController: _heightController,
+              widthFocus: _widthFocus,
+              heightFocus: _heightFocus,
+              onSubmitWidth: _applyCropWidth,
+              onSubmitHeight: _applyCropHeight,
+            ),
             const SizedBox(height: 12),
           ],
           Align(
@@ -456,7 +470,7 @@ class _SvgEditPageState extends State<SvgEditPage> {
 
       if (preset == _customAspectPreset) {
         _settings = _settings.copyWith(
-          crop: _settings.crop ?? _defaultCustomCrop(),
+          crop: _settings.crop ?? _crop.defaultCustomCrop(),
         );
         return;
       }
@@ -466,110 +480,13 @@ class _SvgEditPageState extends State<SvgEditPage> {
         return;
       }
 
-      _settings = _settings.copyWith(
-        crop: CropRect.centeredIn(_sourceWidth, _sourceHeight, preset.ratio!),
-      );
+      _settings = _settings.copyWith(crop: _crop.forRatio(preset.ratio!));
     });
   }
 
-  /// Recorte inicial do preset "Personalizado": 80% do SVG, centralizado.
-  CropRect _defaultCustomCrop() {
-    final width = (_sourceWidth * 0.8).round().clamp(1, _sourceWidth);
-    final height = (_sourceHeight * 0.8).round().clamp(1, _sourceHeight);
-    return _cropAroundCenter(width, height);
-  }
-
-  Widget _cropSizeSummary(CropRect crop) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.25),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.aspect_ratio_rounded,
-            size: 18,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Janela de recorte',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Text(
-            '${crop.width}×${crop.height}',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Campos numéricos de largura/altura do recorte, sincronizados com o
-  /// estado atual enquanto não estão em foco — mesmo padrão de
-  /// `EditorPage._cropSizeInputs`, sem a exigência de número par (só faz
-  /// sentido para o filtro `crop` do FFmpeg, não para um SVG).
-  Widget _cropSizeInputs(CropRect crop) {
-    if (!_widthFocus.hasFocus) _syncSizeField(_widthController, crop.width);
-    if (!_heightFocus.hasFocus) _syncSizeField(_heightController, crop.height);
-
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _widthController,
-            focusNode: _widthFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Largura',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: _applyCropWidth,
-            onTapOutside: (_) => _applyCropWidth(_widthController.text),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: TextField(
-            controller: _heightController,
-            focusNode: _heightFocus,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Altura',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: _applyCropHeight,
-            onTapOutside: (_) => _applyCropHeight(_heightController.text),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _syncSizeField(TextEditingController controller, int value) {
-    final text = value.toString();
-    if (controller.text == text) return;
-    controller.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
+  /// Proporção travada pelo preset atual, ou `null` em "Personalizado".
+  double? get _lockedRatio =>
+      _aspect == _customAspectPreset ? null : _aspect.ratio;
 
   void _applyCropWidth(String value) {
     final parsed = int.tryParse(value.trim());
@@ -579,7 +496,13 @@ class _SvgEditPageState extends State<SvgEditPage> {
     } else if (parsed < 1) {
       _message('A largura mínima é 1.');
     }
-    _setCropWidth(parsed);
+    final crop = _settings.crop;
+    if (crop == null) return;
+    _update(
+      _settings.copyWith(
+        crop: _crop.withWidth(parsed, crop: crop, ratio: _lockedRatio),
+      ),
+    );
   }
 
   void _applyCropHeight(String value) {
@@ -590,76 +513,25 @@ class _SvgEditPageState extends State<SvgEditPage> {
     } else if (parsed < 1) {
       _message('A altura mínima é 1.');
     }
-    _setCropHeight(parsed);
-  }
-
-  void _setCropWidth(int width) {
     final crop = _settings.crop;
     if (crop == null) return;
-
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    var w = width.clamp(1, _sourceWidth);
-    int h;
-    if (ratio != null) {
-      h = (w / ratio).round().clamp(1, _sourceHeight);
-      w = (h * ratio).round().clamp(1, _sourceWidth);
-    } else {
-      h = crop.height;
-    }
-
-    _update(_settings.copyWith(crop: _cropAroundCenter(w, h, around: crop)));
-  }
-
-  void _setCropHeight(int height) {
-    final crop = _settings.crop;
-    if (crop == null) return;
-
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    var h = height.clamp(1, _sourceHeight);
-    int w;
-    if (ratio != null) {
-      w = (h * ratio).round().clamp(1, _sourceWidth);
-      h = (w / ratio).round().clamp(1, _sourceHeight);
-    } else {
-      w = crop.width;
-    }
-
-    _update(_settings.copyWith(crop: _cropAroundCenter(w, h, around: crop)));
+    _update(
+      _settings.copyWith(
+        crop: _crop.withHeight(parsed, crop: crop, ratio: _lockedRatio),
+      ),
+    );
   }
 
   void _resetCurrentCrop() {
     if (_aspect == _customAspectPreset) {
-      _update(_settings.copyWith(crop: _defaultCustomCrop()));
+      _update(_settings.copyWith(crop: _crop.defaultCustomCrop()));
       return;
     }
     if (_aspect.ratio == null) {
       _update(_settings.copyWith(clearCrop: true));
       return;
     }
-    _update(
-      _settings.copyWith(
-        crop: CropRect.centeredIn(_sourceWidth, _sourceHeight, _aspect.ratio!),
-      ),
-    );
-  }
-
-  CropRect _cropAroundCenter(int width, int height, {CropRect? around}) {
-    final safeWidth = width.clamp(1, _sourceWidth);
-    final safeHeight = height.clamp(1, _sourceHeight);
-
-    final centerX = around == null
-        ? _sourceWidth / 2
-        : around.x + around.width / 2;
-    final centerY = around == null
-        ? _sourceHeight / 2
-        : around.y + around.height / 2;
-
-    final maxX = _sourceWidth - safeWidth;
-    final maxY = _sourceHeight - safeHeight;
-    final x = (centerX - safeWidth / 2).round().clamp(0, maxX);
-    final y = (centerY - safeHeight / 2).round().clamp(0, maxY);
-
-    return CropRect(x: x, y: y, width: safeWidth, height: safeHeight);
+    _update(_settings.copyWith(crop: _crop.forRatio(_aspect.ratio!)));
   }
 
   /// Converte um [CropRect] do espaço original do SVG pro espaço de exibição
@@ -769,15 +641,14 @@ class _SvgEditPageState extends State<SvgEditPage> {
   /// unidades do SVG e recalcula o recorte, livre ou travado à proporção
   /// selecionada.
   ///
-  /// Um SVG pequeno (ex. 24×24) tem uma escala unidade-do-SVG/pixel-de-tela
-  /// bem menor que 1 (a prévia é exibida bem maior que o tamanho nativo), e
-  /// `onPanUpdate` chega em deltas pequenos e irregulares — sem acumular a
-  /// sobra fracionária de um frame pro outro, a maioria dos frames arredonda
-  /// pra zero (nada acontece) e, de vez em quando, um frame com delta maior
-  /// (ruído normal de toque) produz um salto de vários pixels de uma vez só,
-  /// exatamente o "pulando de um lado pro outro" relatado. Guardar
-  /// [_resizeDragRemainder] resolve isso: nenhum pedacinho de arrasto é
-  /// descartado, só fica pendente até completar uma unidade inteira.
+  /// O recorte é medido no espaço original do SVG, mas a alça é arrastada
+  /// sobre a prévia já girada/espelhada — daí o [_toSourceHandleAndDelta]
+  /// antes de entregar o delta ao [CropController], que cuida da sobra
+  /// fracionária de um frame de gesto pro próximo. Sem acumular essa sobra,
+  /// num SVG pequeno exibido bem maior que o tamanho nativo a maioria dos
+  /// frames arredondaria pra zero e, de vez em quando, um frame com delta
+  /// maior daria um salto de vários pixels — o "pulando de um lado pro
+  /// outro" que motivou o acúmulo.
   void _resizeCropFromHandle(
     CropHandle displayHandle,
     Offset rawDisplayDelta,
@@ -797,54 +668,24 @@ class _SvgEditPageState extends State<SvgEditPage> {
       scaledDelta,
     );
 
-    final dx = _resizeDragRemainder.dx + sourceDelta.dx;
-    final dy = _resizeDragRemainder.dy + sourceDelta.dy;
-
     // `_aspect.ratio` não é invertido para 90°/270° — um preset travado
     // (não "Personalizado") combinado com rotação ímpar pode desenhar a
     // janela um pouco fora da proporção que aparece na tela. O caso
     // relatado (arraste "pulando"/reset visual) usa sempre "Personalizado"
     // (sem proporção travada), então não esbarra nisso.
-    final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    final next = ratio == null
-        ? resizeFreeCrop(
-            crop,
-            handle,
-            dx,
-            dy,
-            boundsWidth: _sourceWidth,
-            boundsHeight: _sourceHeight,
-            minSize: _minCropSize,
-          )
-        : resizeLockedCrop(
-            crop,
-            handle,
-            dx,
-            dy,
-            ratio,
-            boundsWidth: _sourceWidth,
-            boundsHeight: _sourceHeight,
-            minSide: _minCropSize,
-          );
-
-    if (next.width == crop.width &&
-        next.height == crop.height &&
-        next.x == crop.x &&
-        next.y == crop.y) {
-      // Nada mudou ainda (a sobra acumulada não fechou uma unidade inteira)
-      // — guarda pro próximo frame em vez de descartar.
-      _resizeDragRemainder = Offset(dx, dy);
-      return;
-    }
-
-    _resizeDragRemainder = Offset.zero;
+    final next = _crop.resizeBy(
+      crop: crop,
+      handle: handle,
+      sourceDelta: sourceDelta,
+      ratio: _lockedRatio,
+    );
+    if (next == null) return;
     _update(_settings.copyWith(crop: next));
   }
 
-  /// Mesma lógica de sobra fracionária de [_resizeCropFromHandle] — e a
-  /// mesma conversão de espaço de exibição pro espaço original — para o
-  /// botão de mover a janela inteira. Move não tem "handle" (é sempre a
-  /// janela inteira), então só o delta precisa ser desfeito, sem
+  /// Mesma conversão de espaço de [_resizeCropFromHandle], para o botão de
+  /// mover a janela inteira. Mover não tem "handle" (é sempre a janela
+  /// inteira), então só o delta precisa ser desfeito, sem
   /// [_toSourceHandleAndDelta] remapear identidade de canto/lado.
   void _moveCropFromHandle(Offset rawDisplayDelta, Size previewSize) {
     final crop = _settings.crop;
@@ -863,33 +704,10 @@ class _SvgEditPageState extends State<SvgEditPage> {
       dy = nextDy;
     }
 
-    dx += _moveDragRemainder.dx;
-    dy += _moveDragRemainder.dy;
-
-    final maxX = (_sourceWidth - crop.width).clamp(0, _sourceWidth);
-    final maxY = (_sourceHeight - crop.height).clamp(0, _sourceHeight);
-    final rawX = (crop.x + dx).clamp(0.0, maxX.toDouble());
-    final rawY = (crop.y + dy).clamp(0.0, maxY.toDouble());
-    final x = rawX.round();
-    final y = rawY.round();
-
-    // Guarda só o resto do arredondamento (nunca o quanto passou do limite
-    // já clampado) — senão arrastar bem além da borda exigiria arrastar de
-    // volta o mesmo tanto antes da janela voltar a se mexer.
-    _moveDragRemainder = Offset(rawX - x, rawY - y);
-
-    if (x == crop.x && y == crop.y) return;
-
-    _update(
-      _settings.copyWith(
-        crop: crop.copyWith(x: x, y: y),
-      ),
-    );
+    final next = _crop.moveBy(crop: crop, sourceDelta: Offset(dx, dy));
+    if (next == null) return;
+    _update(_settings.copyWith(crop: next));
   }
-
-  // ---------------------------------------------------------------------
-  // Seção "Girar/Espelhar"
-  // ---------------------------------------------------------------------
 
   String get _rotateFlipLabel {
     final parts = <String>[
