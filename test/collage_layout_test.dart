@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart' show Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/collage_layout.dart';
+import 'package:video_to_gif/features/collage/models/collage_layout.dart';
 
 /// [margin] vira as duas margens (externa/entre fotos) com o mesmo valor —
 /// o comportamento equivalente ao antigo `marginRatio` único, para os testes

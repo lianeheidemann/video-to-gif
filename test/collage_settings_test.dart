@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/collage_background.dart';
-import 'package:video_to_gif/models/collage_cell.dart';
-import 'package:video_to_gif/models/collage_layout.dart';
-import 'package:video_to_gif/models/collage_settings.dart';
-import 'package:video_to_gif/models/collage_sticker.dart';
-import 'package:video_to_gif/models/photo_info.dart';
+import 'package:video_to_gif/features/collage/models/collage_background.dart';
+import 'package:video_to_gif/features/collage/models/collage_cell.dart';
+import 'package:video_to_gif/features/collage/models/collage_layout.dart';
+import 'package:video_to_gif/features/collage/models/collage_settings.dart';
+import 'package:video_to_gif/features/collage/models/collage_sticker.dart';
+import 'package:video_to_gif/core/models/photo_info.dart';
 
 const _photoA = PhotoInfo(path: '/tmp/a.jpg', width: 100, height: 200);
 const _photoB = PhotoInfo(path: '/tmp/b.jpg', width: 300, height: 300);

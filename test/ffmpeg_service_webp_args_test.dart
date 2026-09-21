@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/conversion_settings.dart';
-import 'package:video_to_gif/models/frame_settings.dart';
-import 'package:video_to_gif/models/image_frame.dart';
-import 'package:video_to_gif/models/video_info.dart';
-import 'package:video_to_gif/services/ffmpeg_service.dart';
+import 'package:video_to_gif/core/models/conversion_settings.dart';
+import 'package:video_to_gif/core/models/frame_settings.dart';
+import 'package:video_to_gif/core/models/image_frame.dart';
+import 'package:video_to_gif/core/models/video_info.dart';
+import 'package:video_to_gif/core/ffmpeg/ffmpeg_service.dart';
 
 // Os builders de argumento do WebP são funções puras (nenhuma delas toca o
 // FFmpeg de verdade) — dá para testar a lista de argumentos e o grafo do

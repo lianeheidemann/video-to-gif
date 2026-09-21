@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_to_gif/services/imported_font_store.dart';
+import 'package:video_to_gif/core/services/imported_font_store.dart';
 
 /// Mesma forma de `ImportedFontStore._encode` — reconstruída aqui para
 /// popular o `SharedPreferences` mockado direto, sem passar por

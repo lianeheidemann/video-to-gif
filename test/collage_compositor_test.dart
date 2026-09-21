@@ -6,13 +6,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart' show Canvas, Color, Paint, Rect;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/collage_background.dart';
-import 'package:video_to_gif/models/collage_cell.dart';
-import 'package:video_to_gif/models/collage_layout.dart';
-import 'package:video_to_gif/models/crop_rect.dart';
-import 'package:video_to_gif/models/collage_settings.dart';
-import 'package:video_to_gif/models/collage_text.dart';
-import 'package:video_to_gif/services/collage_compositor.dart';
+import 'package:video_to_gif/features/collage/models/collage_background.dart';
+import 'package:video_to_gif/features/collage/models/collage_cell.dart';
+import 'package:video_to_gif/features/collage/models/collage_layout.dart';
+import 'package:video_to_gif/core/models/crop_rect.dart';
+import 'package:video_to_gif/features/collage/models/collage_settings.dart';
+import 'package:video_to_gif/core/models/collage_text.dart';
+import 'package:video_to_gif/features/collage/services/collage_compositor.dart';
 
 /// Grava um PNG sólido de [width]x[height] na cor [color] em [path] — usado
 /// para ter fotos "de verdade" em disco para o compositor decodificar, sem

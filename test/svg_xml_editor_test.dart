@@ -1,10 +1,10 @@
 import 'dart:ui' show Color;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/crop_rect.dart';
-import 'package:video_to_gif/models/svg_edit_settings.dart';
-import 'package:video_to_gif/models/svg_info.dart';
-import 'package:video_to_gif/services/svg_xml_editor.dart';
+import 'package:video_to_gif/core/models/crop_rect.dart';
+import 'package:video_to_gif/features/svg/models/svg_edit_settings.dart';
+import 'package:video_to_gif/features/svg/models/svg_info.dart';
+import 'package:video_to_gif/features/svg/services/svg_xml_editor.dart';
 import 'package:xml/xml.dart';
 
 /// SVG 120x80 (retângulo, não quadrado, de propósito — pra qualquer troca de

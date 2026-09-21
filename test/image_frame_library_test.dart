@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/image_frame.dart';
+import 'package:video_to_gif/core/models/image_frame.dart';
 
 void main() {
   group('molduras prontas', () {

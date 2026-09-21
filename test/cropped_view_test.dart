@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/conversion_settings.dart';
-import 'package:video_to_gif/ui/widgets/cropped_view.dart';
+import 'package:video_to_gif/core/models/conversion_settings.dart';
+import 'package:video_to_gif/core/ui/crop/cropped_view.dart';
 
 // A prévia da aba "Frame" tem que mostrar exatamente a janela de recorte
 // escolhida em "Ajustar" — o mesmo retângulo que o FFmpeg usa no filtro

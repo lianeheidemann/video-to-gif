@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/background_image.dart';
+import 'package:video_to_gif/features/collage/models/background_image.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
