@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_svg/flutter_svg.dart';
 
-import 'models/background_image.dart';
 import 'models/collage_background.dart';
 import 'models/sticker_catalog.dart';
 import 'models/collage_cell.dart';
@@ -42,12 +41,13 @@ import 'widgets/cell_actions.dart';
 import 'widgets/font_thumb.dart';
 import 'widgets/panels/collage_panel_actions.dart';
 import 'widgets/panels/aspect_panel.dart';
+import 'widgets/panels/background_panel.dart';
+import 'widgets/panels/border_panel.dart';
 import 'widgets/panels/color_panel.dart';
 import 'widgets/panels/margin_panel.dart';
 import '../../core/ui/text_input_dialog.dart';
 import 'widgets/panels/layout_panel.dart';
 import '../../core/ui/preview_settings_panel.dart';
-import 'widgets/target_sub_panel.dart';
 
 /// Geometria do sticker/texto selecionado, na medida necessária para
 /// posicionar as alças de redimensionar/girar por fora dele (ver
@@ -531,8 +531,25 @@ class _CollagePageState extends State<CollagePage> {
         _update(_settings.copyWith(outerMarginRatio: 0, innerMarginRatio: 0));
       },
     ),
-    _CollageTab.border => _borderPanelContent(),
-    _CollageTab.background => _backgroundPanelContent(),
+    _CollageTab.border => CollageBorderPanel(
+      settings: _settings,
+      actions: _panelActions,
+      targetsPhotos: _borderTargetsPhotos,
+      onTargetChanged: (v) => setState(() => _borderTargetsPhotos = v),
+      firstCell: _firstCell,
+      previewImageBuilder: _renderPreviewImage,
+    ),
+    _CollageTab.background => CollageBackgroundPanel(
+      targetBackground: _targetBackground,
+      targetsPhotos: _backgroundTargetsPhotos,
+      onTargetChanged: (v) => setState(() => _backgroundTargetsPhotos = v),
+      importedBackgrounds: _importedBackgrounds,
+      onApply: _applyBackground,
+      onImport: _importBackgroundImage,
+      onRemoveImported: _confirmRemoveBackground,
+      onPushUndoCheckpoint: _pushUndoCheckpoint,
+      previewImageBuilder: _renderPreviewImage,
+    ),
     _CollageTab.color => CollageColorPanel(
       settings: _settings,
       actions: _panelActions,
@@ -1139,145 +1156,6 @@ class _CollagePageState extends State<CollagePage> {
   CollageCellSettings? get _firstCell =>
       _settings.cells.isEmpty ? null : _settings.cells.first;
 
-  Widget _borderPanelContent() {
-    final theme = Theme.of(context);
-    final targetsPhotos = _borderTargetsPhotos;
-    final firstCell = _firstCell;
-    final thickness = targetsPhotos
-        ? (firstCell?.borderThicknessAtReference ?? 0)
-        : _settings.borderThicknessAtReference;
-    final maxThickness = targetsPhotos
-        ? CollageCellSettings.maxBorderThickness
-        : CollageSettings.maxBorderThickness;
-    final cornerRatio = targetsPhotos
-        ? (firstCell?.cornerRatio ?? 0)
-        : _settings.cornerRatio;
-    final maxCornerRatio = targetsPhotos
-        ? CollageCellSettings.maxCornerRatio
-        : CollageSettings.maxCornerRatio;
-    final borderColor = targetsPhotos
-        ? (firstCell?.borderColor ?? _settings.borderColor)
-        : _settings.borderColor;
-    void applyThickness(double v) {
-      if (targetsPhotos) {
-        _update(
-          _settings.updatingAllCells(
-            (c) => c.copyWith(borderThicknessAtReference: v),
-          ),
-          pushUndo: false,
-        );
-      } else {
-        _update(
-          _settings.copyWith(borderThicknessAtReference: v),
-          pushUndo: false,
-        );
-      }
-    }
-
-    void applyCornerRatio(double v) {
-      if (targetsPhotos) {
-        _update(
-          _settings.updatingAllCells((c) => c.copyWith(cornerRatio: v)),
-          pushUndo: false,
-        );
-      } else {
-        _update(_settings.copyWith(cornerRatio: v), pushUndo: false);
-      }
-    }
-
-    void applyBorderColor(Color color) {
-      if (targetsPhotos) {
-        _update(
-          _settings.updatingAllCells((c) => c.copyWith(borderColor: color)),
-          pushUndo: false,
-        );
-      } else {
-        _update(_settings.copyWith(borderColor: color), pushUndo: false);
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Espessura, arredondamento e cor valem para o alvo escolhido em
-        // cima (a montagem inteira ou todas as fotos), então ficam dentro da
-        // caixa dele — ver [TargetSubPanel].
-        TargetSubPanel(
-          options: const ['Montagem', 'Fotos'],
-          selectedIndex: targetsPhotos ? 1 : 0,
-          onSelected: (index) =>
-              setState(() => _borderTargetsPhotos = index == 1),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              PanelSliderRow(
-                onChangeStart: _pushUndoCheckpoint,
-                label: 'Espessura da borda',
-                value: thickness,
-                min: 0,
-                max: maxThickness,
-                valueLabel: '${thickness.round()}px',
-                onChanged: applyThickness,
-              ),
-              const SizedBox(height: 12),
-              PanelSliderRow(
-                onChangeStart: _pushUndoCheckpoint,
-                label: 'Arredondamento dos cantos',
-                value: cornerRatio,
-                min: 0,
-                max: maxCornerRatio,
-                valueLabel: '${(cornerRatio / maxCornerRatio * 100).round()}%',
-                onChanged: applyCornerRatio,
-              ),
-              if (thickness > 0) ...[
-                const SizedBox(height: 4),
-                Divider(
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.45,
-                  ),
-                ),
-                PanelColorRow(
-                  label: 'Cor da borda',
-                  color: borderColor,
-                  onTap: () => _pickBorderColor(
-                    current: borderColor,
-                    onSelected: applyBorderColor,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Cor da borda — [current]/[onSelected] deixam esta mesma folha servir a
-  /// borda da montagem inteira ou a borda de todas as fotos de uma vez,
-  /// dependendo do alvo escolhido em [_borderPanelContent].
-  void _pickBorderColor({
-    required Color current,
-    required ValueChanged<Color> onSelected,
-  }) {
-    // O checkpoint entra na primeira cor escolhida, não na abertura do painel:
-    // abrir e fechar sem escolher nada não pode deixar um passo de desfazer
-    // que aparenta não fazer nada.
-    var checkpointPushed = false;
-    showCollageColorPickerSheet(
-      context: context,
-      title: 'Cor da borda',
-      initialColor: current,
-      onColorSelected: (color) {
-        if (!checkpointPushed) {
-          checkpointPushed = true;
-          _pushUndoCheckpoint();
-        }
-        onSelected(color);
-      },
-      previewImageBuilder: _renderPreviewImage,
-    );
-  }
-
   // ---------------------------------------------------------------------
   // Seção "Fundo"
   // ---------------------------------------------------------------------
@@ -1299,159 +1177,6 @@ class _CollagePageState extends State<CollagePage> {
             )
           : _settings.copyWith(background: background),
       pushUndo: pushUndo,
-    );
-  }
-
-  Widget _backgroundPanelContent() {
-    final background = _targetBackground;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // O fundo da montagem (a área fora/entre as fotos) e o fundo de
-        // dentro de cada foto (o que aparece na sobra do modo "encaixar") são
-        // escolhas independentes — mesmo seletor de alvo da aba "Borda e
-        // cantos". Transparente/Cor/Imagem valem para o alvo escolhido, por
-        // isso ficam dentro da caixa dele (ver [TargetSubPanel]).
-        TargetSubPanel(
-          options: const ['Montagem', 'Fotos'],
-          selectedIndex: _backgroundTargetsPhotos ? 1 : 0,
-          onSelected: (index) =>
-              setState(() => _backgroundTargetsPhotos = index == 1),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // `ChoiceChip`s em vez de `SegmentedButton`: os 3 rótulos
-              // ("Transparente" principalmente) não cabem lado a lado com
-              // ícone dentro da largura do painel do rodapé sem quebrar linha
-              // dentro do próprio botão — chip quebra para a linha de baixo
-              // inteiro, nunca no meio de uma palavra.
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final entry in const [
-                    (
-                      CollageBackgroundMode.transparent,
-                      'Transparente',
-                      Icons.check_box_outline_blank_rounded,
-                    ),
-                    (
-                      CollageBackgroundMode.color,
-                      'Cor',
-                      Icons.palette_outlined,
-                    ),
-                    (
-                      CollageBackgroundMode.image,
-                      'Imagem',
-                      Icons.image_outlined,
-                    ),
-                  ])
-                    ChoiceChip(
-                      avatar: Icon(entry.$3, size: 15),
-                      label: Text(entry.$2),
-                      visualDensity: VisualDensity.compact,
-                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-                      selected: background.mode == entry.$1,
-                      onSelected: (_) =>
-                          _applyBackground(background.copyWith(mode: entry.$1)),
-                    ),
-                ],
-              ),
-              if (background.mode == CollageBackgroundMode.color) ...[
-                const SizedBox(height: 8),
-                PanelColorRow(
-                  label: 'Cor do fundo',
-                  color: background.color,
-                  onTap: _openBackgroundColorPicker,
-                ),
-              ],
-              if (background.mode == CollageBackgroundMode.image) ...[
-                const SizedBox(height: 12),
-                _backgroundImagePicker(),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _backgroundImagePicker() {
-    // Os fundos prontos vêm primeiro, depois os importados e por último o
-    // "Importar" — mesma ordem dos stickers, onde os do app também abrem a
-    // lista.
-    const bundled = BackgroundImageLibrary.bundled;
-
-    return SizedBox(
-      height: 70,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: bundled.length + _importedBackgrounds.length + 1,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          if (index < bundled.length) {
-            final background = bundled[index];
-            return GestureDetector(
-              // Sem onLongPress: fundo que vem com o app não se remove, ao
-              // contrário dos importados.
-              onTap: () => _applyBackground(
-                _targetBackground.copyWith(
-                  mode: CollageBackgroundMode.image,
-                  imagePath: background.assetPath,
-                ),
-              ),
-              child: _bundledBackgroundThumb(
-                background,
-                selected: _targetBackground.imagePath == background.assetPath,
-              ),
-            );
-          }
-
-          final importedIndex = index - bundled.length;
-          if (importedIndex == _importedBackgrounds.length) {
-            return ImportAssetTile(
-              onTap: _importBackgroundImage,
-              label: 'Importar',
-            );
-          }
-          final asset = _importedBackgrounds[importedIndex];
-          final selected = _targetBackground.imagePath == asset.filePath;
-          return GestureDetector(
-            onTap: () => _applyBackground(
-              _targetBackground.copyWith(
-                mode: CollageBackgroundMode.image,
-                imagePath: asset.filePath,
-              ),
-            ),
-            onLongPress: () => _confirmRemoveBackground(asset),
-            child: ImportedAssetThumb(asset: asset, selected: selected),
-          );
-        },
-      ),
-    );
-  }
-
-  void _openBackgroundColorPicker() {
-    // Mesmo cuidado de [_pickBorderColor] com o histórico de desfazer.
-    var checkpointPushed = false;
-    showCollageColorPickerSheet(
-      context: context,
-      title: 'Cor do fundo',
-      initialColor: _targetBackground.color,
-      onColorSelected: (color) {
-        if (!checkpointPushed) {
-          checkpointPushed = true;
-          _pushUndoCheckpoint();
-        }
-        _applyBackground(
-          _targetBackground.copyWith(
-            mode: CollageBackgroundMode.color,
-            color: color,
-          ),
-          pushUndo: false,
-        );
-      },
-      previewImageBuilder: _renderPreviewImage,
     );
   }
 
@@ -2409,36 +2134,6 @@ class _CollagePageState extends State<CollagePage> {
       );
     }
     if (!identical(updated, _settings)) _update(updated);
-  }
-
-  /// Miniatura de um fundo pronto do app — mesma moldura de [_assetThumb],
-  /// mas lendo de asset e preenchendo o quadro (`cover`), que é como a foto
-  /// vai aparecer no fundo de verdade.
-  Widget _bundledBackgroundThumb(
-    BundledBackground background, {
-    required bool selected,
-  }) {
-    final theme = Theme.of(context);
-    return Container(
-      width: 62,
-      height: 46,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary
-              : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: selected ? 2 : 1,
-        ),
-      ),
-      child: Image.asset(
-        background.assetPath,
-        fit: BoxFit.cover,
-        semanticLabel: background.label,
-      ),
-    );
   }
 
   // ---------------------------------------------------------------------
