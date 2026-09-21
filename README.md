@@ -72,6 +72,9 @@ both use, so what you see is what gets encoded.
 ### Video → GIF / WebP
 
 - Preview with a timeline, duration trim and crop (presets or custom)
+- Rotate in 90° steps and mirror horizontally or vertically — applied to
+  the finished result, so crop, frame and the size estimate keep working in
+  the original orientation
 - Speed 0.25x–4x, resolution as a percentage of the original (with pixel
   preview), frame rate 5–24 fps, loop or play once
 - Output as GIF (256-color palette, two-pass conversion) or animated WebP
@@ -87,6 +90,7 @@ both use, so what you see is what gets encoded.
 - Image frame — bundled phone mockups, or your own with an
   automatically-detected transparent window
 - Content fit — auto, fill, fit or expand with zoom
+- Rotate and mirror the finished result, on both screens
 - Transparent (real alpha on WebP/PNG) or solid-color background
 
 ### Photo collage
@@ -215,12 +219,12 @@ frames from one code path.
 
 ## Quality
 
-**376 automated tests** cover the estimation model against real FFmpeg
+**412 automated tests** cover the estimation model against real FFmpeg
 output, the size and quality panels, frame and crop geometry, the export
 arguments for every format, the import stores, and the collage — framing,
 color, layout, compositing against golden pixels and the animation
 timeline. They also cover the shared crop controller introduced by the
-feature-based modularization.
+feature-based modularization, and the rotate/flip step applied on export.
 
 `tool/medir_precisao.py` produces five synthetic videos, from a static title
 card to incompressible noise, converts each and records the sizes; a test

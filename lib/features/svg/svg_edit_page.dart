@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/models/aspect_preset.dart';
 import '../../core/models/color_adjustments.dart';
 import '../../core/models/crop_rect.dart';
+import '../../core/models/output_transform.dart';
 import 'models/svg_edit_settings.dart';
 import 'models/svg_info.dart';
 import '../../core/services/output_service.dart';
@@ -28,6 +29,7 @@ import '../../core/ui/crop/cropped_view.dart';
 import '../../core/ui/editor_tabs_footer.dart';
 import '../../core/ui/labeled_section.dart';
 import '../../core/ui/preview_settings_panel.dart';
+import '../../core/ui/rotate_flip_panel.dart';
 
 /// Sentinela do preset "Personalizado" na fileira de proporções — mesma
 /// ideia de `_customAspectPreset` em `editor_page.dart`: não é uma proporção
@@ -170,7 +172,16 @@ class _SvgEditPageState extends State<SvgEditPage> {
       title: 'Girar/Espelhar',
       label: 'Girar',
       value: _rotateFlipLabel,
-      builder: (_) => _rotateFlipSection(),
+      builder: (_) => RotateFlipPanel(
+        transform: _transform,
+        onChanged: (transform) => _update(
+          _settings.copyWith(
+            rotationQuarterTurns: transform.quarterTurns,
+            flipHorizontal: transform.flipHorizontal,
+            flipVertical: transform.flipVertical,
+          ),
+        ),
+      ),
     ),
     EditorSection(
       icon: Icons.wallpaper_rounded,
@@ -709,120 +720,21 @@ class _SvgEditPageState extends State<SvgEditPage> {
     _update(_settings.copyWith(crop: next));
   }
 
+  /// O giro/espelhamento desta tela no formato que [RotateFlipPanel] usa.
+  /// Aqui ele gira o espaço de trabalho inteiro (o recorte passa a ser
+  /// medido já girado), diferente das telas de vídeo e foto, onde o mesmo
+  /// painel controla o último passo antes de exportar — por isso os três
+  /// campos continuam soltos em `SvgEditSettings`, e só a interface é
+  /// compartilhada.
+  OutputTransform get _transform => OutputTransform(
+    quarterTurns: _settings.rotationQuarterTurns,
+    flipHorizontal: _settings.flipHorizontal,
+    flipVertical: _settings.flipVertical,
+  );
+
   String get _rotateFlipLabel {
-    final parts = <String>[
-      if (_settings.rotationQuarterTurns != 0)
-        '${_settings.rotationQuarterTurns * 90}°',
-      if (_settings.flipHorizontal) 'Espelho H',
-      if (_settings.flipVertical) 'Espelho V',
-    ];
-    return parts.isEmpty ? 'Nenhum' : parts.join(' · ');
-  }
-
-  /// Os quatro botões de girar/espelhar ficam dois a dois numa linha, então
-  /// cada um tem menos da metade da largura da tela. O padding padrão do
-  /// botão comia quase todo esse espaço e sobrava tão pouco para o texto que
-  /// "90° à esquerda" quebrava em três linhas num celular estreito — e até
-  /// "Horizontal" quebrava em duas. Apertar o padding e travar em uma linha
-  /// resolve; o `FittedBox` encolhe a fonte só quando ainda assim não couber
-  /// (texto do sistema aumentado), em vez de cortar a palavra.
-  /// Só o padding: serve tanto ao contornado quanto ao preenchido (o de
-  /// espelhar troca de tipo quando está ligado), então não pode carregar
-  /// nada específico de um dos dois.
-  static const ButtonStyle _transformButtonStyle = ButtonStyle(
-    padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
-  );
-
-  Widget _transformLabel(String label) => FittedBox(
-    fit: BoxFit.scaleDown,
-    alignment: Alignment.centerLeft,
-    child: Text(label, maxLines: 1),
-  );
-
-  Widget _rotateFlipSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _update(
-                  _settings.copyWith(
-                    rotationQuarterTurns:
-                        (_settings.rotationQuarterTurns + 3) % 4,
-                  ),
-                ),
-                style: _transformButtonStyle,
-                icon: const Icon(Icons.rotate_left_rounded),
-                label: _transformLabel('90° à esquerda'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _update(
-                  _settings.copyWith(
-                    rotationQuarterTurns:
-                        (_settings.rotationQuarterTurns + 1) % 4,
-                  ),
-                ),
-                style: _transformButtonStyle,
-                icon: const Icon(Icons.rotate_right_rounded),
-                label: _transformLabel('90° à direita'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _flipToggleButton(
-                label: 'Horizontal',
-                icon: Icons.swap_horiz_rounded,
-                selected: _settings.flipHorizontal,
-                onTap: () => _update(
-                  _settings.copyWith(flipHorizontal: !_settings.flipHorizontal),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _flipToggleButton(
-                label: 'Vertical',
-                icon: Icons.swap_vert_rounded,
-                selected: _settings.flipVertical,
-                onTap: () => _update(
-                  _settings.copyWith(flipVertical: !_settings.flipVertical),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _flipToggleButton({
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return selected
-        ? FilledButton.tonalIcon(
-            onPressed: onTap,
-            style: _transformButtonStyle,
-            icon: Icon(icon),
-            label: _transformLabel(label),
-          )
-        : OutlinedButton.icon(
-            onPressed: onTap,
-            style: _transformButtonStyle,
-            icon: Icon(icon),
-            label: _transformLabel(label),
-          );
+    final transform = _transform;
+    return transform.isIdentity ? 'Nenhum' : transform.label;
   }
 
   // ---------------------------------------------------------------------

@@ -5,6 +5,7 @@ import 'color_adjustments.dart';
 import 'crop_rect.dart';
 import 'default_colors.dart';
 import 'image_frame.dart';
+import 'output_transform.dart';
 
 /// Estilo de moldura desenhado ao redor do GIF. Cada estilo é só um atalho
 /// para um par de valores — espessura da borda e arredondamento dos cantos —
@@ -107,6 +108,7 @@ class FrameSettings {
     this.adjustments = ColorAdjustments.neutral,
     this.crop,
     this.texts = const [],
+    this.outputTransform = OutputTransform.identity,
   });
 
   final FrameStyle style;
@@ -173,6 +175,21 @@ class FrameSettings {
   /// (ver `CollageTextItem`), com o centro normalizado ao canvas final
   /// (incluindo moldura e fundo), não só à foto.
   final List<CollageTextItem> texts;
+
+  /// Giro e espelhamento da aba "Girar", aplicados ao resultado já
+  /// composto — ver [OutputTransform].
+  ///
+  /// Mora aqui, e não num campo só da tela de foto, porque as duas telas
+  /// que oferecem a aba guardam seu desfazer/refazer em cima do objeto que
+  /// as contém: a de foto empilha [FrameSettings], e a de vídeo empilha
+  /// `ConversionSettings`, que carrega este. Um campo só também impede que
+  /// as duas divirjam — `ConversionSettings.outputTransform` é só um atalho
+  /// para este.
+  ///
+  /// Apesar do nome da classe, não é uma propriedade da moldura: a moldura
+  /// é desenhada na orientação original e gira junto com tudo o mais, no
+  /// fim. [crop], [adjustments] e [texts] já moram aqui pelo mesmo motivo.
+  final OutputTransform outputTransform;
 
   /// Zoom que realmente deve ser aplicado pela prévia e pela exportação.
   /// Manter o valor escolhido em [contentZoom] permite recuperá-lo quando o
@@ -241,6 +258,7 @@ class FrameSettings {
     CropRect? crop,
     bool clearCrop = false,
     List<CollageTextItem>? texts,
+    OutputTransform? outputTransform,
   }) {
     return FrameSettings(
       style: style ?? this.style,
@@ -257,6 +275,7 @@ class FrameSettings {
       adjustments: adjustments ?? this.adjustments,
       crop: clearCrop ? null : (crop ?? this.crop),
       texts: texts ?? this.texts,
+      outputTransform: outputTransform ?? this.outputTransform,
     );
   }
 }
