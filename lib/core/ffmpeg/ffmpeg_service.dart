@@ -9,7 +9,6 @@ import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_video/statistics.dart';
 import 'package:ffmpeg_kit_flutter_new_video/stream_information.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:flutter/painting.dart' show Color;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/color_adjustments.dart';
@@ -19,7 +18,12 @@ import '../models/image_frame.dart';
 import '../models/quick_convert_format.dart';
 import '../models/size_estimate.dart';
 import '../models/video_info.dart';
+import 'ffmpeg_primitives.dart';
+import 'filter_graph.dart';
+import 'gif_args.dart';
 import 'mp4_rotation.dart';
+import 'probe_parsing.dart';
+import 'webp_args.dart';
 import '../painting/frame_painter.dart';
 import '../services/size_estimator.dart';
 import '../services/text_overlay_render.dart';
@@ -112,7 +116,7 @@ class FfmpegService {
     }
 
     final duration =
-        double.tryParse(info.getDuration() ?? '') ?? _durationFrom(video) ?? 0;
+        double.tryParse(info.getDuration() ?? '') ?? durationFrom(video) ?? 0;
     if (duration <= 0) {
       throw FfmpegException('Não foi possível descobrir a duração do vídeo.');
     }
@@ -122,7 +126,7 @@ class FfmpegService {
     // nada — existe vídeo de celular cuja rotação está só na matriz de
     // exibição do MP4, e tratá-lo como sem rotação deixa um vídeo gravado
     // em pé achatado na prévia e na exportação.
-    final probeRotation = _rotationOf(video);
+    final probeRotation = rotationOf(video);
     final rotation = probeRotation != 0
         ? probeRotation
         : (await readMp4Rotation(path) ?? 0);
@@ -133,7 +137,7 @@ class FfmpegService {
       rawWidth: width,
       rawHeight: height,
       durationSeconds: duration,
-      frameRate: _frameRateOf(video),
+      frameRate: frameRateOf(video),
       bitrateBps: int.tryParse(info.getBitrate() ?? '') ?? 0,
       fileSizeBytes: file.lengthSync(),
       codec: video.getCodec() ?? 'desconhecido',
@@ -141,441 +145,16 @@ class FfmpegService {
     );
   }
 
-  double? _durationFrom(StreamInformation stream) {
-    final raw = stream.getAllProperties()?['duration'];
-    return raw == null ? null : double.tryParse(raw.toString());
-  }
+  /// Cadeia de filtros da conversão — ver `filter_graph.dart`.
+  String buildVideoFilter(ConversionSettings settings, VideoInfo video) =>
+      buildConversionVideoFilter(settings, video);
 
-  /// O FFprobe devolve taxa de quadros como fração ("30000/1001").
-  double _frameRateOf(StreamInformation stream) {
-    final props = stream.getAllProperties() ?? const {};
-    for (final key in ['avg_frame_rate', 'r_frame_rate']) {
-      final raw = props[key]?.toString();
-      if (raw == null || raw.isEmpty) continue;
-      final parts = raw.split('/');
-      if (parts.length == 2) {
-        final num = double.tryParse(parts[0]) ?? 0;
-        final den = double.tryParse(parts[1]) ?? 0;
-        if (num > 0 && den > 0) return num / den;
-      } else {
-        final value = double.tryParse(raw);
-        if (value != null && value > 0) return value;
-      }
-    }
-    return 30;
-  }
-
-  /// A rotação pode vir em `tags.rotate` (arquivos antigos) ou em
-  /// `side_data_list` como matriz de exibição (arquivos modernos de celular).
-  int _rotationOf(StreamInformation stream) {
-    final props = stream.getAllProperties() ?? const {};
-
-    final tags = props['tags'];
-    if (tags is Map) {
-      final rotate = tags['rotate'];
-      final parsed = int.tryParse('$rotate');
-      if (parsed != null) return _normalizeRotation(parsed);
-    }
-
-    final sideData = props['side_data_list'];
-    if (sideData is List) {
-      for (final entry in sideData) {
-        if (entry is Map && entry['rotation'] != null) {
-          final parsed = double.tryParse('${entry['rotation']}');
-          if (parsed != null) return _normalizeRotation(parsed.round());
-        }
-      }
-    }
-    return 0;
-  }
-
-  int _normalizeRotation(int degrees) {
-    final normalized = ((degrees % 360) + 360) % 360;
-    return normalized;
-  }
-
-  // ------------------------------------------------------------------
-  // Montagem dos filtros
-  // ------------------------------------------------------------------
-
-  /// Cadeia de filtros de vídeo, na única ordem que dá o resultado certo:
-  ///
-  ///  1. `crop`   — em pixels do vídeo original, então tem que vir primeiro;
-  ///  2. `setpts` — muda a velocidade reescrevendo os tempos dos quadros;
-  ///  3. `fps`    — reamostra para a taxa final (depois da velocidade, senão
-  ///                o cálculo de quadros sai errado);
-  ///  4. `scale`  — redimensiona por último, sobre menos pixels possível.
-  String buildVideoFilter(ConversionSettings settings, VideoInfo video) {
-    final parts = <String>[];
-
-    final crop = settings.crop;
-    if (crop != null) {
-      parts.add('crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}');
-    }
-
-    if (settings.speed != 1.0) {
-      parts.add('setpts=PTS/${settings.speed}');
-    }
-
-    parts.add('fps=${settings.fps}');
-
-    final (width, height) = settings.contentDimensions(video);
-    parts.add('scale=$width:$height:flags=lanczos');
-
-    // 5. ajuste de cor — por último, sobre a imagem já no tamanho final
-    //    (menos pixels para processar) e só sobre o CONTEÚDO: a moldura e o
-    //    fundo entram depois, nos grafos de moldura, e não passam por aqui.
-    parts.addAll(colorAdjustFilters(settings.adjustments));
-
-    return parts.join(',');
-  }
-
-  /// Traduz os oito ajustes de cor para filtros do FFmpeg, na mesma ordem em
-  /// que a prévia os aplica (ver `buildAdjustmentColorFilter`):
-  ///
-  ///  * `eq` faz a parte que trata os três canais igual (exposição, realces,
-  ///    sombras, brilho e contraste), já composta num ganho e um
-  ///    deslocamento por [ColorAdjustments.toneTransfer] — `eq` calcula
-  ///    `(entrada - 0.5) * contrast + 0.5 + brightness`, então é só resolver
-  ///    os dois parâmetros a partir do par;
-  ///  * `colorchannelmixer` faz a parte que mistura canais (saturação, matiz
-  ///    e temperatura), com a matriz de [ColorAdjustments.channelMixMatrix].
-  ///
-  /// Sair dos mesmos números das matrizes é o que mantém o GIF exportado
-  /// igual ao que a prévia mostrou.
+  /// Filtros de brilho/contraste/saturação/temperatura — ver
+  /// `filter_graph.dart`.
   @visibleForTesting
-  List<String> colorAdjustFilters(ColorAdjustments adjustments) {
-    if (!adjustments.hasAdjustments) return const [];
-    final filters = <String>[];
+  List<String> colorAdjustFilters(ColorAdjustments adjustments) =>
+      buildColorAdjustFilters(adjustments);
 
-    final (gain, shift) = adjustments.toneTransfer;
-    // O deslocamento vem na escala 0–255; o `eq` trabalha normalizado.
-    final normalizedShift = shift / 255;
-    if (gain != 1 || normalizedShift != 0) {
-      final brightness = normalizedShift - 0.5 + 0.5 * gain;
-      filters.add(
-        'eq=contrast=${_filterNumber(gain)}:'
-        'brightness=${_filterNumber(brightness)}',
-      );
-    }
-
-    final m = adjustments.channelMixMatrix;
-    if (!_isIdentityMix(m)) {
-      filters.add(
-        'colorchannelmixer='
-        'rr=${_filterNumber(m[0])}:rg=${_filterNumber(m[1])}:'
-        'rb=${_filterNumber(m[2])}:'
-        'gr=${_filterNumber(m[5])}:gg=${_filterNumber(m[6])}:'
-        'gb=${_filterNumber(m[7])}:'
-        'br=${_filterNumber(m[10])}:bg=${_filterNumber(m[11])}:'
-        'bb=${_filterNumber(m[12])}',
-      );
-    }
-
-    return filters;
-  }
-
-  bool _isIdentityMix(List<double> m) {
-    const identity = [0, 1, 2, 5, 6, 7, 10, 11, 12];
-    const expected = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
-    for (var i = 0; i < identity.length; i++) {
-      if ((m[identity[i]] - expected[i]).abs() > 0.0001) return false;
-    }
-    return true;
-  }
-
-  /// Número no formato que o FFmpeg entende: ponto decimal, sem notação
-  /// científica (que a linha de comando não aceita) e sem casas demais.
-  String _filterNumber(double value) => value.toStringAsFixed(4);
-
-  /// Grafo de filtro completo pronto para `-lavfi`: [input] (ex.: `0:v`) até
-  /// [output], já com a moldura aplicada — conteúdo ([buildVideoFilter])
-  /// ajustado à área da moldura conforme [ConversionSettings.frame]'s
-  /// modo de ajuste, recortado pelos cantos internos e composto sobre o
-  /// fundo colorido no tamanho final ([ConversionSettings.outputDimensions]).
-  /// Só deve ser chamado quando há moldura ativa
-  /// (`frame.style != FrameStyle.none`).
-  String _framedGraph(
-    ConversionSettings settings,
-    VideoInfo video, {
-    required String input,
-    required String output,
-  }) {
-    final contentFilter = buildVideoFilter(settings, video);
-    final frame = settings.frame;
-
-    final (contentWidth, contentHeight) = settings.contentDimensions(video);
-    final (areaWidth, areaHeight, thickness) = settings.frameAreaDimensions(
-      video,
-    );
-    final (canvasWidth, canvasHeight) = settings.outputDimensions(video);
-    final colorHex = _ffmpegColor(frame.color);
-    final thicknessPx = thickness.round();
-    final geometry = FrameGeometry.of(
-      Size(canvasWidth.toDouble(), canvasHeight.toDouble()),
-      frame,
-    );
-    final innerRadius = geometry.innerRadius;
-
-    final parts = <String>['[$input]$contentFilter[content]'];
-
-    if (contentWidth == areaWidth && contentHeight == areaHeight) {
-      parts.add('[content]copy[fitted]');
-    } else {
-      final fit = resolveContentFit(
-        frame.contentFit,
-        contentWidth / contentHeight,
-        areaWidth / areaHeight,
-      );
-      switch (fit) {
-        case ContentFitMode.fill:
-          parts.add(
-            '[content]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=increase:flags=lanczos,'
-            'crop=$areaWidth:$areaHeight[fitted]',
-          );
-        case ContentFitMode.expand:
-          parts.add(
-            '[content]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=decrease:flags=lanczos,'
-            'pad=$areaWidth:$areaHeight:(ow-iw)/2:(oh-ih)/2:'
-            'color=black[fitted]',
-          );
-        case ContentFitMode.auto:
-        case ContentFitMode.fit:
-          parts.add(
-            '[content]scale=$areaWidth:$areaHeight:'
-            'force_original_aspect_ratio=decrease:flags=lanczos,'
-            'pad=$areaWidth:$areaHeight:(ow-iw)/2:(oh-ih)/2:'
-            'color=$colorHex[fitted]',
-          );
-      }
-    }
-
-    // A prévia recorta o vídeo pelo raio interno e o desenha sobre a moldura.
-    // A exportação precisa manter essa mesma ordem: primeiro o fundo colorido,
-    // depois o vídeo já recortado. Um `pad` simples deixava o vídeo retangular
-    // e uma composição invertida fazia a borda cobrir parte dele.
-    parts.add('[fitted]format=rgba,setpts=PTS-STARTPTS[fitted_rgba]');
-    parts.add(
-      '${_grayCanvas(settings, areaWidth, areaHeight)}'
-      '${_roundedLumaChain(innerRadius)}[inner_mask]',
-    );
-    parts.add(
-      '[fitted_rgba][inner_mask]alphamerge=shortest=1[rounded_content]',
-    );
-    parts.addAll(
-      _frameBackgroundParts(
-        settings,
-        canvasWidth: canvasWidth,
-        canvasHeight: canvasHeight,
-        colorHex: colorHex,
-        outerRadius: geometry.outerRadius,
-      ),
-    );
-    parts.add(
-      '[frame_background][rounded_content]overlay='
-      '$thicknessPx:$thicknessPx:shortest=1:repeatlast=0[$output]',
-    );
-
-    return parts.join(';');
-  }
-
-  /// Fonte `color` branca em escala de cinza do tamanho pedido, com a
-  /// duração e o fps da saída — a base de todas as máscaras deste arquivo.
-  String _grayCanvas(ConversionSettings settings, int width, int height) =>
-      'color=white:s=${width}x$height:r=${settings.fps}:'
-      'd=${_seconds(settings.outputDurationSeconds)},format=gray';
-
-  /// Filtro que recorta uma máscara em escala de cinza numa forma de cantos
-  /// arredondados de raio [radius], já com a vírgula que o encadeia ao
-  /// filtro anterior — string vazia quando o raio é zero, porque aí a forma
-  /// é o próprio retângulo. É a mesma expressão para o raio interno (janela
-  /// do vídeo) e para o externo (contorno da moldura); escrevê-la uma vez só
-  /// garante que as duas nunca divirjam.
-  String _roundedLumaChain(double radius) {
-    if (radius <= 0) return '';
-    final r = radius.toStringAsFixed(3);
-    return ",geq=lum='clip(($r+0.5-hypot(max(abs(X-(W-1)/2)-((W-1)/2-$r),0),"
-        "max(abs(Y-(H-1)/2)-((H-1)/2-$r),0)))*255,0,255)'";
-  }
-
-  /// O `[frame_background]` sobre o qual o vídeo é composto.
-  ///
-  /// Com "Fundo transparente" ligado, basta o retângulo na cor da moldura:
-  /// a máscara externa ([_prepareMaskFile]) recorta os cantos depois. Com o
-  /// toggle desligado não há máscara nenhuma, então é aqui que a forma
-  /// arredondada precisa aparecer — cor da moldura dentro dela e a cor de
-  /// fundo escolhida nos cantos que sobram. Sem isso o modo opaco pintava o
-  /// canvas inteiro com a cor da moldura e o arredondamento sumia, divergindo
-  /// de `paintFrame`.
-  List<String> _frameBackgroundParts(
-    ConversionSettings settings, {
-    required int canvasWidth,
-    required int canvasHeight,
-    required String colorHex,
-    required double outerRadius,
-  }) {
-    final flat =
-        'color=c=$colorHex:s=${canvasWidth}x$canvasHeight:'
-        'r=${settings.fps}:d=${_seconds(settings.outputDurationSeconds)}';
-
-    if (settings.frame.transparentBackground || outerRadius <= 0) {
-      return ['$flat[frame_background]'];
-    }
-
-    final backgroundHex = _ffmpegColor(settings.frame.backgroundColor);
-    return [
-      'color=c=$backgroundHex:s=${canvasWidth}x$canvasHeight:'
-          'r=${settings.fps}:d=${_seconds(settings.outputDurationSeconds)}'
-          '[bg_opaque]',
-      '$flat,format=rgba[frame_color]',
-      '${_grayCanvas(settings, canvasWidth, canvasHeight)}'
-          '${_roundedLumaChain(outerRadius)}[outer_mask]',
-      '[frame_color][outer_mask]alphamerge=shortest=1[frame_rrect]',
-      // `format=rgb`: sem isso o overlay compõe em yuv420 e a borda
-      // arredondada, que é antisserrilhada, perde definição na
-      // subamostragem de croma logo antes de virar paleta de GIF.
-      '[bg_opaque][frame_rrect]overlay=0:0:shortest=1:format=rgb'
-          '[frame_background]',
-    ];
-  }
-
-  /// Grafo de filtro completo pronto para `-lavfi` quando a moldura é uma
-  /// arte de imagem ([FrameSettings.imageFrame]) — diferente de
-  /// [_framedGraph] (que desenha a borda com `pad` de cor sólida), aqui o
-  /// conteúdo é ajustado para a área de conteúdo da arte
-  /// ([ConversionSettings.imageFrameContentAreaPx]) e a arte (já
-  /// rasterizada em [artInput], no tamanho exato do canvas) é composta por
-  /// cima via `overlay`, usando o próprio canal alfa da arte — sem precisar
-  /// de [rasterizeCornerMask]/[_prepareMaskFile], que só existem para os
-  /// cantos arredondados da moldura procedural.
-  ///
-  /// Com "Fundo transparente" ligado, a transparência final vem da união
-  /// (`blend=lighten`, ou seja, máximo por pixel) de dois mapas em escala de
-  /// cinza: o canal alfa da própria arte (o corpo do mockup) e um retângulo
-  /// sólido do tamanho exato da área de conteúdo (onde o vídeo sempre
-  /// aparece opaco, mesmo nas barras de "Encaixar", que não têm cor de
-  /// moldura configurável — por isso usam preto). [areaMaskInput] é uma
-  /// fonte `color` do `lavfi`, gerada direto no grafo, sem precisar de um
-  /// arquivo temporário; só é usada nesse caso, e por isso é opcional.
-  ///
-  /// Com o toggle desligado, nada disso é necessário: o `pad` que centraliza
-  /// o conteúdo já preenche o canvas com a cor de fundo escolhida, e o grafo
-  /// termina no `overlay` da arte.
-  String _imageFramedGraph(
-    ConversionSettings settings,
-    VideoInfo video, {
-    required String input,
-    required String artInput,
-    bool needsAreaMask = false,
-    required String output,
-  }) {
-    final contentFilter = buildVideoFilter(settings, video);
-    final frame = settings.frame;
-
-    final (contentWidth, contentHeight) = settings.contentDimensions(video);
-    final (areaX, areaY, areaWidth, areaHeight) = settings
-        .imageFrameContentAreaPx(video);
-    final (canvasWidth, canvasHeight) = settings.imageFrameCanvasDimensions(
-      video,
-    );
-    final backgroundHex = _ffmpegColor(frame.backgroundColor);
-
-    final parts = <String>['[$input]$contentFilter[content]'];
-
-    final fit = resolveContentFit(
-      frame.contentFit,
-      contentWidth / contentHeight,
-      areaWidth / areaHeight,
-    );
-
-    if (fit == ContentFitMode.expand) {
-      // O fundo permanece preto. O zoom atua somente no vídeo nítido central:
-      // abaixo de 100% revela mais da área preta; acima de 100% aproxima e o
-      // overlay recorta o excedente.
-      final widthScale = areaWidth / contentWidth;
-      final heightScale = areaHeight / contentHeight;
-      final fitScale = widthScale < heightScale ? widthScale : heightScale;
-      final fittedWidth = _evenAtLeast2(contentWidth * fitScale);
-      final fittedHeight = _evenAtLeast2(contentHeight * fitScale);
-      final zoom = frame.effectiveContentZoom;
-      final zoomedWidth = _evenAtLeast2(fittedWidth * zoom);
-      final zoomedHeight = _evenAtLeast2(fittedHeight * zoom);
-
-      parts.add('[content]split=2[bg][fg]');
-      parts.add(
-        '[bg]scale=$areaWidth:$areaHeight:flags=lanczos,'
-        'drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill[bg2]',
-      );
-      parts.add('[fg]scale=$zoomedWidth:$zoomedHeight:flags=lanczos[fg2]');
-      parts.add('[bg2][fg2]overlay=(W-w)/2:(H-h)/2[fitted]');
-    } else if (contentWidth == areaWidth && contentHeight == areaHeight) {
-      parts.add('[content]copy[fitted]');
-    } else if (fit == ContentFitMode.fill) {
-      parts.add(
-        '[content]scale=$areaWidth:$areaHeight:'
-        'force_original_aspect_ratio=increase:flags=lanczos,'
-        'crop=$areaWidth:$areaHeight[fitted]',
-      );
-    } else {
-      parts.add(
-        '[content]scale=$areaWidth:$areaHeight:'
-        'force_original_aspect_ratio=decrease:flags=lanczos,'
-        'pad=$areaWidth:$areaHeight:(ow-iw)/2:(oh-ih)/2:'
-        'color=black[fitted]',
-      );
-    }
-
-    parts.add(
-      '[fitted]pad=$canvasWidth:$canvasHeight:$areaX:$areaY:'
-      'color=$backgroundHex[base]',
-    );
-    parts.add('[$artInput]setpts=PTS-STARTPTS[art]');
-    // A arte e a máscara são entradas em loop. Sem `shortest`, o overlay
-    // continua repetindo o último quadro do vídeo para sempre e a conversão
-    // de molduras de imagem fica presa em 0%. O vídeo é a entrada principal,
-    // portanto ele também define o fim da composição.
-    if (!needsAreaMask) {
-      parts.add('[base][art]overlay=0:0:shortest=1:repeatlast=0[$output]');
-      return parts.join(';');
-    }
-
-    parts.add(
-      '[base][art]overlay=0:0:shortest=1:repeatlast=0,'
-      'format=rgba[visual]',
-    );
-    parts.add(
-      '[$artInput]alphaextract,format=gray,setpts=PTS-STARTPTS[art_alpha]',
-    );
-    // Cor sólida do tamanho da área de conteúdo, gerada como filtro
-    // (`libavfilter`) dentro do próprio grafo — não como uma entrada
-    // `-f lavfi` separada. Essa entrada depende do dispositivo de entrada
-    // `lavfi` do `libavdevice`, que builds de FFmpeg para celular (o
-    // `ffmpeg_kit_flutter_new_video` usado aqui incluso) costumam remover —
-    // sem faz sentido nenhum dos dispositivos de captura de tela/áudio de
-    // desktop num app de celular. Isso fazia a exportação falhar direto na
-    // abertura das entradas, com "Unknown input format: 'lavfi'", sempre que
-    // "Fundo transparente" estava ligado (o padrão).
-    parts.add(
-      'color=white:size=${areaWidth}x$areaHeight:rate=${settings.fps}'
-      '[area_src]',
-    );
-    parts.add(
-      '[area_src]pad=$canvasWidth:$canvasHeight:$areaX:$areaY:'
-      'color=black,format=gray,setpts=PTS-STARTPTS[area_mask]',
-    );
-    parts.add('[art_alpha][area_mask]blend=all_mode=lighten[final_mask]');
-    parts.add('[visual][final_mask]alphamerge=shortest=1[$output]');
-
-    return parts.join(';');
-  }
-
-  /// Rasteriza a arte da moldura de imagem selecionada
-  /// ([FrameSettings.imageFrame]) num PNG de exatamente o tamanho do canvas
-  /// final ([ConversionSettings.imageFrameCanvasDimensions]) — nunca um
-  /// asset esticado, mesmo princípio de [_prepareMaskFile]. Devolve `null`
-  /// quando não há moldura de imagem selecionada.
   Future<String?> _prepareImageFrameArt({
     required ConversionSettings settings,
     required VideoInfo video,
@@ -731,121 +310,23 @@ class FfmpegService {
   /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
   /// [convert] continua sendo o único ponto de entrada em uso normal.
   @visibleForTesting
+  /// Argumentos do GIF dentro de moldura de imagem — ver `gif_args.dart`.
+  @visibleForTesting
   List<String> imageFramedGifArgs({
     required VideoInfo video,
     required ConversionSettings settings,
     required String artPath,
     required String outputPath,
     int? frameLimit,
-  }) {
-    final transparent = settings.frame.transparentBackground;
-    final graph = _imageFramedGraph(
-      settings,
-      video,
-      input: '0:v',
-      artInput: '1:v',
-      needsAreaMask: transparent,
-      output: 'framed',
-    );
-    final newPalette = settings.palette == PaletteMode.perFrame ? ':new=1' : '';
-    final reserve = transparent ? ':reserve_transparent=1' : '';
-    final alphaThreshold = transparent ? ':alpha_threshold=128' : '';
+  }) => buildImageFramedGifArgs(
+    video: video,
+    settings: settings,
+    artPath: artPath,
+    outputPath: outputPath,
+    frameLimit: frameLimit,
+  );
 
-    return [
-      '-y',
-      '-ss',
-      _seconds(settings.startSeconds),
-      '-t',
-      _seconds(settings.sourceDurationSeconds),
-      '-i',
-      video.path,
-      '-loop',
-      '1',
-      '-framerate',
-      '${settings.fps}',
-      '-i',
-      artPath,
-      '-lavfi',
-      '$graph;'
-          '[framed]split=2[palette_source][gif_source];'
-          '[palette_source]palettegen=max_colors=${settings.colors}'
-          ':stats_mode=${settings.palette.statsMode}$reserve[palette];'
-          '[gif_source][palette]paletteuse=dither=${settings.dither.ffmpegValue}'
-          ':diff_mode=rectangle$newPalette$alphaThreshold[out]',
-      '-map',
-      '[out]',
-      '-loop',
-      settings.loop ? '0' : '-1',
-      '-an',
-      // As entradas da arte e da máscara são infinitas; encerra a saída junto
-      // com o fluxo de vídeo, mesmo em builds do FFmpeg que não propagam o EOF
-      // através de todos os filtros complexos.
-      '-shortest',
-      if (frameLimit != null) ...['-frames:v', '$frameLimit'],
-      // Ver o comentário equivalente em [_paletteUseArgs]: sem isso a área
-      // estática da arte (o corpo do mockup, o fundo fora dele) sai verde em
-      // visualizadores que não descartam (disposal) o quadro anterior
-      // corretamente.
-      if (transparent) ...['-gifflags', '-transdiff'],
-      '-f',
-      'gif',
-      outputPath,
-    ];
-  }
-
-  /// Cauda de encode comum a todo caminho de WebP: um único passe, sem
-  /// paleta nenhuma. Diferente do GIF — que precisa de `palettegen`/
-  /// `paletteuse` em dois passes e, no caso transparente, do hack de
-  /// `reserve_transparent`/`alpha_threshold`/`-gifflags -transdiff` por só
-  /// suportar 1 bit de alfa —, o `libwebp` aceita cor cheia e alfa real em
-  /// 8 bits direto do grafo de composição (o mesmo usado pelo GIF). Por
-  /// isso [hasAlpha] só decide o `-pix_fmt` final, nada mais.
-  ///
-  /// `-compression_level 2` (em vez do padrão `4` do próprio `libwebp`): essa
-  /// opção é o "method" do libwebp — quanto o codificador se esforça
-  /// procurando a melhor compressão. Não muda a qualidade visual (isso é só
-  /// `-quality`, acima), só troca tempo de CPU por tamanho de arquivo. Nunca
-  /// tinha sido ajustada de propósito aqui (diferente do caminho da
-  /// sequência de quadros da montagem, que sobe pra `6` com uma troca
-  /// documentada) — 4 era só o que sobrava de não setar nada. Baixar pra 2
-  /// acelera bastante a conversão, principalmente a montagem final do
-  /// contêiner WebP (`WebPAnimEncoderAssemble`), que roda tudo de uma vez no
-  /// final e é onde a demora "trava" mais se sente.
-  List<String> _webpEncodeArgs(
-    ConversionSettings settings, {
-    required bool hasAlpha,
-    bool shortest = false,
-    int? frameLimit,
-  }) {
-    return [
-      '-map',
-      '[out]',
-      '-c:v',
-      'libwebp',
-      '-quality',
-      '${settings.webpQuality}',
-      '-compression_level',
-      '2',
-      '-pix_fmt',
-      hasAlpha ? 'yuva420p' : 'yuv420p',
-      '-loop',
-      settings.loop ? '0' : '1',
-      '-an',
-      if (shortest) '-shortest',
-      if (frameLimit != null) ...['-frames:v', '$frameLimit'],
-      '-f',
-      'webp',
-    ];
-  }
-
-  /// Argumentos completos do FFmpeg para WebP animado sem moldura de imagem:
-  /// cobre tanto "sem moldura nenhuma" quanto moldura procedural (opaca ou
-  /// com fundo transparente). [maskPath] é a máscara de cantos arredondados
-  /// preparada por [_prepareMaskFile] — só é usada quando há moldura
-  /// procedural com fundo transparente; nos outros dois casos é ignorada.
-  ///
-  /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
-  /// [convert] continua sendo o único ponto de entrada em uso normal.
+  /// Argumentos do WebP animado — ver `webp_args.dart`.
   @visibleForTesting
   List<String> webpArgs({
     required VideoInfo video,
@@ -853,85 +334,15 @@ class FfmpegService {
     required String outputPath,
     String? maskPath,
     int? frameLimit,
-  }) {
-    if (settings.frame.style == FrameStyle.none) {
-      final filter = buildVideoFilter(settings, video);
-      return [
-        '-y',
-        '-ss',
-        _seconds(settings.startSeconds),
-        '-t',
-        _seconds(settings.sourceDurationSeconds),
-        '-i',
-        video.path,
-        '-lavfi',
-        '[0:v]$filter[out]',
-        ..._webpEncodeArgs(settings, hasAlpha: false, frameLimit: frameLimit),
-        outputPath,
-      ];
-    }
+  }) => buildWebpArgs(
+    video: video,
+    settings: settings,
+    outputPath: outputPath,
+    maskPath: maskPath,
+    frameLimit: frameLimit,
+  );
 
-    if (maskPath == null || !settings.frame.transparentBackground) {
-      // Moldura procedural opaca: [_framedGraph] já entrega um canvas RGB
-      // "achatado" (sem transparência nenhuma), então basta ir direto ao
-      // encoder — nem o `alphamerge` externo do GIF é necessário aqui.
-      final graph = _framedGraph(settings, video, input: '0:v', output: 'out');
-      return [
-        '-y',
-        '-ss',
-        _seconds(settings.startSeconds),
-        '-t',
-        _seconds(settings.sourceDurationSeconds),
-        '-i',
-        video.path,
-        '-lavfi',
-        graph,
-        ..._webpEncodeArgs(settings, hasAlpha: false, frameLimit: frameLimit),
-        outputPath,
-      ];
-    }
-
-    // Moldura procedural com fundo transparente: mesmo grafo/máscara de
-    // [_transparentGifArgs], mas sem o `split`/`palettegen`/`paletteuse` —
-    // o `[alpha]` já é RGBA de verdade, então vira `[out]` direto.
-    final graph = _framedGraph(settings, video, input: '0:v', output: 'framed');
-    return [
-      '-y',
-      '-ss',
-      _seconds(settings.startSeconds),
-      '-t',
-      _seconds(settings.sourceDurationSeconds),
-      '-i',
-      video.path,
-      '-loop',
-      '1',
-      '-framerate',
-      '${settings.fps}',
-      '-i',
-      maskPath,
-      '-lavfi',
-      '$graph;'
-          '[framed]format=rgba,setpts=PTS-STARTPTS[framed_rgba];'
-          '[1:v]format=gray,fps=${settings.fps},'
-          'setpts=PTS-STARTPTS[mask_gray];'
-          '[framed_rgba][mask_gray]alphamerge=shortest=1[out]',
-      ..._webpEncodeArgs(settings, hasAlpha: true, frameLimit: frameLimit),
-      outputPath,
-    ];
-  }
-
-  /// Argumentos completos do FFmpeg para WebP animado com moldura de imagem.
-  /// Reaproveita [_imageFramedGraph] — que já entrega alfa real via
-  /// `alphamerge` quando "Fundo transparente" está ligado — e, como em
-  /// [webpArgs], dispensa paleta: o grafo vai direto para o `libwebp`.
-  ///
-  /// Mantém o `-shortest` global que o [imageFramedGifArgs] também usa: a
-  /// arte é uma entrada infinita (`-loop 1`), e por segurança (builds de
-  /// FFmpeg que não propagam EOF por todos os filtros complexos) a saída é
-  /// encerrada junto com o fluxo de vídeo.
-  ///
-  /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
-  /// [convert] continua sendo o único ponto de entrada em uso normal.
+  /// Argumentos do WebP dentro de moldura de imagem — ver `webp_args.dart`.
   @visibleForTesting
   List<String> webpImageFramedArgs({
     required VideoInfo video,
@@ -939,256 +350,13 @@ class FfmpegService {
     required String artPath,
     required String outputPath,
     int? frameLimit,
-  }) {
-    final transparent = settings.frame.transparentBackground;
-    final graph = _imageFramedGraph(
-      settings,
-      video,
-      input: '0:v',
-      artInput: '1:v',
-      needsAreaMask: transparent,
-      output: 'out',
-    );
-
-    return [
-      '-y',
-      '-ss',
-      _seconds(settings.startSeconds),
-      '-t',
-      _seconds(settings.sourceDurationSeconds),
-      '-i',
-      video.path,
-      '-loop',
-      '1',
-      '-framerate',
-      '${settings.fps}',
-      '-i',
-      artPath,
-      '-lavfi',
-      graph,
-      ..._webpEncodeArgs(
-        settings,
-        hasAlpha: transparent,
-        shortest: true,
-        frameLimit: frameLimit,
-      ),
-      outputPath,
-    ];
-  }
-
-  /// Arredonda para o inteiro par mais próximo — mesma exigência de
-  /// crop/scale do FFmpeg já seguida por [ConversionSettings._evenFromDouble].
-  int _evenRound(num value) {
-    final rounded = value.round();
-    return rounded - (rounded % 2);
-  }
-
-  int _evenAtLeast2(num value) {
-    final even = _evenRound(value);
-    return even < 2 ? 2 : even;
-  }
-
-  String _ffmpegColor(Color color) {
-    final rgb = (color.toARGB32() & 0x00FFFFFF).toRadixString(16);
-    return '0x${rgb.padLeft(6, '0')}';
-  }
-
-  List<String> _paletteGenArgs({
-    required VideoInfo video,
-    required ConversionSettings settings,
-    required String palettePath,
-    String? maskPath,
-  }) {
-    if (settings.frame.style == FrameStyle.none) {
-      final filter = buildVideoFilter(settings, video);
-      return [
-        '-y',
-        '-ss',
-        _seconds(settings.startSeconds),
-        '-t',
-        _seconds(settings.sourceDurationSeconds),
-        '-i',
-        video.path,
-        '-vf',
-        '$filter,palettegen=max_colors=${settings.colors}'
-            ':stats_mode=${settings.palette.statsMode}',
-        '-frames:v',
-        '1',
-        palettePath,
-      ];
-    }
-
-    final transparent = settings.frame.transparentBackground;
-    final graph = _framedGraph(settings, video, input: '0:v', output: 'framed');
-    final reserve = transparent ? ':reserve_transparent=1' : '';
-    final paletteLabel = transparent ? 'alpha' : 'framed';
-    final maskStage = transparent
-        ? ';[framed][1:v]alphamerge[$paletteLabel]'
-        : '';
-
-    return [
-      '-y',
-      '-ss',
-      _seconds(settings.startSeconds),
-      '-t',
-      _seconds(settings.sourceDurationSeconds),
-      '-i',
-      video.path,
-      if (maskPath != null) ...[
-        '-loop',
-        '1',
-        '-t',
-        _seconds(settings.outputDurationSeconds),
-        '-i',
-        maskPath,
-      ],
-      '-lavfi',
-      '$graph$maskStage;'
-          '[$paletteLabel]palettegen=max_colors=${settings.colors}'
-          ':stats_mode=${settings.palette.statsMode}$reserve',
-      '-frames:v',
-      '1',
-      palettePath,
-    ];
-  }
-
-  List<String> _paletteUseArgs({
-    required VideoInfo video,
-    required ConversionSettings settings,
-    required String palettePath,
-    required String outputPath,
-    String? maskPath,
-    int? frameLimit,
-  }) {
-    final newPalette = settings.palette == PaletteMode.perFrame ? ':new=1' : '';
-
-    if (settings.frame.style == FrameStyle.none) {
-      final filter = buildVideoFilter(settings, video);
-      return [
-        '-y',
-        '-ss',
-        _seconds(settings.startSeconds),
-        '-t',
-        _seconds(settings.sourceDurationSeconds),
-        '-i',
-        video.path,
-        '-i',
-        palettePath,
-        '-lavfi',
-        '[0:v]$filter[v];[v][1:v]paletteuse=dither=${settings.dither.ffmpegValue}'
-            ':diff_mode=rectangle$newPalette',
-        '-loop',
-        settings.loop ? '0' : '-1',
-        '-an',
-        if (frameLimit != null) ...['-frames:v', '$frameLimit'],
-        '-f',
-        'gif',
-        outputPath,
-      ];
-    }
-
-    final transparent = settings.frame.transparentBackground;
-    final graph = _framedGraph(settings, video, input: '0:v', output: 'framed');
-    final useLabel = transparent ? 'alpha' : 'framed';
-    final maskStage = transparent ? ';[framed][2:v]alphamerge[$useLabel]' : '';
-    final alphaThreshold = transparent ? ':alpha_threshold=128' : '';
-
-    return [
-      '-y',
-      '-ss',
-      _seconds(settings.startSeconds),
-      '-t',
-      _seconds(settings.sourceDurationSeconds),
-      '-i',
-      video.path,
-      '-i',
-      palettePath,
-      if (maskPath != null) ...[
-        '-loop',
-        '1',
-        '-t',
-        _seconds(settings.outputDurationSeconds),
-        '-i',
-        maskPath,
-      ],
-      '-lavfi',
-      '$graph$maskStage;'
-          '[$useLabel][1:v]paletteuse=dither=${settings.dither.ffmpegValue}'
-          ':diff_mode=rectangle$newPalette$alphaThreshold',
-      '-loop',
-      settings.loop ? '0' : '-1',
-      '-an',
-      if (frameLimit != null) ...['-frames:v', '$frameLimit'],
-      // Sem isso, o muxer do GIF reaproveita pixels idênticos ao quadro
-      // anterior como "transparentes" para economizar espaço, contando com
-      // o descarte (disposal) do quadro anterior para redesenhá-los depois.
-      // Toda a área estática da moldura (que não muda de um quadro para o
-      // outro) acaba marcada assim — e visualizadores que não implementam
-      // esse descarte corretamente (vários apps de galeria e mensagens)
-      // pintam essa área com a cor reservada para transparência, que sai
-      // verde. Desligar mantém cada quadro completo e correto sozinho.
-      if (transparent) ...['-gifflags', '-transdiff'],
-      '-f',
-      'gif',
-      outputPath,
-    ];
-  }
-
-  /// Para GIF transparente, gera e aplica a paleta dentro do mesmo grafo.
-  /// Isso evita a segunda sessão com vídeo + paleta PNG + máscara, que é a
-  /// etapa que estava falhando no Android ao usar "Fundo transparente".
-  List<String> _transparentGifArgs({
-    required VideoInfo video,
-    required ConversionSettings settings,
-    required String maskPath,
-    required String outputPath,
-    int? frameLimit,
-  }) {
-    final graph = _framedGraph(settings, video, input: '0:v', output: 'framed');
-    final newPalette = settings.palette == PaletteMode.perFrame ? ':new=1' : '';
-
-    return [
-      '-y',
-      '-ss',
-      _seconds(settings.startSeconds),
-      '-t',
-      _seconds(settings.sourceDurationSeconds),
-      '-i',
-      video.path,
-      '-loop',
-      '1',
-      '-framerate',
-      '${settings.fps}',
-      '-i',
-      maskPath,
-      '-lavfi',
-      '$graph;'
-          '[framed]format=rgba,setpts=PTS-STARTPTS[framed_rgba];'
-          '[1:v]format=gray,fps=${settings.fps},'
-          'setpts=PTS-STARTPTS[mask_gray];'
-          '[framed_rgba][mask_gray]alphamerge=shortest=1[alpha];'
-          '[alpha]split=2[palette_source][gif_source];'
-          '[palette_source]palettegen=max_colors=${settings.colors}'
-          ':stats_mode=${settings.palette.statsMode}'
-          ':reserve_transparent=1[palette];'
-          '[gif_source][palette]paletteuse=dither=${settings.dither.ffmpegValue}'
-          ':diff_mode=rectangle$newPalette:alpha_threshold=128[out]',
-      '-map',
-      '[out]',
-      '-loop',
-      settings.loop ? '0' : '-1',
-      '-an',
-      if (frameLimit != null) ...['-frames:v', '$frameLimit'],
-      // Ver o comentário equivalente em [_paletteUseArgs]: sem isso a área
-      // estática da moldura sai verde em visualizadores que não descartam
-      // (disposal) o quadro anterior corretamente.
-      '-gifflags',
-      '-transdiff',
-      '-f',
-      'gif',
-      outputPath,
-    ];
-  }
+  }) => buildWebpImageFramedArgs(
+    video: video,
+    settings: settings,
+    artPath: artPath,
+    outputPath: outputPath,
+    frameLimit: frameLimit,
+  );
 
   Future<String?> _prepareMaskFile({
     required ConversionSettings settings,
@@ -1218,8 +386,6 @@ class FfmpegService {
     await File(path).writeAsBytes(bytes);
     return path;
   }
-
-  String _seconds(double value) => value.toStringAsFixed(3);
 
   Future<ConversionResult> convert({
     required VideoInfo video,
@@ -1314,7 +480,7 @@ class FfmpegService {
         );
       } else if (maskPath != null && settings.frame.transparentBackground) {
         await _run(
-          _transparentGifArgs(
+          transparentGifArgs(
             video: video,
             settings: settings,
             maskPath: maskPath,
@@ -1325,7 +491,7 @@ class FfmpegService {
         );
       } else {
         await _run(
-          _paletteGenArgs(
+          paletteGenArgs(
             video: video,
             settings: settings,
             palettePath: palettePath,
@@ -1338,7 +504,7 @@ class FfmpegService {
         if (_cancelled) throw FfmpegException('Conversão cancelada.');
 
         await _run(
-          _paletteUseArgs(
+          paletteUseArgs(
             video: video,
             settings: settings,
             palettePath: palettePath,
@@ -1743,7 +909,7 @@ class FfmpegService {
             );
           } else if (maskPath != null && sample.frame.transparentBackground) {
             await _run(
-              _transparentGifArgs(
+              transparentGifArgs(
                 video: video,
                 settings: sample,
                 maskPath: maskPath,
@@ -1752,7 +918,7 @@ class FfmpegService {
               step: 'medição',
             );
             await _run(
-              _transparentGifArgs(
+              transparentGifArgs(
                 video: video,
                 settings: sample,
                 maskPath: maskPath,
@@ -1763,7 +929,7 @@ class FfmpegService {
             );
           } else {
             await _run(
-              _paletteGenArgs(
+              paletteGenArgs(
                 video: video,
                 settings: sample,
                 palettePath: palettePath,
@@ -1772,7 +938,7 @@ class FfmpegService {
               step: 'medição',
             );
             await _run(
-              _paletteUseArgs(
+              paletteUseArgs(
                 video: video,
                 settings: sample,
                 palettePath: palettePath,
@@ -1782,7 +948,7 @@ class FfmpegService {
               step: 'medição',
             );
             await _run(
-              _paletteUseArgs(
+              paletteUseArgs(
                 video: video,
                 settings: sample,
                 palettePath: palettePath,
@@ -1863,7 +1029,7 @@ class FfmpegService {
       await _run([
         '-y',
         '-ss',
-        _seconds(atSeconds),
+        ffmpegSeconds(atSeconds),
         '-i',
         video.path,
         '-frames:v',
