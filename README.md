@@ -215,7 +215,7 @@ frames from one code path.
 
 ## Quality
 
-**369 automated tests** cover the estimation model against real FFmpeg
+**371 automated tests** cover the estimation model against real FFmpeg
 output, the size and quality panels, frame and crop geometry, the export
 arguments for every format, the import stores, and the collage — framing,
 color, layout, compositing against golden pixels and the animation

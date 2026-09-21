@@ -88,6 +88,19 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
     if (oldWidget.activeIndex != widget.activeIndex) _collapsed = false;
   }
 
+  /// `true` quando a tira da alça está encostada na barra de abas — painel
+  /// aberto, mas recolhido. Nesse caso as duas viram um bloco só: a tira
+  /// empresta a cor da barra e fica com a única borda de cima.
+  ///
+  /// Antes cada uma trazia cor e borda próprias, e recolhido isso desenhava
+  /// duas linhas paralelas a 17px uma da outra, com uma faixa de outro tom
+  /// entre elas — lia-se como falha de renderização, não como parte do
+  /// controle.
+  bool get _handleTopsTheBar {
+    final index = widget.activeIndex;
+    return _collapsed && index != null && index < widget.sections.length;
+  }
+
   @override
   Widget build(BuildContext context) {
     final activeIndex = widget.activeIndex;
@@ -100,6 +113,12 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
       ],
     );
   }
+
+  /// A linha que separa o rodapé da prévia. Só uma por vez desenha: com o
+  /// painel recolhido ela é da tira da alça, senão é da barra.
+  BorderSide _topLine(ThemeData theme) => BorderSide(
+    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+  );
 
   /// Alça no topo do painel: puxar para baixo encolhe até só ela, puxar para
   /// cima traz os controles de volta, e tocar alterna os dois — a prévia fica
@@ -136,12 +155,10 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
       child: Container(
         constraints: BoxConstraints(maxHeight: widget.maxPanelHeight),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          border: Border(
-            top: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-            ),
-          ),
+          color: _handleTopsTheBar
+              ? theme.colorScheme.surface
+              : theme.colorScheme.surfaceContainerLow,
+          border: Border(top: _topLine(theme)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -172,11 +189,8 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
       height: 60,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
-        ),
+        // Recolhido, quem desenha a linha de cima é a tira da alça.
+        border: _handleTopsTheBar ? null : Border(top: _topLine(theme)),
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
