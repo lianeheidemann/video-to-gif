@@ -145,6 +145,60 @@ class _BackgroundPainter extends CustomPainter {
       oldDelegate.color != color || oldDelegate.cornerRatio != cornerRatio;
 }
 
+/// Desenho de um texto sobreposto no tamanho do canvas dado — o mesmo
+/// respiro e o mesmo arredondamento que a exportação pinta, então a prévia e
+/// o arquivo final batem em qualquer tamanho de fonte.
+///
+/// Compartilhado entre a pilha desta biblioteca e a prévia da Montagem, que
+/// desenha stickers e textos na mesma camada e por isso não usa
+/// [TextOverlayStack].
+Widget textOverlayArt(CollageTextItem item, Size canvasSize) {
+  final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
+  final text = Text(
+    item.text,
+    textAlign: TextAlign.center,
+    style: TextStyle(
+      color: item.color,
+      fontSize: fontSize,
+      fontFamily: item.fontFamily,
+      fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
+    ),
+  );
+  final background = item.backgroundColor;
+  if (background == null) return text;
+  final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
+  return TextOverlayBackgroundBox(
+    color: background,
+    cornerRatio: item.backgroundCornerRatio,
+    padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+    child: text,
+  );
+}
+
+/// Tamanho natural (escala 1) de um texto sobreposto, já com o respiro do
+/// fundo quando ele existe. Calculado analiticamente, sem medir em tempo de
+/// execução — é o que posiciona as alças de redimensionar/girar.
+Size textOverlayNaturalSize(CollageTextItem item, Size canvasSize) {
+  final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
+  final painter = TextPainter(
+    text: TextSpan(
+      text: item.text,
+      style: TextStyle(
+        fontSize: fontSize,
+        fontFamily: item.fontFamily,
+        fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
+      ),
+    ),
+    textAlign: TextAlign.center,
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final size = Size(painter.width, painter.height);
+  painter.dispose();
+  if (item.backgroundColor == null) return size;
+  final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
+  return Size(size.width + padH * 2, size.height + padV * 2);
+}
+
 /// A pilha de textos arrastáveis + as alças do item selecionado — entra por
 /// cima da prévia já composta (dentro de um `Stack`/`LayoutBuilder` do
 /// tamanho exato do canvas final), do mesmo jeito que `CropOverlay` entra
@@ -211,52 +265,8 @@ class TextOverlayStack extends StatelessWidget {
           ),
         ),
       ),
-      child: _textArt(item),
+      child: textOverlayArt(item, canvasSize),
     );
-  }
-
-  Widget _textArt(CollageTextItem item) {
-    final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
-    final text = Text(
-      item.text,
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        color: item.color,
-        fontSize: fontSize,
-        fontFamily: item.fontFamily,
-        fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
-      ),
-    );
-    final background = item.backgroundColor;
-    if (background == null) return text;
-    final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
-    return TextOverlayBackgroundBox(
-      color: background,
-      cornerRatio: item.backgroundCornerRatio,
-      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
-      child: text,
-    );
-  }
-
-  Size _naturalSize(CollageTextItem item) {
-    final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
-    final painter = TextPainter(
-      text: TextSpan(
-        text: item.text,
-        style: TextStyle(
-          fontSize: fontSize,
-          fontFamily: item.fontFamily,
-          fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
-        ),
-      ),
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final size = Size(painter.width, painter.height);
-    painter.dispose();
-    if (item.backgroundColor == null) return size;
-    final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
-    return Size(size.width + padH * 2, size.height + padV * 2);
   }
 
   List<Widget> _selectedHandles(BuildContext context) {
@@ -265,7 +275,7 @@ class TextOverlayStack extends StatelessWidget {
     final item = texts.findText(id);
     if (item == null) return const [];
 
-    final naturalSize = _naturalSize(item);
+    final naturalSize = textOverlayNaturalSize(item, canvasSize);
     final center = Offset(
       item.centerX * canvasSize.width,
       item.centerY * canvasSize.height,

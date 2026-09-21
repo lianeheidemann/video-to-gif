@@ -1,69 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/frame_settings.dart';
-
-/// Linha de slider das telas de moldura: rótulo à esquerda, valor em
-/// destaque à direita e o slider embaixo.
-///
-/// [onChangeStart] marca o ponto de desfazer no começo do gesto, e
-/// [onChanged] aplica sem empilhar — senão cada frame do arrasto viraria um
-/// passo separado na pilha.
-class FrameSliderRow extends StatelessWidget {
-  const FrameSliderRow({
-    super.key,
-    this.sliderKey,
-    required this.label,
-    required this.valueLabel,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.divisions,
-    required this.onChangeStart,
-    required this.onChanged,
-  });
-
-  final Key? sliderKey;
-  final String label;
-  final String valueLabel;
-  final double value;
-  final double min;
-  final double max;
-  final int divisions;
-  final VoidCallback onChangeStart;
-  final ValueChanged<double> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            Text(
-              valueLabel,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-        Slider(
-          key: sliderKey,
-          min: min,
-          max: max,
-          divisions: divisions,
-          value: value,
-          label: valueLabel,
-          onChangeStart: (_) => onChangeStart(),
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-}
+import '../panel_rows.dart';
 
 /// Espessura da borda da moldura procedural, em pixels na resolução de
 /// referência.
@@ -82,7 +20,7 @@ class FrameThicknessRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final thickness = frame.thicknessAtReference.clamp(0, 24).toDouble();
-    return FrameSliderRow(
+    return PanelSliderRow(
       label: 'Espessura da borda',
       valueLabel: '${thickness.round()}px',
       value: thickness,
@@ -115,7 +53,7 @@ class CornerRadiusRow extends StatelessWidget {
   Widget build(BuildContext context) {
     const max = FrameSettings.maxCornerRatio;
     final ratio = frame.cornerRatio.clamp(0.0, max).toDouble();
-    return FrameSliderRow(
+    return PanelSliderRow(
       label: 'Arredondamento dos cantos',
       valueLabel: '${(ratio / max * 100).round()}%',
       value: ratio,
@@ -147,7 +85,7 @@ class ContentZoomRow extends StatelessWidget {
         .clamp(FrameSettings.minContentZoom, FrameSettings.maxContentZoom)
         .toDouble();
     final percent = (zoom * 100).round();
-    return FrameSliderRow(
+    return PanelSliderRow(
       sliderKey: const ValueKey('frameContentZoomSlider'),
       label: 'Zoom do conteúdo',
       valueLabel: '$percent%',

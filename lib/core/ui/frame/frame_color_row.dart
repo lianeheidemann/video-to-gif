@@ -5,50 +5,6 @@ import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 
 import '../color_picker_sheet.dart';
 
-/// Linha de "Cor da moldura"/"Cor do fundo": rótulo à esquerda e a bolinha
-/// da cor atual à direita, abrindo a folha de cor ao tocar.
-class FrameColorRow extends StatelessWidget {
-  const FrameColorRow({
-    super.key,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant,
-                  width: 1.5,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Abre a folha de cor da Montagem (swatches + conta-gotas na prévia atual +
 /// roda HSV completa) para um seletor de cor de moldura.
 ///

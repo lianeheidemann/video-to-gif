@@ -20,6 +20,7 @@ import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/crop/crop_controller.dart';
 import '../../core/ui/frame/content_fit_picker.dart';
 import '../../core/ui/frame/frame_color_row.dart';
+import '../../core/ui/panel_rows.dart';
 import '../../core/ui/frame/frame_sliders.dart';
 import '../../core/ui/frame/frame_style_picker.dart';
 import '../../core/ui/frame/frame_thumb_shell.dart';
@@ -811,7 +812,7 @@ class _EditorPageState extends State<EditorPage> {
             const SizedBox(height: 18),
             SectionCard(
               children: [
-                FrameColorRow(
+                PanelColorRow(
                   label: 'Cor da moldura',
                   color: _settings.frame.color,
                   onTap: _pickFrameColor,
@@ -943,7 +944,7 @@ class _EditorPageState extends State<EditorPage> {
           ),
           if (!frame.transparentBackground) ...[
             const Divider(height: 1),
-            FrameColorRow(
+            PanelColorRow(
               key: const ValueKey('backgroundColorRow'),
               label: 'Cor do fundo',
               color: _settings.frame.backgroundColor,

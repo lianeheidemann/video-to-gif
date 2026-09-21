@@ -1,17 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:path_provider/path_provider.dart';
 
 import 'models/background_image.dart';
 import 'models/collage_background.dart';
+import 'models/sticker_catalog.dart';
 import 'models/collage_cell.dart';
 import 'models/collage_export.dart';
 import 'models/collage_layout.dart';
@@ -22,12 +21,11 @@ import '../../core/models/crop_rect.dart';
 import '../../core/models/default_colors.dart';
 import '../../core/models/photo_info.dart';
 import 'services/collage_animation.dart';
+import 'services/collage_export_runner.dart';
 import 'services/collage_compositor.dart';
 import '../../core/ffmpeg/ffmpeg_service.dart';
 import '../../core/services/imported_asset_store.dart';
 import '../../core/services/imported_font_store.dart';
-import '../../core/services/bundled_assets.dart';
-import '../../core/services/bundled_sticker_store.dart';
 import '../../core/services/output_service.dart';
 import '../../core/services/sticker_folder_store.dart';
 import '../../core/ui/crop/photo_crop_page.dart';
@@ -37,11 +35,16 @@ import 'widgets/background_image_view.dart';
 import '../../core/ui/checkerboard_background.dart';
 import 'widgets/collage_cell_view.dart';
 import '../../core/ui/collage_overlay_view.dart';
+import '../../core/ui/panel_rows.dart';
+import '../../core/ui/text_overlay_editor.dart';
 import 'painting/collage_painter.dart';
 import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/color_picker_sheet.dart';
 import 'widgets/export_progress_dialog.dart';
 import 'widgets/folder_tab.dart';
+import 'widgets/font_thumb.dart';
+import '../../core/ui/text_input_dialog.dart';
+import 'widgets/panels/layout_panel.dart';
 import '../../core/ui/preview_settings_panel.dart';
 import 'widgets/target_sub_panel.dart';
 
@@ -101,55 +104,6 @@ enum _CollageTab {
   settings,
 }
 
-/// Pastas da seção "Stickers": as temáticas com os stickers embutidos do
-/// app, mais "Importados" para os que o usuário trouxe do aparelho.
-///
-/// "Black" ainda não tem sticker embutido — a arte vem depois —, então por
-/// enquanto ela vale como pasta de importados: o botão "Importar" aparece
-/// dentro e o que entrar ali fica marcado com o id dela. "GitHub" tem arte
-/// embutida e também aceita importados.
-enum _StickerFolder {
-  reactions,
-  symbols,
-  effects,
-  github,
-  black,
-  novos,
-  imported,
-}
-
-extension on _StickerFolder {
-  /// `true` nas pastas que recebem stickers importados — "Importados" e as
-  /// que ainda estão sem arte embutida.
-  bool get acceptsImports =>
-      this == _StickerFolder.imported ||
-      this == _StickerFolder.github ||
-      this == _StickerFolder.black;
-
-  /// Id da pasta embutida na barra — o próprio nome do enum. As pastas
-  /// criadas pelo usuário usam ids com prefixo `f_` (ver
-  /// `StickerFolderStore.create`), então os dois conjuntos convivem na mesma
-  /// barra sem risco de colisão.
-  String get id => name;
-
-  String get label => switch (this) {
-    _StickerFolder.reactions => 'Reações',
-    _StickerFolder.symbols => 'Símbolos',
-    _StickerFolder.effects => 'Efeitos',
-    _StickerFolder.github => 'GitHub',
-    _StickerFolder.black => 'Black',
-    _StickerFolder.novos => 'Novos',
-    _StickerFolder.imported => 'Importados',
-  };
-}
-
-/// Tela do editor de montagem de fotos: agrupa [photos] num layout (linha,
-/// coluna ou grade), com margem/proporção/borda/cantos configuráveis (da
-/// montagem inteira e de cada foto), fundo transparente/cor/imagem, stickers
-/// e texto sobrepostos, reposicionamento/rotação/zoom por toque de cada
-/// foto, recorte de uma foto específica e opções de trocar/substituir/
-/// ajustar cor/espelhar/recentralizar cada célula. Prévia fixa em cima,
-/// abas de edição fixas no rodapé (estilo CapCut/Canva).
 class CollagePage extends StatefulWidget {
   const CollagePage({super.key, required this.photos});
 
@@ -161,7 +115,10 @@ class CollagePage extends StatefulWidget {
 
 class _CollagePageState extends State<CollagePage> {
   static const _output = OutputService();
-  final _ffmpeg = FfmpegService();
+
+  /// Exportação da montagem: tamanhos, progresso, cancelamento e a geração
+  /// do arquivo final. A tela fica só com as folhas de escolha e o pop-up.
+  final _export = CollageExportRunner();
   static const _stickerStore = ImportedAssetStore(ImportedAssetKind.sticker);
   static const _backgroundStore = ImportedAssetStore(
     ImportedAssetKind.backgroundImage,
@@ -172,215 +129,6 @@ class _CollagePageState extends State<CollagePage> {
   /// Id da pasta recém-criada que ainda precisa ficar visível na fileira —
   /// ver [_createStickerFolder]. `null` quando não há rolagem pendente.
   String? _pendingFolderScrollId;
-
-  /// Stickers prontos, embutidos no app (`assets/sticker/`), agrupados por
-  /// pasta temática na seção "Stickers" — ver [_StickerFolder].
-  static const _stickerFolderReactions = <(String path, String label)>[
-    ('assets/sticker/thumbs_up.svg', 'Joinha'),
-    ('assets/sticker/thumbs_down.svg', 'Joinha para baixo'),
-    ('assets/sticker/smiley.svg', 'Sorriso'),
-    ('assets/sticker/laughing.svg', 'Risada'),
-    ('assets/sticker/surprised.svg', 'Surpresa'),
-    ('assets/sticker/sad.svg', 'Triste'),
-  ];
-  static const _stickerFolderSymbols = <(String path, String label)>[
-    ('assets/sticker/heart.svg', 'Coração'),
-    ('assets/sticker/star.svg', 'Estrela'),
-    ('assets/sticker/lightning.svg', 'Raio'),
-    ('assets/sticker/sun.svg', 'Sol'),
-    ('assets/sticker/moon.svg', 'Lua'),
-    ('assets/sticker/check.svg', 'Confirmado'),
-  ];
-  static const _stickerFolderEffects = <(String path, String label)>[
-    ('assets/sticker/sparkle.svg', 'Brilho'),
-    ('assets/sticker/boom.svg', 'Explosão'),
-    ('assets/sticker/confetti.svg', 'Confete'),
-    ('assets/sticker/whoosh.svg', 'Rastro de velocidade'),
-    ('assets/sticker/rainbow.svg', 'Arco-íris'),
-  ];
-
-  /// Pasta "GitHub": arte enviada pela Liane, guardada em
-  /// `assets/sticker/github/`. Os nomes de arquivo começam com um número
-  /// que define a ordem em que aparecem na fileira.
-  static const _stickerFolderGithub = <(String path, String label)>[
-    ('assets/sticker/github/01-robot-android.svg', 'Robô Android'),
-    (
-      'assets/sticker/github/10-wordmark-github-bold.svg',
-      'Marca GitHub negrito',
-    ),
-    (
-      'assets/sticker/github/11-wordmark-github-compact.svg',
-      'Marca GitHub compacto',
-    ),
-    ('assets/sticker/github/20-octocat-colorido.svg', 'Octocat colorido'),
-    ('assets/sticker/github/21-octopus-com-bigodes.svg', 'Polvo com bigodes'),
-    ('assets/sticker/github/22-octopus-silhueta.svg', 'Polvo silhueta'),
-    (
-      'assets/sticker/github/23-octopus-silhueta-pernas.svg',
-      'Polvo silhueta pernas',
-    ),
-    (
-      'assets/sticker/github/24-octopus-contorno-grosso.svg',
-      'Polvo contorno grosso',
-    ),
-    (
-      'assets/sticker/github/25-octopus-contorno-duotone.svg',
-      'Polvo contorno duotone',
-    ),
-    (
-      'assets/sticker/github/26-octopus-contorno-fino.svg',
-      'Polvo contorno fino',
-    ),
-    ('assets/sticker/github/30-gato-contorno-fino.svg', 'Gato contorno fino'),
-    ('assets/sticker/github/31-gato-contorno-medio.svg', 'Gato contorno médio'),
-    (
-      'assets/sticker/github/32-gato-contorno-grosso.svg',
-      'Gato contorno grosso',
-    ),
-    (
-      'assets/sticker/github/33-gato-silhueta-azul-marinho.svg',
-      'Gato silhueta azul marinho',
-    ),
-    (
-      'assets/sticker/github/40-gato-circulo-contorno.svg',
-      'Gato círculo contorno',
-    ),
-    (
-      'assets/sticker/github/41-gato-circulo-preto-grande.svg',
-      'Gato círculo preto grande',
-    ),
-    (
-      'assets/sticker/github/42-gato-circulo-preto-medio.svg',
-      'Gato círculo preto médio',
-    ),
-    (
-      'assets/sticker/github/43-gato-circulo-preto-classico.svg',
-      'Gato círculo preto clássico',
-    ),
-    (
-      'assets/sticker/github/44-gato-circulo-preto-pequeno.svg',
-      'Gato círculo preto pequeno',
-    ),
-    (
-      'assets/sticker/github/45-gato-circulo-preto-cauda.svg',
-      'Gato círculo preto cauda',
-    ),
-    (
-      'assets/sticker/github/46-gato-circulo-preto-logo.svg',
-      'Gato círculo preto logo',
-    ),
-    (
-      'assets/sticker/github/47-gato-circulo-preto-sticker.svg',
-      'Gato círculo preto sticker',
-    ),
-    ('assets/sticker/github/48-gato-circulo-azul.svg', 'Gato círculo azul'),
-    (
-      'assets/sticker/github/49-gato-circulo-azul-cinza.svg',
-      'Gato círculo azul cinza',
-    ),
-    (
-      'assets/sticker/github/50-gato-circulo-azul-petroleo.svg',
-      'Gato círculo azul petróleo',
-    ),
-    (
-      'assets/sticker/github/51-gato-circulo-azul-degrade.svg',
-      'Gato círculo azul degradê',
-    ),
-    (
-      'assets/sticker/github/60-gato-oval-contorno-fino.svg',
-      'Gato oval contorno fino',
-    ),
-    (
-      'assets/sticker/github/61-gato-oval-contorno-preenchido.svg',
-      'Gato oval contorno preenchido',
-    ),
-    (
-      'assets/sticker/github/62-gato-oval-contorno-grosso.svg',
-      'Gato oval contorno grosso',
-    ),
-    (
-      'assets/sticker/github/63-octopus-oval-contorno.svg',
-      'Polvo oval contorno',
-    ),
-    ('assets/sticker/github/64-gato-oval-ciano.svg', 'Gato oval ciano'),
-    (
-      'assets/sticker/github/65-gato-oval-preto-pequeno.svg',
-      'Gato oval preto pequeno',
-    ),
-    (
-      'assets/sticker/github/70-gato-quadrado-arredondado-01.svg',
-      'Gato quadrado arredondado',
-    ),
-    (
-      'assets/sticker/github/71-gato-quadrado-arredondado-02.svg',
-      'Gato quadrado arredondado 2',
-    ),
-    (
-      'assets/sticker/github/72-gato-quadrado-arredondado-03.svg',
-      'Gato quadrado arredondado 3',
-    ),
-    ('assets/sticker/github/73-gato-quadrado-reto.svg', 'Gato quadrado reto'),
-    ('assets/sticker/github/74-gato-quadrado-duplo.svg', 'Gato quadrado duplo'),
-    ('assets/sticker/github/80-gato-badge-cinza.svg', 'Gato selo cinza'),
-  ];
-
-  /// Stickers embutidos da pasta [folder] — vazio para
-  /// [_StickerFolder.imported], que mostra os importados pelo usuário em vez
-  /// disso (ver [_stickersPanelContent]).
-  static List<(String path, String label)> _bundledStickersFor(
-    _StickerFolder folder,
-  ) {
-    final curados = switch (folder) {
-      _StickerFolder.reactions => _stickerFolderReactions,
-      _StickerFolder.symbols => _stickerFolderSymbols,
-      _StickerFolder.effects => _stickerFolderEffects,
-      _StickerFolder.github => _stickerFolderGithub,
-      // Sem arte embutida ainda: se comporta como pasta de importados até os
-      // arquivos chegarem.
-      _StickerFolder.black => const <(String, String)>[],
-      _StickerFolder.novos => const <(String, String)>[],
-      _StickerFolder.imported => const <(String, String)>[],
-    };
-    return [...curados, ..._descobertosFor(folder)];
-  }
-
-  /// Todo caminho que aparece em alguma das listas curadas — o que estiver
-  /// fora daqui foi solto na pasta depois e entra por descoberta.
-  static final Set<String> _curatedStickerPaths = {
-    for (final lista in [
-      _stickerFolderReactions,
-      _stickerFolderSymbols,
-      _stickerFolderEffects,
-      _stickerFolderGithub,
-    ])
-      for (final (path, _) in lista) path,
-  };
-
-  /// Stickers achados em `assets/sticker` que nenhuma lista curada cita.
-  ///
-  /// A pasta do arquivo decide onde ele aparece: `assets/sticker/github/` e
-  /// `assets/sticker/black/` caem nas abas de mesmo nome, e todo o resto vai
-  /// para "Novos" — inclusive arquivo solto na raiz e subpasta que ainda não
-  /// tem aba própria. Assim, soltar um SVG na pasta e gerar o APK basta para
-  /// ele aparecer, sem passar por aqui.
-  static List<(String path, String label)> _descobertosFor(
-    _StickerFolder folder,
-  ) {
-    bool pertence(String path) => switch (folder) {
-      _StickerFolder.github => path.startsWith('assets/sticker/github/'),
-      _StickerFolder.black => path.startsWith('assets/sticker/black/'),
-      _StickerFolder.novos =>
-        !path.startsWith('assets/sticker/github/') &&
-            !path.startsWith('assets/sticker/black/'),
-      _ => false,
-    };
-
-    return [
-      for (final path in bundledStickerAssets)
-        if (!_curatedStickerPaths.contains(path) && pertence(path))
-          (path, labelFromFileName(path)),
-    ];
-  }
 
   late CollageSettings _settings = CollageSettings.forLayout(
     _defaultLayoutFor(widget.photos.length),
@@ -435,9 +183,9 @@ class _CollagePageState extends State<CollagePage> {
   /// exemplo): nesse caso a proporção é customizada de fato.
   bool _customAspectSelected = false;
 
-  /// Pasta aberta na aba "Stickers": id de uma embutida ([_StickerFolder.id])
-  /// ou de uma criada pelo usuário ([StickerFolder.id]).
-  String _stickerFolderId = _StickerFolder.reactions.id;
+  /// Pasta aberta na aba "Stickers": id de uma embutida ([BundledStickerFolder.id])
+  /// ou de uma criada pelo usuário ([BundledStickerFolder.id]).
+  String _stickerFolderId = BundledStickerFolder.reactions.id;
 
   /// Pastas criadas pelo usuário, carregadas junto com os stickers
   /// importados — ver [StickerFolderStore].
@@ -455,10 +203,8 @@ class _CollagePageState extends State<CollagePage> {
   /// Progresso da exportação animada, ouvido pelo pop-up
   /// [ExportProgressDialog] — que vive numa rota própria e por isso não é
   /// reconstruído pelo `setState` desta tela.
-  final _exportProgress = ValueNotifier(const ExportProgress());
 
   /// `true` entre pedir o cancelamento e a exportação de fato parar.
-  bool _exportCancelled = false;
 
   /// Id da caixa sendo editada pelo campo; `null` = o campo está criando uma
   /// caixa nova.
@@ -468,7 +214,7 @@ class _CollagePageState extends State<CollagePage> {
   void dispose() {
     _textController.dispose();
     _textFocus.dispose();
-    _exportProgress.dispose();
+    _export.dispose();
     super.dispose();
   }
 
@@ -526,9 +272,9 @@ class _CollagePageState extends State<CollagePage> {
   /// marcada em vez de nenhuma.
   void _dropStickerFolderIfGone() {
     final exists =
-        _StickerFolder.values.any((f) => f.id == _stickerFolderId) ||
+        BundledStickerFolder.values.any((f) => f.id == _stickerFolderId) ||
         _customFolders.any((f) => f.id == _stickerFolderId);
-    if (!exists) _stickerFolderId = _StickerFolder.imported.id;
+    if (!exists) _stickerFolderId = BundledStickerFolder.imported.id;
   }
 
   // ---------------------------------------------------------------------
@@ -750,7 +496,11 @@ class _CollagePageState extends State<CollagePage> {
   }
 
   Widget _panelContentFor(_CollageTab tab) => switch (tab) {
-    _CollageTab.layout => _layoutPanelContent(),
+    _CollageTab.layout => CollageLayoutPanel(
+      layout: _settings.layout,
+      onSelectKind: _selectLayoutKind,
+      onApplyLayout: _applyLayout,
+    ),
     _CollageTab.aspect => _aspectPanelContent(),
     _CollageTab.margin => _marginPanelContent(),
     _CollageTab.border => _borderPanelContent(),
@@ -1023,7 +773,7 @@ class _CollagePageState extends State<CollagePage> {
         ),
         pushUndo: false,
       ),
-      child: _textArt(text, size),
+      child: textOverlayArt(text, size),
     );
   }
 
@@ -1046,33 +796,6 @@ class _CollagePageState extends State<CollagePage> {
     return SizedBox(width: refSize, height: refSize, child: content);
   }
 
-  Widget _textArt(CollageTextItem item, Size canvasSize) {
-    final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
-    final text = Text(
-      item.text,
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        color: item.color,
-        fontSize: fontSize,
-        fontFamily: item.fontFamily,
-        fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
-      ),
-    );
-    final background = item.backgroundColor;
-    if (background == null) return text;
-
-    // O mesmo respiro e o mesmo arredondamento que `_TextOverlay.paint`
-    // desenha na exportação — o raio sai do menor lado da caixa já com o
-    // respiro, então a prévia e o PNG batem em qualquer tamanho de fonte.
-    final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
-    return _TextBackgroundBox(
-      color: background,
-      cornerRatio: item.backgroundCornerRatio,
-      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
-      child: text,
-    );
-  }
-
   // ---------------------------------------------------------------------
   // Alças de redimensionar/girar do item selecionado — numa camada própria,
   // sempre por cima de tudo na pilha principal (ver o porquê no doc de
@@ -1085,35 +808,6 @@ class _CollagePageState extends State<CollagePage> {
   Size _stickerNaturalSize(CollageSticker sticker, Size canvasSize) {
     final refSize = canvasSize.shortestSide * CollageSticker.referenceSizeRatio;
     return Size(refSize, refSize);
-  }
-
-  /// Tamanho natural (escala 1) do conteúdo de um texto — a mesma medida que
-  /// [_textArt] produz: o texto em si, mais o respiro da caixa de fundo
-  /// quando ela existe. Precisa de um `TextPainter` porque não é um valor
-  /// fixo — depende da string, da fonte e do tamanho escolhidos.
-  ///
-  /// Só mede uma linha (sem `maxWidth`), como o próprio [Text] faz dentro do
-  /// `Stack` sem restrição de largura; um texto tão longo que chegasse a
-  /// quebrar linha na prévia divergiria daqui — caso raro, não tratado.
-  Size _textNaturalSize(CollageTextItem item, Size canvasSize) {
-    final fontSize = canvasSize.shortestSide * item.fontSizeRatio;
-    final painter = TextPainter(
-      text: TextSpan(
-        text: item.text,
-        style: TextStyle(
-          fontSize: fontSize,
-          fontFamily: item.fontFamily,
-          fontWeight: item.bold ? FontWeight.w700 : FontWeight.w400,
-        ),
-      ),
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final size = Size(painter.width, painter.height);
-    painter.dispose();
-    if (item.backgroundColor == null) return size;
-    final (padH, padV) = CollageTextItem.backgroundPaddingFor(fontSize);
-    return Size(size.width + padH * 2, size.height + padV * 2);
   }
 
   /// Geometria + como aplicar a transformação de volta, para o sticker ou
@@ -1152,7 +846,7 @@ class _CollagePageState extends State<CollagePage> {
         rotation: text.rotation,
         minScale: CollageTextItem.minScale,
         maxScale: CollageTextItem.maxScale,
-        naturalSize: _textNaturalSize(text, canvasSize),
+        naturalSize: textOverlayNaturalSize(text, canvasSize),
         apply: (cx, cy, s, r) => _update(
           _settings.replacingText(
             id,
@@ -1386,199 +1080,6 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
   // Seção "Layout"
   // ---------------------------------------------------------------------
-
-  Widget _layoutPanelContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 84,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: CollageLayoutKind.values.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, index) =>
-                _layoutThumb(CollageLayoutKind.values[index]),
-          ),
-        ),
-        if (_settings.layout.kind == CollageLayoutKind.freeGrid) ...[
-          const SizedBox(height: 14),
-          _freeGridSteppers(),
-        ],
-        if (_settings.layout.kind == CollageLayoutKind.row ||
-            _settings.layout.kind == CollageLayoutKind.column) ...[
-          const SizedBox(height: 14),
-          _rowColumnStepper(),
-        ],
-      ],
-    );
-  }
-
-  Widget _layoutThumb(CollageLayoutKind kind) {
-    final theme = Theme.of(context);
-    final selected = _settings.layout.kind == kind;
-    return GestureDetector(
-      onTap: () => _selectLayoutKind(kind),
-      child: SizedBox(
-        width: 72,
-        child: Column(
-          children: [
-            Container(
-              width: 72,
-              height: 56,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: selected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                  width: selected ? 2 : 1,
-                ),
-              ),
-              child: _layoutIcon(kind, theme.colorScheme.primary),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              kind.label,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Ícone de cada opção de layout: uma grade de pontinhos desenhada com o
-  /// número EXATO de colunas/linhas de cada uma — em vez de escolher entre
-  /// os ícones prontos do Material (nenhum bate exatamente com "2 colunas
-  /// por 3 linhas", por exemplo; `Icons.grid_on_outlined` usado antes para
-  /// "Grade 2x3" na real parece uma grade 3x3, confundindo com a opção
-  /// vizinha), garante que o ícone sempre corresponda ao layout real.
-  Widget _layoutIcon(CollageLayoutKind kind, Color color) {
-    final (columns, rows) = switch (kind) {
-      CollageLayoutKind.row => (4, 1),
-      CollageLayoutKind.column => (1, 4),
-      CollageLayoutKind.grid2x2 => (2, 2),
-      CollageLayoutKind.grid2x3 => (2, 3),
-      CollageLayoutKind.grid3x3 => (3, 3),
-      CollageLayoutKind.freeGrid => (0, 0),
-    };
-    if (kind == CollageLayoutKind.freeGrid) {
-      return Icon(Icons.dashboard_customize_outlined, color: color);
-    }
-    const dot = 6.0;
-    const gap = 3.0;
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var r = 0; r < rows; r++) ...[
-          if (r > 0) const SizedBox(height: gap),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var c = 0; c < columns; c++) ...[
-                if (c > 0) const SizedBox(width: gap),
-                Container(
-                  width: dot,
-                  height: dot,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(1.5),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _freeGridSteppers() {
-    final layout = _settings.layout;
-    return Row(
-      children: [
-        Expanded(
-          child: _stepperRow(
-            'Colunas',
-            layout.columns < 1 ? 2 : layout.columns,
-            min: CollageLayout.minFreeGridSpan,
-            max: CollageLayout.maxFreeGridSpan,
-            onChanged: (v) => _applyLayout(layout.copyWith(columns: v)),
-          ),
-        ),
-        const SizedBox(width: 32),
-        Expanded(
-          child: _stepperRow(
-            'Linhas',
-            layout.rows < 1 ? 2 : layout.rows,
-            min: CollageLayout.minFreeGridSpan,
-            max: CollageLayout.maxFreeGridSpan,
-            onChanged: (v) => _applyLayout(layout.copyWith(rows: v)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Contador de quantas fotos entram na linha/coluna única — mesmo padrão
-  /// visual de [_freeGridSteppers], só que controlando o total de células em
-  /// vez de colunas/linhas separadas (linha/coluna só tem um eixo com mais
-  /// de uma célula).
-  Widget _rowColumnStepper() {
-    final layout = _settings.layout;
-    final count = layout.cellCount < CollageLayout.minRowColumnCount
-        ? CollageLayout.minRowColumnCount
-        : layout.cellCount;
-    return _stepperRow(
-      'Fotos',
-      count,
-      min: CollageLayout.minRowColumnCount,
-      max: CollageLayout.maxRowColumnCount,
-      onChanged: (v) => _applyLayout(
-        layout.kind == CollageLayoutKind.row
-            ? CollageLayout.row(v)
-            : CollageLayout.column(v),
-      ),
-    );
-  }
-
-  Widget _stepperRow(
-    String label,
-    int value, {
-    required int min,
-    required int max,
-    required ValueChanged<int> onChanged,
-  }) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-        IconButton(
-          onPressed: value > min ? () => onChanged(value - 1) : null,
-          icon: const Icon(Icons.remove_circle_outline),
-        ),
-        Text(
-          '$value',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        IconButton(
-          onPressed: value < max ? () => onChanged(value + 1) : null,
-          icon: const Icon(Icons.add_circle_outline),
-        ),
-      ],
-    );
-  }
-
   void _selectLayoutKind(CollageLayoutKind kind) {
     final currentCount = _settings.cells.length.clamp(2, 8);
     final layout = switch (kind) {
@@ -1906,21 +1407,23 @@ class _CollagePageState extends State<CollagePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sliderRow(
+              PanelSliderRow(
+                onChangeStart: _pushUndoCheckpoint,
                 label: 'Espessura da borda',
                 value: thickness,
                 min: 0,
                 max: maxThickness,
-                display: '${thickness.round()}px',
+                valueLabel: '${thickness.round()}px',
                 onChanged: applyThickness,
               ),
               const SizedBox(height: 12),
-              _sliderRow(
+              PanelSliderRow(
+                onChangeStart: _pushUndoCheckpoint,
                 label: 'Arredondamento dos cantos',
                 value: cornerRatio,
                 min: 0,
                 max: maxCornerRatio,
-                display: '${(cornerRatio / maxCornerRatio * 100).round()}%',
+                valueLabel: '${(cornerRatio / maxCornerRatio * 100).round()}%',
                 onChanged: applyCornerRatio,
               ),
               if (thickness > 0) ...[
@@ -1930,10 +1433,10 @@ class _CollagePageState extends State<CollagePage> {
                     alpha: 0.45,
                   ),
                 ),
-                _colorRow(
-                  'Cor da borda',
-                  borderColor,
-                  () => _pickBorderColor(
+                PanelColorRow(
+                  label: 'Cor da borda',
+                  color: borderColor,
+                  onTap: () => _pickBorderColor(
                     current: borderColor,
                     onSelected: applyBorderColor,
                   ),
@@ -1943,87 +1446,6 @@ class _CollagePageState extends State<CollagePage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _sliderRow({
-    required String label,
-    required double value,
-    required double min,
-    required double max,
-    required String display,
-    required ValueChanged<double> onChanged,
-  }) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            Text(
-              display,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-        Slider(
-          min: min,
-          max: max,
-          value: value.clamp(min, max),
-          label: display,
-          onChangeStart: (_) => _pushUndoCheckpoint(),
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-
-  /// Linha de liga/desliga no estilo dos painéis do rodapé. Um
-  /// `SwitchListTile` aqui dispara o aviso do Material de "fundo/ink
-  /// invisível" (o painel já tem cor de fundo própria) — e o visual ficaria
-  /// diferente das outras linhas.
-  Widget _switchRow(String label, bool value, ValueChanged<bool> onChanged) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-          Switch(value: value, onChanged: onChanged),
-        ],
-      ),
-    );
-  }
-
-  Widget _colorRow(String label, Color color, VoidCallback onTap) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant,
-                  width: 1.5,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -2134,10 +1556,10 @@ class _CollagePageState extends State<CollagePage> {
               ),
               if (background.mode == CollageBackgroundMode.color) ...[
                 const SizedBox(height: 8),
-                _colorRow(
-                  'Cor do fundo',
-                  background.color,
-                  _openBackgroundColorPicker,
+                PanelColorRow(
+                  label: 'Cor do fundo',
+                  color: background.color,
+                  onTap: _openBackgroundColorPicker,
                 ),
               ],
               if (background.mode == CollageBackgroundMode.image) ...[
@@ -2363,17 +1785,17 @@ class _CollagePageState extends State<CollagePage> {
   /// "Novos" fica de fora enquanto está vazia: ela só existe para receber
   /// sticker solto em `assets/sticker` depois, e uma aba vazia a mais em
   /// toda instalação só empurraria o botão de criar pasta para fora da tela.
-  static List<_StickerFolder> get _visibleBundledFolders => [
-    for (final folder in _StickerFolder.values)
-      if (folder != _StickerFolder.novos ||
-          _descobertosFor(_StickerFolder.novos).isNotEmpty)
+  static List<BundledStickerFolder> get _visibleBundledFolders => [
+    for (final folder in BundledStickerFolder.values)
+      if (folder != BundledStickerFolder.novos ||
+          descobertosFor(BundledStickerFolder.novos).isNotEmpty)
         folder,
   ];
 
   /// Pasta embutida aberta agora, ou `null` quando a aberta é uma criada
   /// pelo usuário.
-  _StickerFolder? get _openBundledFolder {
-    for (final folder in _StickerFolder.values) {
+  BundledStickerFolder? get _openBundledFolder {
+    for (final folder in BundledStickerFolder.values) {
       if (folder.id == _stickerFolderId) return folder;
     }
     return null;
@@ -2386,7 +1808,7 @@ class _CollagePageState extends State<CollagePage> {
     if (bundled != null && !bundled.acceptsImports) return const [];
     // "Importados" é a pasta sem id (também onde caem as entradas antigas);
     // as demais guardam o próprio id em cada sticker.
-    final folderId = bundled == _StickerFolder.imported
+    final folderId = bundled == BundledStickerFolder.imported
         ? null
         : _stickerFolderId;
     return _importedStickers.where((a) => a.folderId == folderId).toList();
@@ -2397,7 +1819,7 @@ class _CollagePageState extends State<CollagePage> {
     // A pasta pode ter arte embutida, stickers importados, ou os dois.
     final bundledStickers = bundledFolder == null
         ? const <(String path, String label)>[]
-        : _bundledStickersFor(bundledFolder);
+        : bundledStickersFor(bundledFolder);
     final showsImports = bundledFolder == null || bundledFolder.acceptsImports;
     final imported = _stickersInOpenFolder;
     return Column(
@@ -2525,7 +1947,7 @@ class _CollagePageState extends State<CollagePage> {
                 // Importar de dentro de uma pasta já põe o sticker nela; em
                 // "Importados" a pasta é nula.
                 onTap: () => _importSticker(
-                  folderId: bundledFolder == _StickerFolder.imported
+                  folderId: bundledFolder == BundledStickerFolder.imported
                       ? null
                       : _stickerFolderId,
                 ),
@@ -2798,15 +2220,15 @@ class _CollagePageState extends State<CollagePage> {
         // eles mexem naquele texto, não em todos.
         if (selected != null) ...[
           const SizedBox(height: 8),
-          _colorRow(
-            'Cor do texto',
-            selected.color,
-            () => _pickTextColor(selected.id),
+          PanelColorRow(
+            label: 'Cor do texto',
+            color: selected.color,
+            onTap: () => _pickTextColor(selected.id),
           ),
-          _switchRow(
-            'Fundo do texto',
-            selected.hasBackground,
-            (on) => _toggleTextBackground(selected.id, on),
+          PanelSwitchRow(
+            label: 'Fundo do texto',
+            value: selected.hasBackground,
+            onChanged: (on) => _toggleTextBackground(selected.id, on),
           ),
           if (selected.hasBackground) ...[
             const SizedBox(height: 4),
@@ -2835,18 +2257,19 @@ class _CollagePageState extends State<CollagePage> {
       ),
       child: Column(
         children: [
-          _colorRow(
-            'Cor',
-            selected.backgroundColor!,
-            () => _pickTextBackgroundColor(selected.id),
+          PanelColorRow(
+            label: 'Cor',
+            color: selected.backgroundColor!,
+            onTap: () => _pickTextBackgroundColor(selected.id),
           ),
           const SizedBox(height: 4),
-          _sliderRow(
+          PanelSliderRow(
+            onChangeStart: _pushUndoCheckpoint,
             label: 'Opacidade',
             value: selected.backgroundColor!.a,
             min: 0,
             max: 1,
-            display: '${(selected.backgroundColor!.a * 100).round()}%',
+            valueLabel: '${(selected.backgroundColor!.a * 100).round()}%',
             onChanged: (v) => _update(
               _settings.replacingText(
                 selected.id,
@@ -2860,12 +2283,13 @@ class _CollagePageState extends State<CollagePage> {
             ),
           ),
           const SizedBox(height: 4),
-          _sliderRow(
+          PanelSliderRow(
+            onChangeStart: _pushUndoCheckpoint,
             label: 'Arredondamento',
             value: selected.backgroundCornerRatio,
             min: 0,
             max: CollageTextItem.maxBackgroundCornerRatio,
-            display:
+            valueLabel:
                 '${(selected.backgroundCornerRatio / CollageTextItem.maxBackgroundCornerRatio * 100).round()}%',
             onChanged: (v) => _update(
               _settings.replacingText(
@@ -3071,7 +2495,7 @@ class _CollagePageState extends State<CollagePage> {
   }) => showDialog<String>(
     context: context,
     builder: (dialogContext) =>
-        _TextInputDialog(initial: initial, title: title, maxLines: maxLines),
+        TextInputDialog(initial: initial, title: title, maxLines: maxLines),
   );
 
   /// Folha com as [bundledCollageFonts] em miniaturas "Aa", cada uma
@@ -3101,7 +2525,7 @@ class _CollagePageState extends State<CollagePage> {
                 runSpacing: 12,
                 children: [
                   for (final font in bundledCollageFonts)
-                    _FontThumb(
+                    CollageFontThumb(
                       family: font.$1,
                       label: font.$2,
                       selected: item.fontFamily == font.$1,
@@ -3113,7 +2537,7 @@ class _CollagePageState extends State<CollagePage> {
                   // As importadas ficam na mesma grade das embutidas —
                   // segurar remove.
                   for (final font in _importedFonts)
-                    _FontThumb(
+                    CollageFontThumb(
                       family: font.family,
                       label: font.label,
                       selected: item.fontFamily == font.family,
@@ -3126,7 +2550,7 @@ class _CollagePageState extends State<CollagePage> {
                         _confirmRemoveFont(font);
                       },
                     ),
-                  _FontThumb(
+                  CollageFontThumb(
                     family: null,
                     label: 'Importar',
                     selected: false,
@@ -3775,87 +3199,11 @@ class _CollagePageState extends State<CollagePage> {
   // Ações
   // ---------------------------------------------------------------------
 
-  /// Largura da exportação: grande o bastante para cada foto caber na sua
-  /// célula sem encolher, multiplicada pelo tamanho escolhido em
-  /// [_exportSize] ("Padrão" tem multiplicador 1 e não muda nada daqui).
-  ///
-  /// Antes valia o maior lado entre as fotos, o que ignorava o layout: numa
-  /// montagem com quatro fotos lado a lado, cada célula fica com ~1/4 da
-  /// largura, então exportar na largura de UMA foto reduzia todas a um
-  /// quarto do tamanho — era isso que saía visivelmente borrado. Agora a
-  /// conta é ao contrário: mede que fração da montagem cada célula ocupa e
-  /// pede a largura que devolve a resolução original de cada foto.
-  int _exportWidth() {
-    // A fração não depende do tamanho medido, então qualquer largura de
-    // referência serve para descobrir as proporções do layout.
-    const probe = 1000.0;
-    final probeSize = Size(probe, probe / _settings.aspectRatio);
-    final geometry = CollageGeometry.of(probeSize, _settings);
-    var needed = 480.0;
-    for (var i = 0; i < _settings.cells.length; i++) {
-      if (i >= geometry.cellRects.length) continue;
-      final cell = _settings.cells[i];
-      if (!cell.hasPhoto) continue;
-      final rect = geometry.cellRects[i];
-      if (rect.width > 0) {
-        needed = math.max(needed, cell.photoWidth * probe / rect.width);
-      }
-      if (rect.height > 0) {
-        // Pela altura: a montagem precisa de tantas alturas quanto a célula
-        // é menor que a foto, e a largura sai da proporção da montagem.
-        final byHeight = cell.photoHeight * probeSize.height / rect.height;
-        needed = math.max(needed, byHeight * _settings.aspectRatio);
-      }
-    }
-    // O piso/teto escalam junto com o tamanho escolhido — "Extra grande"
-    // pode pedir o dobro do teto padrão, "Pequeno" aceita a metade do piso.
-    final multiplier = _exportSize.multiplier;
-    final minWidth = (480 * multiplier).round();
-    final maxWidth = (2200 * multiplier).round();
-    return (needed * multiplier).round().clamp(minWidth, maxWidth);
-  }
-
-  Future<File> _writeTempFile(Uint8List bytes, String extension) async {
-    final dir = await getTemporaryDirectory();
-    final path =
-        '${dir.path}/montagem_${DateTime.now().millisecondsSinceEpoch}'
-        '.$extension';
-    final file = File(path);
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
-  }
-
   /// Formato, regra de duração e tamanho escolhidos na última exportação —
   /// a folha de opções reabre já marcada no que a pessoa usou da última vez.
   CollageExportFormat _exportFormat = CollageExportFormat.gif;
   CollageDurationRule _durationRule = CollageDurationRule.longest;
   CollageExportSize _exportSize = CollageExportSize.standard;
-
-  /// Resultado da última [inspectCollageAnimation], junto do conjunto de
-  /// fotos que ele descreve — enquanto as fotos não mudam (adicionar/tirar/
-  /// trocar uma célula troca o caminho também), reabrir a folha de exportar
-  /// não precisa reler nenhum arquivo do zero.
-  Set<String>? _cachedAnimationPhotoPaths;
-  CollageAnimationInfo? _cachedAnimationInfo;
-
-  Future<CollageAnimationInfo> _inspectAnimationCached() async {
-    final Set<String> paths = {
-      for (final cell in _settings.cells)
-        if (cell.photoPath != null) cell.photoPath!,
-    };
-    final cachedPaths = _cachedAnimationPhotoPaths;
-    final cachedInfo = _cachedAnimationInfo;
-    if (cachedInfo != null &&
-        cachedPaths != null &&
-        cachedPaths.length == paths.length &&
-        cachedPaths.containsAll(paths)) {
-      return cachedInfo;
-    }
-    final info = await inspectCollageAnimation(_settings);
-    _cachedAnimationPhotoPaths = paths;
-    _cachedAnimationInfo = info;
-    return info;
-  }
 
   /// Pergunta o formato (quando há foto animada na montagem) e o tamanho da
   /// exportação. Devolve `null` quando a pessoa fecha a folha sem escolher.
@@ -3866,7 +3214,7 @@ class _CollagePageState extends State<CollagePage> {
   /// `selectedSize`) para não vazar para outra folha que porventura esteja
   /// aberta ao mesmo tempo.
   Future<CollageExportFormat?> _askExportFormat() async {
-    final info = await _inspectAnimationCached();
+    final info = await _export.inspectAnimationCached(_settings);
     if (!mounted) return null;
 
     var selectedFormat = info.hasAnimation
@@ -4010,75 +3358,6 @@ class _CollagePageState extends State<CollagePage> {
   String _formatSeconds(Duration duration) =>
       '${(duration.inMilliseconds / 1000).toStringAsFixed(1)} s';
 
-  /// Gera o arquivo final no formato escolhido: PNG direto do compositor, ou
-  /// a sequência de quadros da montagem animada codificada pelo FFmpeg.
-  Future<File> _buildExportFile(CollageExportFormat format) async {
-    if (!format.isAnimated) {
-      final bytes = await composeCollage(
-        settings: _settings,
-        outputWidth: _exportWidth(),
-      );
-      return _writeTempFile(bytes, format.extension);
-    }
-
-    final temp = await getTemporaryDirectory();
-    final stamp = DateTime.now().millisecondsSinceEpoch;
-    final workDir = await Directory(
-      '${temp.path}/montagem_quadros_$stamp',
-    ).create(recursive: true);
-    try {
-      final sequence = await renderCollageFrames(
-        settings: _settings,
-        // A animação multiplica o custo por quadro; um limite mais baixo que
-        // o do PNG mantém a exportação viável no celular.
-        outputWidth: _animatedExportWidth(),
-        rule: _durationRule,
-        workDir: workDir,
-        // Desenhar os quadros é a parte longa: fica com 85% da barra, e a
-        // codificação com os 15% finais.
-        onProgress: (value) => _reportExportProgress(value * 0.85),
-        isCancelled: () => _exportCancelled,
-      );
-      return await _ffmpeg.encodeCollageSequence(
-        framePattern: sequence.pattern,
-        fps: sequence.fps,
-        outputPath: '${temp.path}/montagem_$stamp.${format.extension}',
-        webp: format == CollageExportFormat.webp,
-        frameCount: sequence.frameCount,
-        onProgress: (value) => _reportExportProgress(0.85 + value * 0.15),
-      );
-    } finally {
-      if (await workDir.exists()) await workDir.delete(recursive: true);
-    }
-  }
-
-  /// Largura da exportação animada — o PNG usa [_exportWidth] inteiro.
-  ///
-  /// O teto existe porque a animação paga o custo de desenhar e codificar
-  /// cada quadro; 1440 ainda cabe no celular e já é o bastante para quatro
-  /// fotos de 360px lado a lado saírem sem redução — e escala com
-  /// [_exportSize] do mesmo jeito que o teto do PNG.
-  int _animatedExportWidth() =>
-      math.min(_exportWidth(), (1440 * _exportSize.multiplier).round());
-
-  /// Tamanho final em pixels, do mesmo jeito que o compositor calcula: a
-  /// altura sai da proporção da montagem.
-  (int width, int height) _exportPixelSize(CollageExportFormat format) {
-    final width = format.isAnimated ? _animatedExportWidth() : _exportWidth();
-    final height = (width / _settings.aspectRatio).round().clamp(2, 1 << 20);
-    return (width, height);
-  }
-
-  void _reportExportProgress(double value) {
-    // O notifier morre junto com a tela; sem esta guarda, um quadro que
-    // termina depois de sair da montagem escreveria num objeto descartado.
-    if (!mounted) return;
-    _exportProgress.value = ExportProgress(
-      value: value.clamp(0.0, 1.0),
-      cancelling: _exportProgress.value.cancelling,
-    );
-  }
-
   /// Abre o pop-up de progresso e roda a exportação. Devolve o arquivo, ou
   /// `null` quando o usuário cancelou — o pop-up sai da tela em qualquer um
   /// dos casos, inclusive em erro, para nunca sobrar um "exportando" preso.
@@ -4087,20 +3366,23 @@ class _CollagePageState extends State<CollagePage> {
     // só piscaria na tela.
     if (!format.isAnimated) return _buildExportFile(format);
 
-    _exportCancelled = false;
-    _exportProgress.value = const ExportProgress();
-    final (width, height) = _exportPixelSize(format);
+    _export.begin();
+    final (width, height) = CollageExportRunner.pixelSize(
+      _settings,
+      _exportSize,
+      format,
+    );
     final navigator = Navigator.of(context, rootNavigator: true);
     unawaited(
       showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (_) => ExportProgressDialog(
-          progress: _exportProgress,
+          progress: _export.progress,
           formatLabel: format.label,
           width: width,
           height: height,
-          onCancel: _cancelExport,
+          onCancel: _export.cancel,
         ),
       ),
     );
@@ -4111,21 +3393,30 @@ class _CollagePageState extends State<CollagePage> {
     } on FfmpegException {
       // Cancelar durante a codificação chega aqui como falha do FFmpeg —
       // não é erro para mostrar ao usuário.
-      if (_exportCancelled) return null;
+      if (_export.cancelled) return null;
       rethrow;
     } finally {
       navigator.pop();
     }
   }
 
-  void _cancelExport() {
-    _exportCancelled = true;
-    _exportProgress.value = ExportProgress(
-      value: _exportProgress.value.value,
-      cancelling: true,
+  void _reportExportProgress(double value) {
+    // O notifier morre junto com a tela; sem esta guarda, um quadro que
+    // termina depois de sair da montagem escreveria num objeto descartado.
+    if (!mounted) return;
+    _export.progress.value = ExportProgress(
+      value: value.clamp(0.0, 1.0),
+      cancelling: _export.progress.value.cancelling,
     );
-    unawaited(_ffmpeg.cancel());
   }
+
+  Future<File> _buildExportFile(CollageExportFormat format) => _export.build(
+    settings: _settings,
+    format: format,
+    size: _exportSize,
+    rule: _durationRule,
+    reportProgress: _reportExportProgress,
+  );
 
   Future<void> _save() async {
     final format = await _askExportFormat();
@@ -4186,172 +3477,3 @@ class _CollagePageState extends State<CollagePage> {
 /// método `async`, ou vazava (nunca era liberado) ou era liberado assim que
 /// `showDialog` retornava — ainda durante a animação de saída, com o campo
 /// montado e usando um controller já descartado.
-class _TextInputDialog extends StatefulWidget {
-  const _TextInputDialog({
-    required this.initial,
-    this.title = 'Texto',
-    this.maxLines = 3,
-  });
-
-  final String initial;
-
-  /// Título do diálogo — o mesmo campo serve para escrever um texto da
-  /// montagem e para nomear/renomear uma pasta de stickers.
-  final String title;
-  final int maxLines;
-
-  @override
-  State<_TextInputDialog> createState() => _TextInputDialogState();
-}
-
-class _TextInputDialogState extends State<_TextInputDialog> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.initial,
-  );
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() => Navigator.of(context).pop(_controller.text);
-
-  @override
-  Widget build(BuildContext context) {
-    // Num campo de uma linha só (nome de pasta), a tecla de confirmar do
-    // teclado deve valer o mesmo que o botão "OK" — sem isso, ela só fecha o
-    // teclado e a pessoa acha que confirmou sem ter confirmado nada.
-    final singleLine = widget.maxLines == 1;
-    return AlertDialog(
-      title: Text(widget.title),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        maxLines: widget.maxLines,
-        textInputAction: singleLine ? TextInputAction.done : null,
-        onSubmitted: singleLine ? (_) => _submit() : null,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('OK')),
-      ],
-    );
-  }
-}
-
-/// Miniatura "Aa" de uma fonte, renderizada na própria [family] — mesma
-/// forma de miniatura em grade usada por [_bundledStickerThumb].
-class _FontThumb extends StatelessWidget {
-  const _FontThumb({
-    required this.family,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.onLongPress,
-    this.icon,
-  });
-
-  final String? family;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  /// Segurar remove — só as fontes importadas passam algo aqui.
-  final VoidCallback? onLongPress;
-
-  /// No lugar do "Aa": usado pelo tile de importar, que não tem fonte para
-  /// mostrar ainda.
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 84,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant,
-            width: selected ? 2 : 1,
-          ),
-          color: selected
-              ? theme.colorScheme.primary.withValues(alpha: 0.08)
-              : null,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null)
-              Icon(icon, size: 22, color: theme.colorScheme.primary)
-            else
-              Text('Aa', style: TextStyle(fontFamily: family, fontSize: 22)),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Caixa colorida atrás de um texto da montagem, com o arredondamento em
-/// razão do menor lado (a mesma unidade proporcional que
-/// [CollageTextItem.backgroundCornerRatio] tem na exportação). Precisa de um
-/// `LayoutBuilder` porque o raio depende do tamanho final da caixa, que só é
-/// conhecido depois de medir o texto.
-class _TextBackgroundBox extends StatelessWidget {
-  const _TextBackgroundBox({
-    required this.color,
-    required this.cornerRatio,
-    required this.padding,
-    required this.child,
-  });
-
-  final Color color;
-  final double cornerRatio;
-  final EdgeInsets padding;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _TextBackgroundPainter(color: color, cornerRatio: cornerRatio),
-      child: Padding(padding: padding, child: child),
-    );
-  }
-}
-
-class _TextBackgroundPainter extends CustomPainter {
-  const _TextBackgroundPainter({
-    required this.color,
-    required this.cornerRatio,
-  });
-
-  final Color color;
-  final double cornerRatio;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    paintCollageTextBackground(canvas, Offset.zero & size, color, cornerRatio);
-  }
-
-  @override
-  bool shouldRepaint(covariant _TextBackgroundPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.cornerRatio != cornerRatio;
-}

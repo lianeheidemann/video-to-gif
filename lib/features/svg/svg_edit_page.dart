@@ -21,6 +21,7 @@ import '../../core/ui/checkerboard_background.dart';
 import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/crop/crop_controller.dart';
 import '../../core/ui/frame/frame_color_row.dart';
+import '../../core/ui/panel_rows.dart';
 import '../../core/ui/crop/crop_overlay.dart';
 import '../../core/ui/crop/crop_size_fields.dart';
 import '../../core/ui/crop/cropped_view.dart';
@@ -829,7 +830,7 @@ class _SvgEditPageState extends State<SvgEditPage> {
             height: 13,
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
-          FrameColorRow(
+          PanelColorRow(
             label: 'Cor do fundo',
             color: _settings.backgroundColor,
             onTap: _pickBackgroundColor,

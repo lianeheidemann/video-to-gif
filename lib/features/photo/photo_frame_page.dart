@@ -19,6 +19,7 @@ import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/crop/crop_controller.dart';
 import '../../core/ui/frame/content_fit_picker.dart';
 import '../../core/ui/frame/frame_color_row.dart';
+import '../../core/ui/panel_rows.dart';
 import '../../core/ui/frame/frame_sliders.dart';
 import '../../core/ui/frame/frame_style_picker.dart';
 import '../../core/ui/frame/frame_thumb_shell.dart';
@@ -780,7 +781,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           const SizedBox(height: 18),
           SectionCard(
             children: [
-              FrameColorRow(
+              PanelColorRow(
                 label: 'Cor da moldura',
                 color: _frame.color,
                 onTap: _pickFrameColor,
@@ -1045,7 +1046,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             height: 13,
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
-          FrameColorRow(
+          PanelColorRow(
             key: const ValueKey('backgroundColorRow'),
             label: 'Cor do fundo',
             color: _frame.backgroundColor,
