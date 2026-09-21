@@ -35,13 +35,14 @@ import '../../core/ui/collage_overlay_view.dart';
 import '../../core/ui/panel_rows.dart';
 import '../../core/ui/text_overlay_editor.dart';
 import 'painting/collage_painter.dart';
-import '../../core/ui/color_adjust_controls.dart';
 import '../../core/ui/color_picker_sheet.dart';
 import 'widgets/export_progress_dialog.dart';
 import 'widgets/folder_tab.dart';
+import 'widgets/asset_thumbs.dart';
 import 'widgets/cell_actions.dart';
 import 'widgets/font_thumb.dart';
 import 'widgets/panels/collage_panel_actions.dart';
+import 'widgets/panels/color_panel.dart';
 import '../../core/ui/text_input_dialog.dart';
 import 'widgets/panels/layout_panel.dart';
 import '../../core/ui/preview_settings_panel.dart';
@@ -511,7 +512,10 @@ class _CollagePageState extends State<CollagePage> {
     _CollageTab.margin => _marginPanelContent(),
     _CollageTab.border => _borderPanelContent(),
     _CollageTab.background => _backgroundPanelContent(),
-    _CollageTab.color => _colorPanelContent(),
+    _CollageTab.color => CollageColorPanel(
+      settings: _settings,
+      actions: _panelActions,
+    ),
     _CollageTab.stickers => _stickersPanelContent(),
     _CollageTab.text => _textPanelContent(),
     _CollageTab.settings => const PreviewSettingsPanel(),
@@ -1617,7 +1621,7 @@ class _CollagePageState extends State<CollagePage> {
 
           final importedIndex = index - bundled.length;
           if (importedIndex == _importedBackgrounds.length) {
-            return _importTile(
+            return ImportAssetTile(
               onTap: _importBackgroundImage,
               label: 'Importar',
             );
@@ -1632,7 +1636,7 @@ class _CollagePageState extends State<CollagePage> {
               ),
             ),
             onLongPress: () => _confirmRemoveBackground(asset),
-            child: _assetThumb(asset, selected: selected),
+            child: ImportedAssetThumb(asset: asset, selected: selected),
           );
         },
       ),
@@ -1752,40 +1756,6 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
   // Seção "Ajustar cor"
   // ---------------------------------------------------------------------
-
-  /// Ajuste de cor de todas as fotos de uma vez. Mexe só no que é foto —
-  /// `CollageCellSettings` guarda os valores e o filtro de cor sai deles no
-  /// desenho da imagem da célula (ver `collage_painter.dart`), então fundo,
-  /// borda, stickers e texto ficam de fora por construção.
-  ///
-  /// Os valores mostrados vêm da célula de referência
-  /// ([CollageSettings.cellStyleTemplate]), a mesma lógica das abas "Borda e
-  /// cantos" e "Fundo" quando o alvo é "Fotos": os controles aplicam em lote,
-  /// então uma célula representa todas.
-  Widget _colorPanelContent() {
-    final reference = _settings.cellStyleTemplate;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ColorAdjustPanel(
-          hasAdjustments: _settings.cells.any((c) => c.hasColorAdjustments),
-          valueOf: (adjustment) => adjustment.valueOf(reference),
-          onChangeStart: _pushUndoCheckpoint,
-          onChanged: (adjustment, value) => _update(
-            _settings.updatingAllCells((c) => adjustment.apply(c, value)),
-            pushUndo: false,
-          ),
-          onReset: () {
-            _pushUndoCheckpoint();
-            _update(
-              _settings.updatingAllCells((c) => c.withoutColorAdjustments()),
-              pushUndo: false,
-            );
-          },
-        ),
-      ],
-    );
-  }
 
   // ---------------------------------------------------------------------
   // Seção "Stickers" / "Texto"
@@ -1945,8 +1915,8 @@ class _CollagePageState extends State<CollagePage> {
                   child: GestureDetector(
                     onTap: () => _addStickerFromAsset(asset),
                     onLongPress: () => _confirmRemoveSticker(asset),
-                    child: _assetThumb(
-                      asset,
+                    child: ImportedAssetThumb(
+                      asset: asset,
                       selected: false,
                       size: 44,
                       height: 36,
@@ -1954,7 +1924,7 @@ class _CollagePageState extends State<CollagePage> {
                   ),
                 );
               }
-              return _importTile(
+              return ImportAssetTile(
                 // Importar de dentro de uma pasta já põe o sticker nela; em
                 // "Importados" a pasta é nula.
                 onTap: () => _importSticker(
@@ -2580,50 +2550,6 @@ class _CollagePageState extends State<CollagePage> {
     );
   }
 
-  Widget _importTile({
-    required VoidCallback onTap,
-    required String label,
-    double size = 62,
-    double height = 46,
-  }) {
-    final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: size,
-        child: Column(
-          children: [
-            Container(
-              width: size,
-              height: height,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant.withValues(
-                    alpha: 0.5,
-                  ),
-                ),
-              ),
-              child: Icon(
-                Icons.add_photo_alternate_outlined,
-                color: theme.colorScheme.primary,
-                size: 18,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _applyTextFont(String id, String? family) {
     final item = _findText(id);
     if (item == null) return;
@@ -2724,33 +2650,6 @@ class _CollagePageState extends State<CollagePage> {
         fit: BoxFit.cover,
         semanticLabel: background.label,
       ),
-    );
-  }
-
-  Widget _assetThumb(
-    ImportedAsset asset, {
-    required bool selected,
-    double size = 62,
-    double height = 46,
-  }) {
-    final theme = Theme.of(context);
-    return Container(
-      width: size,
-      height: height,
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selected
-              ? theme.colorScheme.primary
-              : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: selected ? 2 : 1,
-        ),
-      ),
-      child: asset.isVector
-          ? SvgPicture.file(File(asset.filePath), fit: BoxFit.contain)
-          : Image.file(File(asset.filePath), fit: BoxFit.contain),
     );
   }
 
