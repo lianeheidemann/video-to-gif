@@ -7,6 +7,7 @@ import '../models/collage_text.dart';
 import '../models/default_colors.dart';
 import '../services/imported_font_store.dart';
 import 'collage_overlay_view.dart';
+import 'panel_rows.dart';
 import '../../features/collage/painting/collage_painter.dart'
     show paintCollageTextBackground;
 import 'color_picker_sheet.dart';
@@ -463,22 +464,20 @@ class TextOverlayPanel extends StatelessWidget {
             _composer(context),
             if (selected != null) ...[
               const SizedBox(height: 8),
-              _colorRow(
-                context,
-                'Cor do texto',
-                selected.color,
-                () => _pickColor(
+              PanelColorRow(
+                label: 'Cor do texto',
+                color: selected.color,
+                onTap: () => _pickColor(
                   context,
                   title: 'Cor do texto',
                   current: selected.color,
                   apply: (item, color) => item.copyWith(color: color),
                 ),
               ),
-              _switchRow(
-                context,
-                'Fundo do texto',
-                selected.hasBackground,
-                (on) => _toggleBackground(selected, on),
+              PanelSwitchRow(
+                label: 'Fundo do texto',
+                value: selected.hasBackground,
+                onChanged: (on) => _toggleBackground(selected, on),
               ),
               if (selected.hasBackground) ...[
                 const SizedBox(height: 4),
@@ -638,11 +637,10 @@ class TextOverlayPanel extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _colorRow(
-            context,
-            'Cor',
-            selected.backgroundColor!,
-            () => _pickColor(
+          PanelColorRow(
+            label: 'Cor',
+            color: selected.backgroundColor!,
+            onTap: () => _pickColor(
               context,
               title: 'Cor do fundo do texto',
               current: selected.backgroundColor!,
@@ -650,13 +648,13 @@ class TextOverlayPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          _sliderRow(
-            context,
+          PanelSliderRow(
+            onChangeStart: () => onGestureStart?.call(),
             label: 'Opacidade',
             value: selected.backgroundColor!.a,
             min: 0,
             max: 1,
-            display: '${(selected.backgroundColor!.a * 100).round()}%',
+            valueLabel: '${(selected.backgroundColor!.a * 100).round()}%',
             onChanged: (v) => onChanged(
               texts.replacingText(
                 selected.id,
@@ -669,13 +667,13 @@ class TextOverlayPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          _sliderRow(
-            context,
+          PanelSliderRow(
+            onChangeStart: () => onGestureStart?.call(),
             label: 'Arredondamento',
             value: selected.backgroundCornerRatio,
             min: 0,
             max: CollageTextItem.maxBackgroundCornerRatio,
-            display:
+            valueLabel:
                 '${(selected.backgroundCornerRatio / CollageTextItem.maxBackgroundCornerRatio * 100).round()}%',
             onChanged: (v) => onChanged(
               texts.replacingText(
@@ -903,93 +901,5 @@ class TextOverlayPanel extends StatelessWidget {
     onGestureStart?.call();
     onChanged(texts.removingText(item.id));
     controller.select(null);
-  }
-
-  Widget _sliderRow(
-    BuildContext context, {
-    required String label,
-    required double value,
-    required double min,
-    required double max,
-    required String display,
-    required ValueChanged<double> onChanged,
-  }) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            Text(
-              display,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-        Slider(
-          min: min,
-          max: max,
-          value: value.clamp(min, max),
-          label: display,
-          onChangeStart: (_) => onGestureStart?.call(),
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-
-  Widget _switchRow(
-    BuildContext context,
-    String label,
-    bool value,
-    ValueChanged<bool> onChanged,
-  ) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-          Switch(value: value, onChanged: onChanged),
-        ],
-      ),
-    );
-  }
-
-  Widget _colorRow(
-    BuildContext context,
-    String label,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: theme.colorScheme.outlineVariant,
-                  width: 1.5,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
