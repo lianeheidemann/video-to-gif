@@ -1189,7 +1189,7 @@ class _CollagePageState extends State<CollagePage> {
   /// inteira ou o de dentro das fotos. Com o alvo "Fotos" os controles mexem
   /// em todas as células de uma vez ([CollageSettings.updatingAllCells]),
   /// então a primeira célula representa bem todas — mesma lógica de
-  /// [_borderPanelContent].
+  /// [CollageBorderPanel].
   CollageBackground get _targetBackground => _backgroundTargetsPhotos
       ? (_firstCell?.background ?? const CollageBackground())
       : _settings.background;
@@ -1322,7 +1322,7 @@ class _CollagePageState extends State<CollagePage> {
         // A pasta nova nasce perto do fim da fileira (antes só de "Nova
         // pasta"), fora da parte já visível se houver muitas pastas — o
         // item dela mesma, ao entrar na árvore, pede pra rolar até si (ver
-        // o `Builder` em `_stickersPanelContent`).
+        // o `Builder` em [CollageStickersPanel]).
         _pendingFolderScrollId = folder.id;
       });
     } catch (e) {
