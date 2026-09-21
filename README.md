@@ -148,6 +148,7 @@ your machine, run it on that same version.
 
 ```
 lib/
+├── main.dart     # entry point — stays at the root: `flutter build` targets it by default
 ├── app/          # theme, licenses and app-wide controllers
 ├── core/         # code shared by two or more features
 │   ├── ffmpeg/   # probe, filter graphs and arguments for GIF/WebP/MP4
@@ -214,7 +215,7 @@ frames from one code path.
 
 ## Quality
 
-**365 automated tests** cover the estimation model against real FFmpeg
+**369 automated tests** cover the estimation model against real FFmpeg
 output, the size and quality panels, frame and crop geometry, the export
 arguments for every format, the import stores, and the collage — framing,
 color, layout, compositing against golden pixels and the animation
