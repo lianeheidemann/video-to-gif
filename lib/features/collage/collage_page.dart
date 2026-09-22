@@ -28,6 +28,7 @@ import 'widgets/background_image_view.dart';
 import '../../core/ui/checkerboard_background.dart';
 import 'widgets/collage_cell_view.dart';
 import '../../core/ui/collage_overlay_view.dart';
+import '../../core/ui/editor_tabs_footer.dart';
 import '../../core/ui/text_overlay_editor.dart';
 import 'painting/collage_painter.dart';
 import 'widgets/export_progress_dialog.dart';
@@ -418,7 +419,7 @@ class _CollagePageState extends State<CollagePage> {
               child: PreviewAreaBackground(child: Center(child: _preview())),
             ),
             ?toolbar,
-            ?_activeTabPanel(),
+            collapsibleEditorPanel(child: _activeTabPanel()),
             _footerTabs(),
           ],
         ),
@@ -431,13 +432,19 @@ class _CollagePageState extends State<CollagePage> {
   // ---------------------------------------------------------------------
 
   /// Painel da aba aberta: altura limitada com rolagem própria (seções mais
-  /// longas, como Fundo, não estouram a tela), animado ao trocar/fechar aba.
+  /// longas, como Fundo, não estouram a tela).
+  ///
+  /// Devolve `null` sem aba aberta — quem dá movimento a abrir e fechar é o
+  /// [collapsibleEditorPanel] em volta, no `build`.
   Widget? _activeTabPanel() {
     final tab = _activeTab;
     if (tab == null) return null;
     final theme = Theme.of(context);
     return AnimatedSize(
-      duration: const Duration(milliseconds: 180),
+      // Recolher pela alça e trocar de aba: o painel continua montado e só
+      // muda de altura.
+      duration: editorPanelMotionDuration,
+      curve: editorPanelMotionCurve,
       alignment: Alignment.bottomCenter,
       child: Container(
         // Mesmo teto do rodapé das outras telas (ver
@@ -445,12 +452,10 @@ class _CollagePageState extends State<CollagePage> {
         // que passar daqui continua acessível pela rolagem que ele já tem.
         constraints: const BoxConstraints(maxHeight: 200),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          border: Border(
-            top: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-            ),
-          ),
+          color: _panelCollapsed
+              ? theme.colorScheme.surface
+              : theme.colorScheme.surfaceContainerLow,
+          border: Border(top: _footerTopLine(theme)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -590,11 +595,10 @@ class _CollagePageState extends State<CollagePage> {
       height: 60,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
-        ),
+        // Recolhido, quem desenha a linha de cima é a tira da alça.
+        border: _panelCollapsed && _activeTab != null
+            ? null
+            : Border(top: _footerTopLine(theme)),
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
@@ -603,6 +607,16 @@ class _CollagePageState extends State<CollagePage> {
       ),
     );
   }
+
+  /// A linha que separa o rodapé da prévia. Só uma por vez desenha: com o
+  /// painel recolhido ela é da tira da alça, senão é da barra.
+  ///
+  /// Antes cada uma trazia a sua, e recolhido isso desenhava duas linhas
+  /// paralelas a 17px uma da outra, com uma faixa de outro tom entre elas —
+  /// lia-se como falha de renderização, não como parte do controle.
+  BorderSide _footerTopLine(ThemeData theme) => BorderSide(
+    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+  );
 
   Widget _footerTabButton(_CollageTab tab) {
     final theme = Theme.of(context);

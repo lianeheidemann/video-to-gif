@@ -31,6 +31,7 @@ import '../../core/ui/crop/cropped_view.dart';
 import '../../core/ui/editor_tabs_footer.dart';
 import '../../core/ui/labeled_section.dart';
 import '../../core/ui/preview_settings_panel.dart';
+import '../../core/ui/rotate_flip_panel.dart';
 import 'widgets/size_panel.dart';
 import '../../core/ui/text_overlay_editor.dart';
 import 'widgets/webp_convert_panel.dart';
@@ -284,9 +285,22 @@ class _EditorPageState extends State<EditorPage> {
       EditorSection.fromLabeled(_formatSection(), label: 'Formato'),
       EditorSection.fromLabeled(_durationSection(), label: 'Duração'),
       EditorSection.fromLabeled(_aspectSection(), label: 'Janela'),
+      EditorSection(
+        icon: Icons.rotate_90_degrees_ccw_rounded,
+        title: 'Girar',
+        value: _settings.outputTransform.label,
+        builder: (_) => RotateFlipPanel(
+          transform: _settings.outputTransform,
+          onChanged: (transform) => _update(
+            _settings.copyWith(
+              frame: _settings.frame.copyWith(outputTransform: transform),
+            ),
+          ),
+        ),
+      ),
       EditorSection.fromLabeled(_speedSection(), label: 'Velocidade'),
-      EditorSection.fromLabeled(_resolutionSection(), label: 'Resolução'),
       EditorSection.fromLabeled(_fpsSection(), label: 'FPS'),
+      EditorSection.fromLabeled(_resolutionSection(), label: 'Resolução'),
       if (isWebp)
         EditorSection.fromLabeled(_webpQualitySection(), label: 'Qualidade')
       else
@@ -559,10 +573,16 @@ class _EditorPageState extends State<EditorPage> {
         ? _framedPreview(textTabActive)
         : _timelined(
             showCropHandles
+                // Com as alças à mostra a prévia fica na orientação
+                // original: o recorte é medido em pixels do vídeo como ele
+                // veio, e arrastar uma alça girada moveria a janela no
+                // sentido "errado" para quem está olhando.
                 ? _preview()
-                : _withTextOverlay(
-                    _croppedPreview(showOutline: true),
-                    textTabActive,
+                : _rotatedForOutput(
+                    _withTextOverlay(
+                      _croppedPreview(showOutline: true),
+                      textTabActive,
+                    ),
                   ),
           );
     return AnimatedSize(
@@ -675,8 +695,13 @@ class _EditorPageState extends State<EditorPage> {
       );
     }
 
-    return _timelined(framedVideo);
+    return _timelined(_rotatedForOutput(framedVideo));
   }
+
+  /// Gira e espelha a prévia como o arquivo final vai sair — a linha do
+  /// tempo fica de fora, por ser um controle da tela e não parte do vídeo.
+  Widget _rotatedForOutput(Widget preview) =>
+      applyOutputTransform(_settings.outputTransform, preview);
 
   /// Cartão escuro da linha do tempo, exibido abaixo do vídeo (e de
   /// qualquer moldura) para preservar a leitura e os gestos em todas as

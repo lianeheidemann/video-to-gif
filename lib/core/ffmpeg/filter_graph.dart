@@ -3,6 +3,7 @@ import 'dart:ui' show Size;
 import '../models/color_adjustments.dart';
 import '../models/conversion_settings.dart';
 import '../models/frame_settings.dart';
+import '../models/output_transform.dart';
 import '../models/video_info.dart';
 import '../painting/frame_painter.dart';
 import 'ffmpeg_primitives.dart';
@@ -40,6 +41,62 @@ String buildConversionVideoFilter(
   parts.addAll(buildColorAdjustFilters(settings.adjustments));
 
   return parts.join(',');
+}
+
+/// Filtros que giram e espelham o resultado, na ordem girar → espelhar (a
+/// mesma de [applyOutputTransform] na prévia).
+///
+/// `transpose=1` é um quarto de volta no sentido horário e `transpose=2` no
+/// anti-horário; meia volta é o horário duas vezes. Lista vazia quando não
+/// há nada a aplicar.
+List<String> outputTransformFilters(OutputTransform transform) => [
+  switch (transform.quarterTurns) {
+    1 => 'transpose=1',
+    2 => 'transpose=1,transpose=1',
+    3 => 'transpose=2',
+    _ => null,
+  },
+  if (transform.flipHorizontal) 'hflip',
+  if (transform.flipVertical) 'vflip',
+].nonNulls.toList();
+
+/// Onde um grafo termina depois do giro: o rótulo que o próximo filtro (ou
+/// o codificador) deve consumir, e o estágio que o produz, já com o `;` da
+/// frente.
+///
+/// Sem transformação devolve o próprio [label] e uma string vazia — assim o
+/// grafo sai caractere por caractere igual ao de antes, e os testes que
+/// fixam a linha de comando continuam valendo sem exceção para o caso
+/// comum.
+///
+/// O estágio é sempre colado no **fim** do grafo, nunca dentro de
+/// [buildConversionVideoFilter] ou [framedGraph]: nos caminhos de fundo
+/// transparente a máscara de cantos arredondados é um PNG do tamanho do
+/// canvas, combinado por `alphamerge` depois da moldura. Girar antes disso
+/// deixaria a máscara fora de esquadro com a imagem.
+(String label, String stage) transformedTail(
+  OutputTransform transform,
+  String label,
+) {
+  if (transform.isIdentity) return (label, '');
+  final rotated = '${label}_girado';
+  return (
+    rotated,
+    ';[$label]${outputTransformFilters(transform).join(',')}[$rotated]',
+  );
+}
+
+/// Mesma ideia de [transformedTail], para os grafos que precisam terminar
+/// num rótulo fixo — o `-map [out]` do WebP não aceita outro. Aqui o que
+/// muda de nome é a entrada: devolve o rótulo que o grafo deve produzir
+/// agora, e o estágio que o gira de volta para [label].
+(String label, String stage) transformedInto(
+  OutputTransform transform,
+  String label,
+) {
+  if (transform.isIdentity) return (label, '');
+  final raw = '${label}_bruto';
+  return (raw, ';[$raw]${outputTransformFilters(transform).join(',')}[$label]');
 }
 
 /// Traduz os oito ajustes de cor para filtros do FFmpeg, na mesma ordem em

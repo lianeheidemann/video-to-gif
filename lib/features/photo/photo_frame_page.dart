@@ -30,6 +30,7 @@ import '../../core/ui/crop/cropped_view.dart';
 import '../../core/ui/editor_tabs_footer.dart';
 import '../../core/ui/labeled_section.dart';
 import '../../core/ui/preview_settings_panel.dart';
+import '../../core/ui/rotate_flip_panel.dart';
 import '../../core/ui/text_overlay_editor.dart';
 
 /// Mesmos três modos apresentados ao usuário em `EditorPage` — `fit` só
@@ -262,6 +263,16 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       builder: (_) => _cropSection(),
     ),
     EditorSection(
+      icon: Icons.rotate_90_degrees_ccw_rounded,
+      title: 'Girar',
+      value: _frame.outputTransform.label,
+      builder: (_) => RotateFlipPanel(
+        transform: _frame.outputTransform,
+        onChanged: (transform) =>
+            _updateFrame(_frame.copyWith(outputTransform: transform)),
+      ),
+    ),
+    EditorSection(
       icon: Icons.smartphone_rounded,
       title: 'Moldura',
       value: _activeFrameStyle.label,
@@ -399,8 +410,14 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     required bool showCropHandles,
     required bool textTabActive,
   }) => showCropHandles
+      // As alças ficam sempre na orientação original: o recorte é medido em
+      // pixels da foto como ela veio, e arrastar uma alça girada moveria a
+      // janela no sentido "errado" para quem está olhando.
       ? _rawCropPreviewWithHandles()
-      : _framedPreview(textTabActive);
+      : applyOutputTransform(
+          _frame.outputTransform,
+          _framedPreview(textTabActive),
+        );
 
   /// Foto inteira (sem recorte aplicado) com o véu + alças por cima — mesma
   /// ideia da aba "Ajustar" do recorte de vídeo/"Recorte" do editor de SVG.

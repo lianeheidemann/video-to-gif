@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'color_adjustments.dart';
 import 'crop_rect.dart';
 import 'frame_settings.dart';
+import 'output_transform.dart';
 import 'video_info.dart';
 
 export 'aspect_preset.dart' show AspectPreset;
@@ -122,6 +123,11 @@ class ConversionSettings {
   /// mesmo `ColorFilter` das outras telas. Ver
   /// `FfmpegService.buildVideoFilter`.
   final ColorAdjustments adjustments;
+
+  /// Giro e espelhamento finais da aba "Girar" — atalho para o campo de
+  /// mesmo nome em [frame], onde ele mora para o desfazer/refazer das duas
+  /// telas cair sempre no mesmo lugar (ver [FrameSettings.outputTransform]).
+  OutputTransform get outputTransform => frame.outputTransform;
 
   /// Presets exibidos no editor redesenhado.
   static const fpsOptions = <int>[5, 8, 10, 12, 15, 20, 24];

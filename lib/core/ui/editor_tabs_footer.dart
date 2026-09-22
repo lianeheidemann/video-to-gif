@@ -88,18 +88,40 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
     if (oldWidget.activeIndex != widget.activeIndex) _collapsed = false;
   }
 
+  /// `true` quando a tira da alça está encostada na barra de abas — painel
+  /// aberto, mas recolhido. Nesse caso as duas viram um bloco só: a tira
+  /// empresta a cor da barra e fica com a única borda de cima.
+  ///
+  /// Antes cada uma trazia cor e borda próprias, e recolhido isso desenhava
+  /// duas linhas paralelas a 17px uma da outra, com uma faixa de outro tom
+  /// entre elas — lia-se como falha de renderização, não como parte do
+  /// controle.
+  bool get _handleTopsTheBar {
+    final index = widget.activeIndex;
+    return _collapsed && index != null && index < widget.sections.length;
+  }
+
   @override
   Widget build(BuildContext context) {
     final activeIndex = widget.activeIndex;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (activeIndex != null && activeIndex < widget.sections.length)
-          _panel(context, widget.sections[activeIndex]),
+        collapsibleEditorPanel(
+          child: activeIndex != null && activeIndex < widget.sections.length
+              ? _panel(context, widget.sections[activeIndex])
+              : null,
+        ),
         _bar(context),
       ],
     );
   }
+
+  /// A linha que separa o rodapé da prévia. Só uma por vez desenha: com o
+  /// painel recolhido ela é da tira da alça, senão é da barra.
+  BorderSide _topLine(ThemeData theme) => BorderSide(
+    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+  );
 
   /// Alça no topo do painel: puxar para baixo encolhe até só ela, puxar para
   /// cima traz os controles de volta, e tocar alterna os dois — a prévia fica
@@ -131,17 +153,18 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
   Widget _panel(BuildContext context, EditorSection section) {
     final theme = Theme.of(context);
     return AnimatedSize(
-      duration: const Duration(milliseconds: 180),
+      // Recolher pela alça e trocar de aba: o painel continua montado e só
+      // muda de altura. Abrir e fechar são do `collapsibleEditorPanel`.
+      duration: editorPanelMotionDuration,
+      curve: editorPanelMotionCurve,
       alignment: Alignment.bottomCenter,
       child: Container(
         constraints: BoxConstraints(maxHeight: widget.maxPanelHeight),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          border: Border(
-            top: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-            ),
-          ),
+          color: _handleTopsTheBar
+              ? theme.colorScheme.surface
+              : theme.colorScheme.surfaceContainerLow,
+          border: Border(top: _topLine(theme)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -172,11 +195,8 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
       height: 60,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
-        ),
+        // Recolhido, quem desenha a linha de cima é a tira da alça.
+        border: _handleTopsTheBar ? null : Border(top: _topLine(theme)),
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
@@ -218,6 +238,55 @@ class _EditorTabsFooterState extends State<EditorTabsFooter> {
       ),
     );
   }
+}
+
+/// Duração e curva de todo movimento do rodapé: abrir, fechar, trocar de aba
+/// e recolher pela alça.
+///
+/// A curva é simétrica de propósito — abrir e fechar ganham o mesmo caráter.
+/// Um `easeOut` puro fica bom abrindo e abrupto no começo do fechamento. E o
+/// padrão do `AnimatedSize` é [Curves.linear], que arranca em velocidade cheia
+/// e para seco: é o que fazia a transição parecer mecânica.
+const Duration editorPanelMotionDuration = Duration(milliseconds: 240);
+const Curve editorPanelMotionCurve = Curves.easeInOutCubic;
+
+/// Dá movimento ao abrir e fechar do painel de uma aba. [child] nulo é nenhuma
+/// aba aberta.
+///
+/// Precisa ficar sempre montado: quem troca é o filho, não este widget. Antes
+/// o painel inteiro entrava e saía da árvore com a aba, e nada animava —
+/// aparecia e sumia num quadro só.
+///
+/// É [AnimatedSwitcher], e não [AnimatedSize] com um filho vazio, porque o
+/// switcher mantém o painel que está saindo vivo durante a transição: ele
+/// desliza e desaparece junto com a altura. Com o filho vazio, o conteúdo
+/// sumiria num quadro e sobraria uma caixa colorida encolhendo — o salto
+/// mudaria de lugar em vez de sumir.
+///
+/// Trocar de aba não passa por aqui: dois painéis são do mesmo tipo e sem
+/// chave, então o switcher os atualiza no lugar e quem anima a diferença de
+/// altura é o [AnimatedSize] de dentro do painel.
+Widget collapsibleEditorPanel({required Widget? child}) {
+  return AnimatedSwitcher(
+    // Chave estável: é por ela que o teste mede a altura no meio da
+    // transição, que é o que distingue movimento de salto.
+    key: const ValueKey('painelDaAba'),
+    duration: editorPanelMotionDuration,
+    switchInCurve: editorPanelMotionCurve,
+    switchOutCurve: editorPanelMotionCurve,
+    layoutBuilder: (atual, anteriores) => Stack(
+      alignment: Alignment.bottomCenter,
+      children: [...anteriores, ?atual],
+    ),
+    transitionBuilder: (filho, animacao) => SizeTransition(
+      sizeFactor: animacao,
+      // Ancorado no topo: o painel cresce para baixo, contra a barra de abas,
+      // em vez de se abrir a partir do meio.
+      alignment: Alignment.topCenter,
+      child: FadeTransition(opacity: animacao, child: filho),
+    ),
+    child: child ?? const SizedBox(key: ValueKey('rodapeSemAba')),
+  );
 }
 
 /// Valor atual de uma aba, alinhado à direita — sem repetir o nome da aba:

@@ -7,6 +7,9 @@ import 'filter_graph.dart';
 /// Argumentos das saídas em GIF: geração e uso da paleta, GIF com fundo
 /// transparente e GIF dentro de uma moldura de imagem.
 
+/// A paleta é só uma contagem de cores: girar ou espelhar não muda nenhuma
+/// delas, então [FrameSettings.outputTransform] não entra aqui — só nos
+/// caminhos que produzem quadros de verdade.
 List<String> paletteGenArgs({
   required VideoInfo video,
   required ConversionSettings settings,
@@ -78,6 +81,7 @@ List<String> paletteUseArgs({
 
   if (settings.frame.style == FrameStyle.none) {
     final filter = buildConversionVideoFilter(settings, video);
+    final (label, tail) = transformedTail(settings.outputTransform, 'v');
     return [
       '-y',
       '-ss',
@@ -89,7 +93,8 @@ List<String> paletteUseArgs({
       '-i',
       palettePath,
       '-lavfi',
-      '[0:v]$filter[v];[v][1:v]paletteuse=dither=${settings.dither.ffmpegValue}'
+      '[0:v]$filter[v]$tail;'
+          '[$label][1:v]paletteuse=dither=${settings.dither.ffmpegValue}'
           ':diff_mode=rectangle$newPalette',
       '-loop',
       settings.loop ? '0' : '-1',
@@ -103,8 +108,9 @@ List<String> paletteUseArgs({
 
   final transparent = settings.frame.transparentBackground;
   final graph = framedGraph(settings, video, input: '0:v', output: 'framed');
-  final useLabel = transparent ? 'alpha' : 'framed';
-  final maskStage = transparent ? ';[framed][2:v]alphamerge[$useLabel]' : '';
+  final composed = transparent ? 'alpha' : 'framed';
+  final maskStage = transparent ? ';[framed][2:v]alphamerge[$composed]' : '';
+  final (useLabel, tail) = transformedTail(settings.outputTransform, composed);
   final alphaThreshold = transparent ? ':alpha_threshold=128' : '';
 
   return [
@@ -126,7 +132,7 @@ List<String> paletteUseArgs({
       maskPath,
     ],
     '-lavfi',
-    '$graph$maskStage;'
+    '$graph$maskStage$tail;'
         '[$useLabel][1:v]paletteuse=dither=${settings.dither.ffmpegValue}'
         ':diff_mode=rectangle$newPalette$alphaThreshold',
     '-loop',
@@ -160,6 +166,7 @@ List<String> transparentGifArgs({
 }) {
   final graph = framedGraph(settings, video, input: '0:v', output: 'framed');
   final newPalette = settings.palette == PaletteMode.perFrame ? ':new=1' : '';
+  final (source, tail) = transformedTail(settings.outputTransform, 'alpha');
 
   return [
     '-y',
@@ -180,8 +187,8 @@ List<String> transparentGifArgs({
         '[framed]format=rgba,setpts=PTS-STARTPTS[framed_rgba];'
         '[1:v]format=gray,fps=${settings.fps},'
         'setpts=PTS-STARTPTS[mask_gray];'
-        '[framed_rgba][mask_gray]alphamerge=shortest=1[alpha];'
-        '[alpha]split=2[palette_source][gif_source];'
+        '[framed_rgba][mask_gray]alphamerge=shortest=1[alpha]$tail;'
+        '[$source]split=2[palette_source][gif_source];'
         '[palette_source]palettegen=max_colors=${settings.colors}'
         ':stats_mode=${settings.palette.statsMode}'
         ':reserve_transparent=1[palette];'
@@ -223,6 +230,7 @@ List<String> buildImageFramedGifArgs({
   final newPalette = settings.palette == PaletteMode.perFrame ? ':new=1' : '';
   final reserve = transparent ? ':reserve_transparent=1' : '';
   final alphaThreshold = transparent ? ':alpha_threshold=128' : '';
+  final (source, tail) = transformedTail(settings.outputTransform, 'framed');
 
   return [
     '-y',
@@ -239,8 +247,8 @@ List<String> buildImageFramedGifArgs({
     '-i',
     artPath,
     '-lavfi',
-    '$graph;'
-        '[framed]split=2[palette_source][gif_source];'
+    '$graph$tail;'
+        '[$source]split=2[palette_source][gif_source];'
         '[palette_source]palettegen=max_colors=${settings.colors}'
         ':stats_mode=${settings.palette.statsMode}$reserve[palette];'
         '[gif_source][palette]paletteuse=dither=${settings.dither.ffmpegValue}'

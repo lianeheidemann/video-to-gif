@@ -9,6 +9,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../core/models/crop_rect.dart';
 import '../../../core/models/frame_settings.dart';
 import '../../../core/models/image_frame.dart';
+import '../../../core/models/output_transform.dart';
 import '../../../core/models/photo_info.dart';
 import '../../collage/painting/collage_painter.dart' show paintCollageTextItem;
 import '../../../core/painting/frame_painter.dart';
@@ -47,7 +48,18 @@ Future<Uint8List> _composeProcedural(
       frame.crop ??
       CropRect(x: 0, y: 0, width: photo.width, height: photo.height);
 
-  return rasterizeCanvas(crop.width, crop.height, (canvas, size) {
+  // O giro é o último passo: o canvas já sai com os lados trocados, mas
+  // tudo abaixo continua desenhando na orientação original da foto — por
+  // isso `size` vem do recorte, não do canvas.
+  final (canvasWidth, canvasHeight) = transformedCanvasSize(
+    frame.outputTransform,
+    crop.width,
+    crop.height,
+  );
+  final size = Size(crop.width.toDouble(), crop.height.toDouble());
+
+  return rasterizeCanvas(canvasWidth, canvasHeight, (canvas, _) {
+    applyCanvasOutputTransform(canvas, frame.outputTransform, size);
     // `paintFrame` já não desenha nada quando o estilo é `none`, e a
     // geometria correspondente cobre o canvas inteiro sem cantos
     // arredondados — então não precisa de um caso especial para "sem
@@ -109,6 +121,13 @@ Future<Uint8List> _composeImageFramed(
     frame.frameResolutionMode,
   );
   final size = Size(canvasWidth.toDouble(), canvasHeight.toDouble());
+  // Ver [_composeProcedural]: o canvas gravado já é o girado, a composição
+  // continua acontecendo em [size], na orientação original.
+  final (outputWidth, outputHeight) = transformedCanvasSize(
+    frame.outputTransform,
+    canvasWidth,
+    canvasHeight,
+  );
   final areaRect = Rect.fromLTWH(
     size.width * asset.contentRect.left,
     size.height * asset.contentRect.top,
@@ -118,6 +137,7 @@ Future<Uint8List> _composeImageFramed(
 
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
+  applyCanvasOutputTransform(canvas, frame.outputTransform, size);
 
   if (!frame.transparentBackground) {
     canvas.drawRect(Offset.zero & size, Paint()..color = frame.backgroundColor);
@@ -199,7 +219,7 @@ Future<Uint8List> _composeImageFramed(
 
   final picture = recorder.endRecording();
   try {
-    final composed = await picture.toImage(canvasWidth, canvasHeight);
+    final composed = await picture.toImage(outputWidth, outputHeight);
     try {
       final bytes = await composed.toByteData(format: ui.ImageByteFormat.png);
       return bytes!.buffer.asUint8List();

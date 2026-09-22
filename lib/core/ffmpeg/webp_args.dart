@@ -48,6 +48,11 @@ List<String> buildWebpArgs({
   String? maskPath,
   int? frameLimit,
 }) {
+  // O `-map [out]` de [webpEncodeArgs] fixa o rótulo final, então quem muda
+  // de nome quando há giro é o rótulo que o grafo produz — ver
+  // [transformedInto].
+  final (composed, tail) = transformedInto(settings.outputTransform, 'out');
+
   if (settings.frame.style == FrameStyle.none) {
     final filter = buildConversionVideoFilter(settings, video);
     return [
@@ -59,7 +64,7 @@ List<String> buildWebpArgs({
       '-i',
       video.path,
       '-lavfi',
-      '[0:v]$filter[out]',
+      '[0:v]$filter[$composed]$tail',
       ...webpEncodeArgs(settings, hasAlpha: false, frameLimit: frameLimit),
       outputPath,
     ];
@@ -69,7 +74,7 @@ List<String> buildWebpArgs({
     // Moldura procedural opaca: [framedGraph] já entrega um canvas RGB
     // "achatado" (sem transparência nenhuma), então basta ir direto ao
     // encoder — nem o `alphamerge` externo do GIF é necessário aqui.
-    final graph = framedGraph(settings, video, input: '0:v', output: 'out');
+    final graph = framedGraph(settings, video, input: '0:v', output: composed);
     return [
       '-y',
       '-ss',
@@ -79,7 +84,7 @@ List<String> buildWebpArgs({
       '-i',
       video.path,
       '-lavfi',
-      graph,
+      '$graph$tail',
       ...webpEncodeArgs(settings, hasAlpha: false, frameLimit: frameLimit),
       outputPath,
     ];
@@ -108,7 +113,7 @@ List<String> buildWebpArgs({
         '[framed]format=rgba,setpts=PTS-STARTPTS[framed_rgba];'
         '[1:v]format=gray,fps=${settings.fps},'
         'setpts=PTS-STARTPTS[mask_gray];'
-        '[framed_rgba][mask_gray]alphamerge=shortest=1[out]',
+        '[framed_rgba][mask_gray]alphamerge=shortest=1[$composed]$tail',
     ...webpEncodeArgs(settings, hasAlpha: true, frameLimit: frameLimit),
     outputPath,
   ];
@@ -134,13 +139,14 @@ List<String> buildWebpImageFramedArgs({
   int? frameLimit,
 }) {
   final transparent = settings.frame.transparentBackground;
+  final (composed, tail) = transformedInto(settings.outputTransform, 'out');
   final graph = imageFramedGraph(
     settings,
     video,
     input: '0:v',
     artInput: '1:v',
     needsAreaMask: transparent,
-    output: 'out',
+    output: composed,
   );
 
   return [
@@ -158,7 +164,7 @@ List<String> buildWebpImageFramedArgs({
     '-i',
     artPath,
     '-lavfi',
-    graph,
+    '$graph$tail',
     ...webpEncodeArgs(
       settings,
       hasAlpha: transparent,

@@ -298,18 +298,6 @@ class FfmpegService {
     }
   }
 
-  /// Argumentos completos do FFmpeg para uma moldura de imagem.
-  ///
-  /// Com "Fundo transparente" ligado segue o caminho com alfa (paleta com
-  /// `reserve_transparent=1` + `paletteuse ... alpha_threshold=128`, mesmo
-  /// padrão de [_transparentGifArgs], mas a partir de [_imageFramedGraph],
-  /// que gera a máscara da área de conteúdo como filtro dentro do próprio
-  /// grafo). Desligado, o GIF é opaco: sem máscara nenhuma, e a paleta é a
-  /// comum, sem cor reservada para transparência.
-  ///
-  /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
-  /// [convert] continua sendo o único ponto de entrada em uso normal.
-  @visibleForTesting
   /// Argumentos do GIF dentro de moldura de imagem — ver `gif_args.dart`.
   @visibleForTesting
   List<String> imageFramedGifArgs({
