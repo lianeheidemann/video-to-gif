@@ -30,6 +30,7 @@ class ExportProgressDialog extends StatelessWidget {
     required this.width,
     required this.height,
     this.onCancel,
+    this.title,
   });
 
   /// Progresso e estado de cancelamento. Enquanto o progresso for ~0 o anel
@@ -41,6 +42,10 @@ class ExportProgressDialog extends StatelessWidget {
   final int width;
   final int height;
   final VoidCallback? onCancel;
+
+  /// Substitui a linha "Exportando em ...". A borracha mágica usa isto: ela
+  /// não exporta formato nenhum, está reconstruindo um pedaço da foto.
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +87,7 @@ class ExportProgressDialog extends StatelessWidget {
                 Text(
                   state.cancelling
                       ? 'Cancelando…'
-                      : 'Exportando em $formatLabel',
+                      : (title ?? 'Exportando em $formatLabel'),
                   style: theme.textTheme.titleLarge,
                   textAlign: TextAlign.center,
                 ),
