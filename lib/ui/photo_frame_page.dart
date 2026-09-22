@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -12,9 +13,11 @@ import '../models/color_adjustments.dart';
 import '../models/crop_rect.dart';
 import '../models/frame_settings.dart';
 import '../models/image_frame.dart';
+import '../models/eraser_mask.dart';
 import '../models/photo_info.dart';
 import '../services/bundled_frame_store.dart';
 import '../services/imported_frame_store.dart';
+import '../services/magic_eraser.dart';
 import '../services/output_service.dart';
 import '../services/photo_frame_compositor.dart';
 import 'widgets/app_bar_title.dart';
@@ -24,6 +27,8 @@ import 'widgets/color_picker_sheet.dart';
 import 'widgets/crop_overlay.dart';
 import 'widgets/cropped_view.dart';
 import 'widgets/editor_tabs_footer.dart';
+import 'widgets/eraser_mask_overlay.dart';
+import 'widgets/export_progress_dialog.dart';
 import 'widgets/frame_painter.dart';
 import 'widgets/labeled_section.dart';
 import 'widgets/preview_settings_panel.dart';
@@ -42,6 +47,11 @@ const _selectableContentFitModes = [
 /// como razão), só marca "livre" — cada alça mexe só no seu lado/canto, sem
 /// travar largura/altura entre si.
 const _customAspectPreset = AspectPreset('Personalizado', -1);
+
+/// Um passo de desfazer: a moldura mais qual arquivo de foto estava em uso.
+/// Os dois andam juntos porque a borracha mágica troca o arquivo, e voltar
+/// só a moldura deixaria o desfazer pela metade.
+typedef _EditStep = ({FrameSettings frame, PhotoInfo photo});
 
 /// Tela dedicada a aplicar uma moldura (procedural ou de imagem) a uma foto
 /// estática. Reaproveita o mesmo modelo ([FrameSettings], [ImageFrameAsset])
@@ -70,6 +80,45 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   FrameSettings _frame = const FrameSettings();
   List<ImageFrameAsset> _importedImageFrames = [];
 
+  /// A foto em edição. Começa sendo a que chegou pela rota e é **trocada** a
+  /// cada apagada da borracha mágica, por um PNG temporário já corrigido. As
+  /// dimensões nunca mudam, então `_frame.crop` (que está em pixels da foto)
+  /// continua valendo.
+  late PhotoInfo _photo = widget.photo;
+
+  /// Os PNGs que a borracha gerou nesta sessão de edição. Ficam vivos
+  /// enquanto a tela existe porque a pilha de desfazer aponta para eles;
+  /// somem todos juntos no [dispose].
+  final List<String> _erasedFiles = [];
+
+  /// Estado da aba "Borracha": a seleção atual e como ela é desenhada.
+  EraserMask _eraserMask = EraserMask.empty;
+  EraserTool _eraserTool = EraserTool.brush;
+  EraserQuality _eraserQuality = EraserQuality.normal;
+
+  /// Tamanho do pincel como porcentagem do menor lado da foto — ver
+  /// [brushRadiusFor]. Em pixels fixos, o mesmo valor seria um respingo numa
+  /// foto grande e um borrão numa pequena.
+  double _brushPercent = 4;
+
+  /// Sobe a cada apagada para que "Tentar de novo" mude de verdade o
+  /// resultado em vez de repetir o mesmo sorteio.
+  int _eraseSeed = 0;
+
+  /// A última seleção que foi apagada, para o "Tentar de novo" poder repetir
+  /// a mesma região com outra semente.
+  EraserMask? _lastErased;
+
+  /// O arquivo que a última apagada produziu. "Tentar de novo" só vale
+  /// enquanto ele ainda é a foto em uso: se a pessoa mexeu em outra coisa
+  /// depois, desfazer para tentar de novo derrubaria essa outra mudança.
+  String? _lastErasedPath;
+
+  bool get _canRetryErase =>
+      _lastErased != null && _lastErasedPath == _photo.path;
+
+  final _eraserCanvasKey = GlobalKey<EraserCanvasState>();
+
   /// Preset travado na aba "Recorte" — guardado à parte de `_frame.crop`
   /// porque "Personalizado" e um preset podem cair no mesmo retângulo (ex.:
   /// ao digitar largura/altura que batem com 1:1), e o chip marcado tem que
@@ -94,14 +143,19 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   /// deixa a prévia com o máximo de espaço.
   int? _activeSection = 0;
 
-  /// Histórico de desfazer/refazer da moldura, no mesmo formato da tela de
-  /// montagem: pilhas do próprio [FrameSettings], com os arrastes contínuos
-  /// (sliders) empilhando um checkpoint só no início do gesto.
-  final List<FrameSettings> _undoStack = [];
-  final List<FrameSettings> _redoStack = [];
+  /// Histórico de desfazer/refazer, no mesmo formato da tela de montagem:
+  /// pilhas do estado inteiro, com os arrastes contínuos (sliders)
+  /// empilhando um checkpoint só no início do gesto.
+  ///
+  /// Guarda também qual foto estava em uso: antes da borracha bastava a
+  /// moldura, mas apagar algo troca o arquivo, e desfazer tem que voltar os
+  /// dois juntos.
+  final List<_EditStep> _undoStack = [];
+  final List<_EditStep> _redoStack = [];
 
   bool _saving = false;
   bool _sharing = false;
+  bool _erasing = false;
 
   @override
   void initState() {
@@ -117,6 +171,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     _widthFocus.dispose();
     _heightFocus.dispose();
     _textOverlay.dispose();
+    // Os PNGs da borracha só existem para esta edição: quem quis guardar já
+    // salvou ou compartilhou.
+    for (final path in _erasedFiles) {
+      unawaited(File(path).delete().catchError((_) => File(path)));
+    }
     super.dispose();
   }
 
@@ -130,13 +189,13 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   /// própria proporção nativa quando nenhuma janela foi escolhida
   /// ("Original").
   double get _photoAspectRatio =>
-      _frame.crop?.aspectRatio ?? widget.photo.aspectRatio;
+      _frame.crop?.aspectRatio ?? _photo.aspectRatio;
 
   /// A foto da prévia, já com o ajuste de cor por cima — o mesmo filtro que
   /// `photo_frame_compositor` aplica na exportação, para a tela mostrar o
   /// que vai sair. A moldura e o fundo ficam de fora, como lá.
   Widget _photoPreview(BoxFit fit) {
-    final photo = Image.file(File(widget.photo.path), fit: fit);
+    final photo = Image.file(File(_photo.path), fit: fit);
     if (!_frame.adjustments.hasAdjustments) return photo;
     return ColorFiltered(colorFilter: _frame.adjustments.filter, child: photo);
   }
@@ -146,15 +205,17 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   /// `photo_frame_compositor.dart`. `BoxFit.fill` porque [CroppedView] já
   /// desenha o filho no tamanho nativo da foto; não há reamostragem aqui.
   Widget _croppedPhotoPreview() => CroppedView(
-    sourceWidth: widget.photo.width,
-    sourceHeight: widget.photo.height,
+    sourceWidth: _photo.width,
+    sourceHeight: _photo.height,
     crop: _frame.crop,
     child: _photoPreview(BoxFit.fill),
   );
 
+  _EditStep get _currentStep => (frame: _frame, photo: _photo);
+
   void _updateFrame(FrameSettings frame, {bool pushUndo = true}) {
     if (pushUndo) {
-      _undoStack.add(_frame);
+      _undoStack.add(_currentStep);
       _redoStack.clear();
     }
     setState(() => _frame = frame);
@@ -163,7 +224,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   /// Empilha o estado atual antes de um gesto contínuo (slider), para o
   /// arrasto inteiro virar UM passo de desfazer em vez de um por quadro.
   void _pushUndoCheckpoint() {
-    _undoStack.add(_frame);
+    _undoStack.add(_currentStep);
     _redoStack.clear();
   }
 
@@ -171,8 +232,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     if (_undoStack.isEmpty) return;
     final previous = _undoStack.removeLast();
     setState(() {
-      _redoStack.add(_frame);
-      _frame = previous;
+      _redoStack.add(_currentStep);
+      _frame = previous.frame;
+      _photo = previous.photo;
     });
   }
 
@@ -180,8 +242,9 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     if (_redoStack.isEmpty) return;
     final next = _redoStack.removeLast();
     setState(() {
-      _undoStack.add(_frame);
-      _frame = next;
+      _undoStack.add(_currentStep);
+      _frame = next.frame;
+      _photo = next.photo;
     });
   }
 
@@ -203,10 +266,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final bytes = await composeFramedPhoto(
-        photo: widget.photo,
-        frame: _frame,
-      );
+      final bytes = await composeFramedPhoto(photo: _photo, frame: _frame);
       final file = await _writeTempPng(bytes);
       await _output.saveToGallery(file);
       if (!mounted) return;
@@ -225,10 +285,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   Future<void> _share() async {
     setState(() => _sharing = true);
     try {
-      final bytes = await composeFramedPhoto(
-        photo: widget.photo,
-        frame: _frame,
-      );
+      final bytes = await composeFramedPhoto(photo: _photo, frame: _frame);
       final file = await _writeTempPng(bytes);
       await _output.share(
         file,
@@ -258,6 +315,13 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       title: 'Recorte',
       value: _cropLabel,
       builder: (_) => _cropSection(),
+    ),
+    EditorSection(
+      icon: Icons.auto_fix_high_rounded,
+      title: 'Borracha mágica',
+      label: 'Borracha',
+      value: _eraserMask.isEmpty ? 'Nenhuma seleção' : 'Seleção pronta',
+      builder: (_) => _eraserSection(),
     ),
     EditorSection(
       icon: Icons.smartphone_rounded,
@@ -311,7 +375,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
 
   @override
   Widget build(BuildContext context) {
-    final busy = _saving || _sharing;
+    final busy = _saving || _sharing || _erasing;
     final sections = _sections;
     final active = _activeSection == null
         ? null
@@ -321,6 +385,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     final showCropHandles =
         active != null && sections[active].title == 'Recorte';
     final textTabActive = active != null && sections[active].title == 'Texto';
+    // A borracha trabalha sobre a foto inteira, sem recorte nem moldura: o
+    // que se apaga é conteúdo da foto, não do enquadramento.
+    final eraserTabActive =
+        active != null && sections[active].title == 'Borracha mágica';
     return Scaffold(
       appBar: AppBar(
         title: const AppBarTitle('Editar imagem'),
@@ -372,6 +440,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
                       child: _preview(
                         showCropHandles: showCropHandles,
                         textTabActive: textTabActive,
+                        eraserTabActive: eraserTabActive,
                       ),
                     ),
                   ),
@@ -396,9 +465,39 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   Widget _preview({
     required bool showCropHandles,
     required bool textTabActive,
-  }) => showCropHandles
-      ? _rawCropPreviewWithHandles()
-      : _framedPreview(textTabActive);
+    required bool eraserTabActive,
+  }) {
+    if (eraserTabActive) return _eraserPreview();
+    return showCropHandles
+        ? _rawCropPreviewWithHandles()
+        : _framedPreview(textTabActive);
+  }
+
+  /// Prévia da borracha: a foto crua (sem recorte nem moldura) com o véu da
+  /// seleção por cima. Crua de propósito — apagar mexe no conteúdo da foto,
+  /// então o que vale é a coordenada dela, não a do enquadramento.
+  Widget _eraserPreview() {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+      child: EraserCanvas(
+        key: _eraserCanvasKey,
+        photoWidth: _photo.width,
+        photoHeight: _photo.height,
+        mask: _eraserMask,
+        tool: _eraserTool,
+        brushRadius: brushRadiusFor(_brushPercent, _photo.width, _photo.height),
+        enabled: !_erasing,
+        onMaskChanged: (mask) => setState(() => _eraserMask = mask),
+        onZoomChanged: (_) => setState(() {}),
+        child: _photoPreview(BoxFit.fill),
+      ),
+    );
+  }
 
   /// Foto inteira (sem recorte aplicado) com o véu + alças por cima — mesma
   /// ideia da aba "Ajustar" do recorte de vídeo/"Recorte" do editor de SVG.
@@ -406,7 +505,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   Widget _rawCropPreviewWithHandles() {
     final theme = Theme.of(context);
     return AspectRatio(
-      aspectRatio: widget.photo.aspectRatio,
+      aspectRatio: _photo.aspectRatio,
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(
@@ -419,10 +518,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           children: [
             _photoPreview(BoxFit.fill),
             CropOverlay(
-              bounds: Size(
-                widget.photo.width.toDouble(),
-                widget.photo.height.toDouble(),
-              ),
+              bounds: Size(_photo.width.toDouble(), _photo.height.toDouble()),
               crop: _frame.crop,
               onResize: _resizeCropFromHandle,
               onMove: _moveCropFromHandle,
@@ -606,7 +702,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   // ---------------------------------------------------------------------
 
   String get _cropLabel => _aspect.ratio == null
-      ? '${widget.photo.width}×${widget.photo.height}'
+      ? '${_photo.width}×${_photo.height}'
       : _aspect.label;
 
   Widget _cropSection() {
@@ -666,25 +762,15 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       }
 
       _frame = _frame.copyWith(
-        crop: CropRect.centeredIn(
-          widget.photo.width,
-          widget.photo.height,
-          preset.ratio!,
-        ),
+        crop: CropRect.centeredIn(_photo.width, _photo.height, preset.ratio!),
       );
     });
   }
 
   /// Recorte inicial do preset "Personalizado": 80% da foto, centralizado.
   CropRect _defaultCustomCrop() {
-    final width = (widget.photo.width * 0.8).round().clamp(
-      1,
-      widget.photo.width,
-    );
-    final height = (widget.photo.height * 0.8).round().clamp(
-      1,
-      widget.photo.height,
-    );
+    final width = (_photo.width * 0.8).round().clamp(1, _photo.width);
+    final height = (_photo.height * 0.8).round().clamp(1, _photo.height);
     return _cropAroundCenter(width, height);
   }
 
@@ -784,8 +870,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   void _applyCropWidth(String value) {
     final parsed = int.tryParse(value.trim());
     if (parsed == null) return;
-    if (parsed > widget.photo.width) {
-      _message('Largura máxima é ${widget.photo.width} (tamanho original).');
+    if (parsed > _photo.width) {
+      _message('Largura máxima é ${_photo.width} (tamanho original).');
     } else if (parsed < 1) {
       _message('A largura mínima é 1.');
     }
@@ -795,8 +881,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   void _applyCropHeight(String value) {
     final parsed = int.tryParse(value.trim());
     if (parsed == null) return;
-    if (parsed > widget.photo.height) {
-      _message('Altura máxima é ${widget.photo.height} (tamanho original).');
+    if (parsed > _photo.height) {
+      _message('Altura máxima é ${_photo.height} (tamanho original).');
     } else if (parsed < 1) {
       _message('A altura mínima é 1.');
     }
@@ -808,11 +894,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     if (crop == null) return;
 
     final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    var w = width.clamp(1, widget.photo.width);
+    var w = width.clamp(1, _photo.width);
     int h;
     if (ratio != null) {
-      h = (w / ratio).round().clamp(1, widget.photo.height);
-      w = (h * ratio).round().clamp(1, widget.photo.width);
+      h = (w / ratio).round().clamp(1, _photo.height);
+      w = (h * ratio).round().clamp(1, _photo.width);
     } else {
       h = crop.height;
     }
@@ -825,11 +911,11 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     if (crop == null) return;
 
     final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
-    var h = height.clamp(1, widget.photo.height);
+    var h = height.clamp(1, _photo.height);
     int w;
     if (ratio != null) {
-      w = (h * ratio).round().clamp(1, widget.photo.width);
-      h = (w / ratio).round().clamp(1, widget.photo.height);
+      w = (h * ratio).round().clamp(1, _photo.width);
+      h = (w / ratio).round().clamp(1, _photo.height);
     } else {
       w = crop.width;
     }
@@ -848,28 +934,24 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     }
     _updateFrame(
       _frame.copyWith(
-        crop: CropRect.centeredIn(
-          widget.photo.width,
-          widget.photo.height,
-          _aspect.ratio!,
-        ),
+        crop: CropRect.centeredIn(_photo.width, _photo.height, _aspect.ratio!),
       ),
     );
   }
 
   CropRect _cropAroundCenter(int width, int height, {CropRect? around}) {
-    final safeWidth = width.clamp(1, widget.photo.width);
-    final safeHeight = height.clamp(1, widget.photo.height);
+    final safeWidth = width.clamp(1, _photo.width);
+    final safeHeight = height.clamp(1, _photo.height);
 
     final centerX = around == null
-        ? widget.photo.width / 2
+        ? _photo.width / 2
         : around.x + around.width / 2;
     final centerY = around == null
-        ? widget.photo.height / 2
+        ? _photo.height / 2
         : around.y + around.height / 2;
 
-    final maxX = widget.photo.width - safeWidth;
-    final maxY = widget.photo.height - safeHeight;
+    final maxX = _photo.width - safeWidth;
+    final maxY = _photo.height - safeHeight;
     final x = (centerX - safeWidth / 2).round().clamp(0, maxX);
     final y = (centerY - safeHeight / 2).round().clamp(0, maxY);
 
@@ -894,10 +976,10 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
 
     final dx =
         _resizeDragRemainder.dx +
-        displayDelta.dx * widget.photo.width / previewSize.width;
+        displayDelta.dx * _photo.width / previewSize.width;
     final dy =
         _resizeDragRemainder.dy +
-        displayDelta.dy * widget.photo.height / previewSize.height;
+        displayDelta.dy * _photo.height / previewSize.height;
 
     final ratio = _aspect == _customAspectPreset ? null : _aspect.ratio;
     final next = ratio == null
@@ -906,8 +988,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             handle,
             dx,
             dy,
-            boundsWidth: widget.photo.width,
-            boundsHeight: widget.photo.height,
+            boundsWidth: _photo.width,
+            boundsHeight: _photo.height,
           )
         : resizeLockedCrop(
             crop,
@@ -915,8 +997,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             dx,
             dy,
             ratio,
-            boundsWidth: widget.photo.width,
-            boundsHeight: widget.photo.height,
+            boundsWidth: _photo.width,
+            boundsHeight: _photo.height,
           );
 
     if (next.width == crop.width &&
@@ -940,17 +1022,14 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     }
 
     final dx =
-        displayDelta.dx * widget.photo.width / previewSize.width +
+        displayDelta.dx * _photo.width / previewSize.width +
         _moveDragRemainder.dx;
     final dy =
-        displayDelta.dy * widget.photo.height / previewSize.height +
+        displayDelta.dy * _photo.height / previewSize.height +
         _moveDragRemainder.dy;
 
-    final maxX = (widget.photo.width - crop.width).clamp(0, widget.photo.width);
-    final maxY = (widget.photo.height - crop.height).clamp(
-      0,
-      widget.photo.height,
-    );
+    final maxX = (_photo.width - crop.width).clamp(0, _photo.width);
+    final maxY = (_photo.height - crop.height).clamp(0, _photo.height);
     final rawX = (crop.x + dx).clamp(0.0, maxX.toDouble());
     final rawY = (crop.y + dy).clamp(0.0, maxY.toDouble());
     final x = rawX.round();
@@ -1635,6 +1714,244 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   /// Ajuste de cor da foto: o mesmo painel da montagem e da edição de GIF,
   /// aqui gravando em [FrameSettings.adjustments] — assim o desfazer/refazer
   /// da tela já cobre o ajuste, como cobre os outros controles.
+  // ---------------------------------------------------------------------
+  // Aba "Borracha mágica"
+  // ---------------------------------------------------------------------
+
+  /// O painel da borracha. A ordem segue o uso: escolher a ferramenta,
+  /// ajustar o pincel, apagar — e só depois os botões de arrependimento.
+  Widget _eraserSection() {
+    final theme = Theme.of(context);
+    final canvas = _eraserCanvasKey.currentState;
+    final radius = brushRadiusFor(_brushPercent, _photo.width, _photo.height);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Pinte o que quer tirar da foto. Um dedo pinta, dois dão zoom.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final tool in EraserTool.values)
+              ChoiceChip(
+                label: Text(tool.label),
+                selected: _eraserTool == tool,
+                onSelected: _erasing
+                    ? null
+                    : (_) => setState(() => _eraserTool = tool),
+              ),
+          ],
+        ),
+        // O slider só faz sentido para as ferramentas que têm espessura; o
+        // laço e o retângulo desenham área fechada.
+        if (!_eraserTool.isArea) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Tamanho do pincel',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+              Text(
+                '${radius.round() * 2}px',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            min: 0.5,
+            max: 20,
+            divisions: 39,
+            value: _brushPercent,
+            label: '${radius.round() * 2}px',
+            onChanged: _erasing
+                ? null
+                : (v) => setState(() => _brushPercent = v),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Text('Qualidade', style: theme.textTheme.bodyMedium),
+            ),
+            const SizedBox(width: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final quality in EraserQuality.values)
+                  ChoiceChip(
+                    label: Text(quality.label),
+                    selected: _eraserQuality == quality,
+                    onSelected: _erasing
+                        ? null
+                        : (_) => setState(() => _eraserQuality = quality),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Mais qualidade demora mais. Áreas pequenas saem em resolução '
+          'cheia em qualquer opção.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: (_eraserMask.isEmpty || _erasing) ? null : _erase,
+                icon: const Icon(Icons.auto_fix_high_rounded),
+                label: const Text('Apagar'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: (_eraserMask.isEmpty || _erasing)
+                  ? null
+                  : () => setState(() => _eraserMask = EraserMask.empty),
+              child: const Text('Limpar'),
+            ),
+          ],
+        ),
+        Wrap(
+          spacing: 8,
+          children: [
+            if (_eraserMask.strokes.isNotEmpty && !_erasing)
+              TextButton.icon(
+                onPressed: () =>
+                    setState(() => _eraserMask = _eraserMask.removeLast()),
+                icon: const Icon(Icons.undo_rounded, size: 18),
+                label: const Text('Desfazer traço'),
+              ),
+            // Só aparece depois de uma apagada: outra semente dá outro
+            // resultado para a mesma seleção, que é a saída quando o
+            // primeiro preenchimento não convence.
+            if (_canRetryErase && !_erasing)
+              TextButton.icon(
+                onPressed: _retryErase,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Tentar de novo'),
+              ),
+            if (canvas?.isZoomed ?? false)
+              TextButton.icon(
+                onPressed: canvas!.resetZoom,
+                icon: const Icon(Icons.zoom_out_map_rounded, size: 18),
+                label: const Text('Enquadrar'),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Apaga a seleção atual. Cada apagada é um passo de desfazer inteiro: a
+  /// foto anterior continua no disco, então voltar é imediato.
+  Future<void> _erase() => _runErase(_eraserMask, _eraseSeed + 1);
+
+  /// Repete a última apagada com outra semente. Desfaz a anterior primeiro,
+  /// senão a segunda tentativa preencheria por cima de um preenchimento — o
+  /// que empilha borrão em vez de dar uma alternativa.
+  Future<void> _retryErase() {
+    final mask = _lastErased;
+    if (mask == null || !_canRetryErase) return Future.value();
+    // Desfazer primeiro: sem isso a segunda tentativa preencheria por cima do
+    // primeiro preenchimento, empilhando borrão em vez de oferecer uma
+    // alternativa. `_canRetryErase` garante que o topo da pilha é mesmo a
+    // apagada, e não alguma outra mudança feita depois.
+    _undo();
+    return _runErase(mask, _eraseSeed + 1);
+  }
+
+  Future<void> _runErase(EraserMask mask, int seed) async {
+    final progress = ValueNotifier(const ExportProgress());
+    final before = _currentStep;
+    setState(() => _erasing = true);
+
+    final task = startMagicErase(
+      photo: _photo,
+      mask: mask,
+      quality: _eraserQuality,
+      seed: seed,
+      onProgress: (value) =>
+          progress.value = ExportProgress(value: value.clamp(0.0, 1.0)),
+    );
+
+    // O pop-up continua ouvindo `progress` durante a animação de saída, então
+    // o notifier só pode ser descartado depois que a rota some de verdade —
+    // daí guardar este future em vez de descartar no `finally`.
+    final dialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ExportProgressDialog(
+        progress: progress,
+        formatLabel: 'PNG',
+        title: 'Apagando da foto',
+        width: _photo.width,
+        height: _photo.height,
+        onCancel: () {
+          progress.value = ExportProgress(
+            value: progress.value.value,
+            cancelling: true,
+          );
+          task.cancel();
+        },
+      ),
+    );
+
+    try {
+      final bytes = await task.done;
+      final file = await _writeTempPng(bytes);
+      final erased = PhotoInfo(
+        path: file.path,
+        // A recomposição desenha num canvas do tamanho da foto, então as
+        // dimensões são as mesmas por construção — e é disso que o recorte
+        // e a moldura dependem para continuar válidos.
+        width: _photo.width,
+        height: _photo.height,
+      );
+      _erasedFiles.add(file.path);
+      if (!mounted) return;
+      setState(() {
+        _undoStack.add(before);
+        _redoStack.clear();
+        _photo = erased;
+        _eraserMask = EraserMask.empty;
+        _lastErased = mask;
+        _lastErasedPath = erased.path;
+        _eraseSeed = seed;
+      });
+    } on MagicEraserCancelled {
+      // Cancelar não é erro: a pessoa pediu para parar.
+    } on MagicEraserException catch (e) {
+      if (mounted) _message(e.message);
+    } catch (_) {
+      if (mounted) _message('Não foi possível apagar essa área.');
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        setState(() => _erasing = false);
+      }
+      unawaited(dialog.whenComplete(progress.dispose));
+    }
+  }
+
   Widget _colorAdjustSection() {
     final adjustments = _frame.adjustments;
     return ColorAdjustPanel(

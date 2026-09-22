@@ -27,7 +27,7 @@ tool for quick format swaps:
 | Tool | What it does |
 |---|---|
 | **Video to GIF/WebP** | Converts MP4, MOV, AVI, MKV, WebM and 3GP to **GIF or animated WebP** — trim, crop, speed, resolution, frame rate, colors and a decorative frame. For GIF it also **estimates the final file size before converting**. |
-| **Frame on a photo** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes, color adjustment and a transparent or colored background. |
+| **Edit an image** | Puts the same procedural or phone-mockup frames around a single photo, with content-fit modes, color adjustment and a transparent or colored background — plus a **magic eraser** that removes an object and rebuilds the background behind it. |
 | **Photo collage** | Assembles several photos into one composition — layouts, margins, borders, stickers, imported fonts, crop and color adjustment. If any photo is animated, the whole collage exports **animated**. |
 | **Convert format** | Picks any video, GIF or WebP and re-encodes it to GIF, animated WebP or MP4, with a resolution slider — no trim, quality or preview otherwise. |
 
@@ -88,6 +88,23 @@ both use, so what you see is what gets encoded.
   automatically-detected transparent window
 - Content fit — auto, fill, fit or expand with zoom
 - Transparent (real alpha on WebP/PNG) or solid-color background
+
+### Magic eraser (single photo)
+
+- Paint over what you want gone — brush, lasso or rectangle, with a second
+  brush that takes back from the selection
+- The background behind it is rebuilt on-device by multi-scale PatchMatch
+  inpainting, written in plain Dart: **no model, no extra dependency and no
+  growth in APK size**
+- Pinch to zoom the preview for precise work; one finger paints, two zoom
+- Quality picker trades time for resolution. Small erases (a watermark, a
+  sign, someone far away) run at native resolution whatever you pick,
+  because only a window around the selection is processed
+- "Try again" reruns the same selection with a different seed, for when the
+  first fill doesn't convince
+- Best on sky, wall, grass, water, asphalt and sand; weakest where
+  structure has to line up behind the object (a face, text, a straight
+  architectural line) or where the erased area is a large part of the frame
 
 ### Photo collage
 
@@ -225,6 +242,7 @@ on any device.
 | Preview | `video_player` | shows the clip and crop frame before converting |
 | Frame and sticker art | `flutter_svg` | renders the bundled and imported vector art without losing sharpness at any output resolution |
 | Collage rendering | `dart:ui` (`PictureRecorder`) | the same painter draws the live preview and the exported frames |
+| Magic eraser | plain Dart in an `Isolate` | PatchMatch inpainting with no ML runtime and no new dependency — nothing added to the APK, and it keeps working offline |
 | Output | `gal` + `share_plus` | save to gallery and share |
 
 ## License
