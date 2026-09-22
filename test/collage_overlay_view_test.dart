@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/ui/widgets/collage_overlay_view.dart';
+import 'package:video_to_gif/core/ui/collage_overlay_view.dart';
 
 const _canvasSize = Size(300, 300);
 

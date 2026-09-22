@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/ui/widgets/webp_convert_panel.dart';
+import 'package:video_to_gif/features/video/widgets/webp_convert_panel.dart';
 
 const _summary = '480×270 px · 12 FPS · 6.0 s · qualidade 75';
 

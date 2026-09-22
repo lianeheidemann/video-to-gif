@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/svg_info.dart';
-import 'package:video_to_gif/ui/svg_edit_page.dart';
+import 'package:video_to_gif/features/svg/models/svg_info.dart';
+import 'package:video_to_gif/features/svg/svg_edit_page.dart';
 
 const _sampleSvg =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" '

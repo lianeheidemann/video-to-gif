@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/size_estimate.dart';
-import 'package:video_to_gif/ui/widgets/labeled_section.dart';
-import 'package:video_to_gif/ui/widgets/size_panel.dart';
+import 'package:video_to_gif/core/models/size_estimate.dart';
+import 'package:video_to_gif/core/ui/labeled_section.dart';
+import 'package:video_to_gif/features/video/widgets/size_panel.dart';
 
 const _summary = '480×270 px · 12 FPS · 6.0 s · 256 cores';
 

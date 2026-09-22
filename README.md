@@ -72,6 +72,9 @@ both use, so what you see is what gets encoded.
 ### Video → GIF / WebP
 
 - Preview with a timeline, duration trim and crop (presets or custom)
+- Rotate in 90° steps and mirror horizontally or vertically — applied to
+  the finished result, so crop, frame and the size estimate keep working in
+  the original orientation
 - Speed 0.25x–4x, resolution as a percentage of the original (with pixel
   preview), frame rate 5–24 fps, loop or play once
 - Output as GIF (256-color palette, two-pass conversion) or animated WebP
@@ -87,6 +90,7 @@ both use, so what you see is what gets encoded.
 - Image frame — bundled phone mockups, or your own with an
   automatically-detected transparent window
 - Content fit — auto, fill, fit or expand with zoom
+- Rotate and mirror the finished result, on both screens
 - Transparent (real alpha on WebP/PNG) or solid-color background
 
 ### Magic eraser (single photo)
@@ -165,9 +169,21 @@ your machine, run it on that same version.
 
 ```
 lib/
-├── models/     # settings, layouts and the value objects the editors share
-├── services/   # size estimation, FFmpeg, compositing and the import stores
-└── ui/         # the three editors, the crop screen and the shared widgets
+├── main.dart     # entry point — stays at the root: `flutter build` targets it by default
+├── app/          # theme, licenses and app-wide controllers
+├── core/         # code shared by two or more features
+│   ├── ffmpeg/   # probe, filter graphs and arguments for GIF/WebP/MP4
+│   ├── models/   # settings and value objects shared by the editors
+│   ├── painting/ # reusable painters
+│   ├── services/ # asset stores, output and size estimation
+│   └── ui/       # shared controls, crop tools and frame panels
+└── features/     # screens and code owned by each user-facing tool
+    ├── collage/  # photo collage, panels, compositor and export
+    ├── home/     # home screen and entry points
+    ├── photo/    # single-photo editor
+    ├── quick_convert/ # quick format conversion
+    ├── svg/      # SVG editor
+    └── video/    # video editor, conversion and result screens
 
 test/           # see "Quality" below
 tool/           # icon generation, the accuracy script and the asset-list sync
@@ -182,6 +198,19 @@ assets/
 ├── ci.yml      # formatting, analysis, tests and a debug APK
 └── release.yml # publishes the APKs to a Release
 ```
+
+The project follows a **feature-first** layout. Code that belongs to a single
+tool stays under `features/<feature>`; only genuinely reusable code lives in
+`core`. Large workflows are split into focused components instead of being
+kept inside page widgets: FFmpeg command construction is separated into
+probe, filter-graph and format-specific argument modules, while the collage
+editor has independent panels, cell actions, rendering and export services.
+
+Shared editing behavior is also centralized. The video and photo editors use
+the same frame controls, the three image editors use the same crop controller,
+and repeated panel rows, asset thumbnails and text controls are reusable
+widgets. This keeps preview and export behavior aligned while making each
+part easier to test and change without affecting unrelated tools.
 
 ### Adding art to the app
 
@@ -207,11 +236,12 @@ frames from one code path.
 
 ## Quality
 
-**353 automated tests** cover the estimation model against real FFmpeg
+**412 automated tests** cover the estimation model against real FFmpeg
 output, the size and quality panels, frame and crop geometry, the export
 arguments for every format, the import stores, and the collage — framing,
 color, layout, compositing against golden pixels and the animation
-timeline.
+timeline. They also cover the shared crop controller introduced by the
+feature-based modularization, and the rotate/flip step applied on export.
 
 `tool/medir_precisao.py` produces five synthetic videos, from a static title
 card to incompressible noise, converts each and records the sizes; a test

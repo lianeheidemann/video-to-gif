@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/collage_background.dart';
-import 'package:video_to_gif/models/collage_cell.dart';
-import 'package:video_to_gif/models/collage_layout.dart';
-import 'package:video_to_gif/models/collage_settings.dart';
-import 'package:video_to_gif/models/default_colors.dart';
-import 'package:video_to_gif/models/frame_settings.dart';
+import 'package:video_to_gif/features/collage/models/collage_background.dart';
+import 'package:video_to_gif/features/collage/models/collage_cell.dart';
+import 'package:video_to_gif/features/collage/models/collage_layout.dart';
+import 'package:video_to_gif/features/collage/models/collage_settings.dart';
+import 'package:video_to_gif/core/models/default_colors.dart';
+import 'package:video_to_gif/core/models/frame_settings.dart';
 
 /// O que estes testes seguram é a promessa de que as duas cores padrão são as
 /// *mesmas* nas três telas de edição. Sem isso, uma delas volta a ser branco

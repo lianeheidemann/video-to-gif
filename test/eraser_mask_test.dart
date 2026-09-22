@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/eraser_mask.dart';
+import 'package:video_to_gif/features/photo/models/eraser_mask.dart';
 
 /// Rasteriza uma máscara como o serviço faz, para conferir que traço somando
 /// e traço tirando produzem de fato os pixels certos — a prévia e o algoritmo

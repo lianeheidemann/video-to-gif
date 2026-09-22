@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/ui/widgets/color_picker_sheet.dart';
+import 'package:video_to_gif/core/ui/color_picker_sheet.dart';
 
 Future<ui.Image> _neverCalledPreview() =>
     Future<ui.Image>.error('não deveria ser chamado neste teste');

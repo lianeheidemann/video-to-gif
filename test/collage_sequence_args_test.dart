@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/services/ffmpeg_service.dart';
+import 'package:video_to_gif/core/ffmpeg/ffmpeg_service.dart';
 
 // `collageSequenceArgs` é uma função pura (não toca o FFmpeg de verdade),
 // então dá para conferir a linha de comando da montagem animada sem rodar

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/quick_convert_format.dart';
-import 'package:video_to_gif/models/video_info.dart';
-import 'package:video_to_gif/services/ffmpeg_service.dart';
+import 'package:video_to_gif/core/models/quick_convert_format.dart';
+import 'package:video_to_gif/core/models/video_info.dart';
+import 'package:video_to_gif/core/ffmpeg/ffmpeg_service.dart';
 
 // quickConvertVideoArgs monta a linha de comando do único formato de vídeo
 // oferecido por "Converter formato" (MP4) — uma função pura, sem tocar o

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/crop_rect.dart';
-import 'package:video_to_gif/ui/widgets/crop_overlay.dart';
+import 'package:video_to_gif/core/models/crop_rect.dart';
+import 'package:video_to_gif/core/ui/crop/crop_overlay.dart';
 
 /// `resizeFreeCrop`/`resizeLockedCrop` foram extraídos de `editor_page.dart`
 /// (onde já rodavam sem testes dedicados, só exercitados manualmente pelo

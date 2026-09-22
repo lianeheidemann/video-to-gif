@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/collage_text.dart';
-import 'package:video_to_gif/models/default_colors.dart';
+import 'package:video_to_gif/core/models/collage_text.dart';
+import 'package:video_to_gif/core/models/default_colors.dart';
 
 void main() {
   group('CollageTextItem.color/backgroundColor padrão', () {

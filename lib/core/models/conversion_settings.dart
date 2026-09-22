@@ -1,0 +1,417 @@
+import 'dart:math' as math;
+
+import 'color_adjustments.dart';
+import 'crop_rect.dart';
+import 'frame_settings.dart';
+import 'output_transform.dart';
+import 'video_info.dart';
+
+export 'aspect_preset.dart' show AspectPreset;
+export 'crop_rect.dart' show CropRect;
+
+/// Como o GIF distribui o erro de cor ao reduzir a imagem para 256 cores.
+///
+/// Pontilhado (dither) melhora gradientes, mas cria ruído de alta frequência
+/// que atrapalha a compressão LZW — ou seja, quanto mais dither, mais pesado
+/// o arquivo. Essa é a troca central entre qualidade e peso no formato GIF.
+enum DitherMode {
+  /// Sem pontilhado. Menor arquivo, mas gradientes ficam com faixas visíveis.
+  none('none', 'Sem pontilhado'),
+
+  /// Padrão ordenado grosseiro. Bom meio-termo puxando para leve.
+  bayer3('bayer:bayer_scale=3', 'Leve'),
+
+  /// Padrão ordenado fino. Recomendado para a maioria dos vídeos.
+  bayer5('bayer:bayer_scale=5', 'Equilibrado'),
+
+  /// Difusão de erro. Melhor gradiente, arquivo bem maior.
+  sierra('sierra2_4a', 'Alta'),
+
+  /// Difusão clássica. A mais pesada.
+  floydSteinberg('floyd_steinberg', 'Máxima');
+
+  const DitherMode(this.ffmpegValue, this.label);
+
+  final String ffmpegValue;
+  final String label;
+}
+
+/// Estratégia de construção da paleta de cores.
+enum PaletteMode {
+  /// Uma paleta única para o GIF inteiro, calculada com todos os quadros.
+  /// Mais leve e estável; pode errar a cor se a cena mudar muito.
+  global('full', 'Paleta única'),
+
+  /// Prioriza as áreas que se movem ao escolher as cores.
+  /// Bom quando o fundo é estático e só um objeto se mexe.
+  movement('diff', 'Focada no movimento'),
+
+  /// Uma paleta nova por quadro. Melhor cor, arquivo bem maior.
+  perFrame('single', 'Paleta por quadro');
+
+  const PaletteMode(this.statsMode, this.label);
+
+  final String statsMode;
+  final String label;
+}
+
+/// Formato de arquivo do resultado final.
+///
+/// O GIF usa a paleta de 256 cores clássica (ver [DitherMode]/[PaletteMode]);
+/// o WebP animado, via `libwebp`, suporta cor cheia e transparência real em
+/// 8 bits, então não usa paleta nem pontilhado — só a qualidade em
+/// [ConversionSettings.webpQuality].
+enum OutputFormat {
+  gif('gif', 'image/gif', 'GIF', 'GIF'),
+  webp('webp', 'image/webp', 'WebP animado', 'WebP');
+
+  const OutputFormat(
+    this.extension,
+    this.mimeType,
+    this.label,
+    this.shortLabel,
+  );
+
+  /// Extensão do arquivo de saída, sem o ponto.
+  final String extension;
+
+  /// Tipo MIME usado ao compartilhar o arquivo.
+  final String mimeType;
+
+  /// Texto completo, usado no seletor de formato.
+  final String label;
+
+  /// Texto curto, usado em mensagens ("GIF salvo...", "WebP pronto").
+  final String shortLabel;
+}
+
+/// Todos os parâmetros que o usuário controla antes de converter.
+class ConversionSettings {
+  const ConversionSettings({
+    required this.startSeconds,
+    required this.endSeconds,
+    this.speed = 1.0,
+    this.fps = 12,
+    this.targetWidth = 480,
+    this.crop,
+    this.colors = 256,
+    this.dither = DitherMode.bayer5,
+    this.palette = PaletteMode.global,
+    this.loop = true,
+    this.frame = const FrameSettings(),
+    this.format = OutputFormat.gif,
+    this.webpQuality = defaultWebpQuality,
+    this.adjustments = ColorAdjustments.neutral,
+  });
+
+  final double startSeconds;
+  final double endSeconds;
+  final double speed;
+  final int fps;
+  final int targetWidth;
+  final CropRect? crop;
+  final int colors;
+  final DitherMode dither;
+  final PaletteMode palette;
+  final bool loop;
+  final FrameSettings frame;
+  final OutputFormat format;
+  final int webpQuality;
+
+  /// Ajustes de cor aplicados ao conteúdo do vídeo (não à moldura nem ao
+  /// fundo) — o FFmpeg os reproduz na cadeia de filtros, e a prévia usa o
+  /// mesmo `ColorFilter` das outras telas. Ver
+  /// `FfmpegService.buildVideoFilter`.
+  final ColorAdjustments adjustments;
+
+  /// Giro e espelhamento finais da aba "Girar" — atalho para o campo de
+  /// mesmo nome em [frame], onde ele mora para o desfazer/refazer das duas
+  /// telas cair sempre no mesmo lugar (ver [FrameSettings.outputTransform]).
+  OutputTransform get outputTransform => frame.outputTransform;
+
+  /// Presets exibidos no editor redesenhado.
+  static const fpsOptions = <int>[5, 8, 10, 12, 15, 20, 24];
+  static const widthOptions = <int>[
+    160,
+    240,
+    320,
+    400,
+    480,
+    640,
+    720,
+    800,
+    960,
+    1080,
+    1280,
+    1600,
+    1920,
+  ];
+  static const colorOptions = <int>[32, 64, 96, 128, 192, 256];
+  static const primaryColorOptions = <int>[64, 128, 256];
+  static const minSpeed = 0.25;
+  static const maxSpeed = 4.0;
+
+  /// Opções de qualidade oferecidas para o WebP (equivalente ao [colorOptions]
+  /// do GIF, mas controlando `-quality` do encoder `libwebp` em vez do número
+  /// de cores da paleta).
+  static const webpQualityOptions = <int>[50, 65, 75, 85, 95];
+  static const defaultWebpQuality = 75;
+
+  /// Teto de largura para o canvas de uma moldura de imagem no modo
+  /// [ImageFrameResolutionMode.nativeMax] — evita que uma foto importada em
+  /// resolução muito alta gere um canvas de milhares de pixels, o que deixa
+  /// a rasterização da arte e o encode do GIF lentos/pesados sem ganho
+  /// perceptível (GIFs raramente são vistos em telas grandes).
+  static const maxImageFrameNativeWidth = 1600;
+
+  /// Duração do trecho selecionado no vídeo original, antes de aplicar a
+  /// velocidade.
+  double get sourceDurationSeconds {
+    final d = endSeconds - startSeconds;
+    return d < 0 ? 0 : d;
+  }
+
+  /// Duração final do GIF, já considerando a velocidade escolhida.
+  double get outputDurationSeconds => sourceDurationSeconds / speed;
+
+  /// Quantidade de quadros que o GIF final vai ter (mínimo de 1).
+  int get frameCount {
+    final n = (outputDurationSeconds * fps).round();
+    return n < 1 ? 1 : n;
+  }
+
+  /// Largura/altura do vídeo já cortado e escalado pela largura alvo,
+  /// mantendo a proporção da área recortada (ou do vídeo inteiro, sem
+  /// recorte) — a área de conteúdo, antes de qualquer moldura.
+  ///
+  /// Normalmente nunca ultrapassa a largura de origem (`srcWidth`), para
+  /// não ampliar o vídeo à toa. Mas com uma moldura procedural ativa
+  /// ([FrameSettings.style] diferente de [FrameStyle.none] e sem
+  /// [FrameSettings.imageFrame], cujo contorno já é vetorial e sempre
+  /// nítido), o canvas é o que define a espessura/arredondamento da borda
+  /// em pixels — um vídeo bem menor que a largura escolhida em "Resolução"
+  /// prendia a moldura a poucos pixels e o arredondamento saía serrilhado.
+  /// Nesse caso o canvas acompanha a largura escolhida (`targetWidth`)
+  /// diretamente, para a moldura sempre refletir a Resolução selecionada.
+  (int, int) contentDimensions(VideoInfo video) {
+    final srcWidth = crop?.width ?? video.width;
+    final srcHeight = crop?.height ?? video.height;
+    if (srcWidth <= 0 || srcHeight <= 0) return (2, 2);
+
+    var w = targetWidth > srcWidth ? srcWidth : targetWidth;
+    final proceduralFrameActive =
+        frame.style != FrameStyle.none && frame.imageFrame == null;
+    if (proceduralFrameActive && srcWidth < targetWidth) {
+      w = targetWidth;
+    }
+    if (w < 2) w = 2;
+    var h = (w * srcHeight / srcWidth).round();
+
+    // FFmpeg exige dimensões pares.
+    w -= w % 2;
+    h -= h % 2;
+    return (w < 2 ? 2 : w, h < 2 ? 2 : h);
+  }
+
+  /// Largura/altura/espessura (em pixels) da área onde o vídeo aparece
+  /// dentro da moldura — compartilhado entre
+  /// [outputDimensions] e o serviço de FFmpeg (que usa os mesmos números
+  /// para montar os filtros de composição), para as duas contas nunca
+  /// ficarem fora de sincronia.
+  ///
+  /// A espessura já sai arredondada para um pixel inteiro aqui — é o mesmo
+  /// valor que [ffmpeg_service.dart] usa no deslocamento do `pad` do
+  /// FFmpeg, então [outputDimensions] soma exatamente esse inteiro (nunca a
+  /// espessura "crua"). Arredondar em dois lugares diferentes (aqui um
+  /// valor, lá outro) podia deixar a borda com espessuras desiguais.
+  ///
+  /// A moldura é desenhada para dentro do canvas definido por "Formato da
+  /// janela" e "Resolução". Portanto a área útil perde a espessura da borda
+  /// nos quatro lados, sem alterar as dimensões finais escolhidas.
+  (int width, int height, double thickness) frameAreaDimensions(
+    VideoInfo video,
+  ) {
+    final (contentWidth, contentHeight) = contentDimensions(video);
+    final requestedThickness = frame
+        .thicknessFor(contentWidth.toDouble())
+        .round();
+    final maxHorizontalThickness = (contentWidth - 2) ~/ 2;
+    final maxVerticalThickness = (contentHeight - 2) ~/ 2;
+    final maxThickness = maxHorizontalThickness < maxVerticalThickness
+        ? maxHorizontalThickness
+        : maxVerticalThickness;
+    final thickness = requestedThickness.clamp(0, maxThickness).toInt();
+    final areaWidth = contentWidth - thickness * 2;
+    final areaHeight = contentHeight - thickness * 2;
+    return (
+      areaWidth - (areaWidth % 2),
+      areaHeight - (areaHeight % 2),
+      thickness.toDouble(),
+    );
+  }
+
+  /// Largura/altura finais do GIF. Sem moldura, é exatamente a área de
+  /// conteúdo ([contentDimensions]). Com moldura de imagem, é
+  /// [imageFrameCanvasDimensions]. Molduras procedurais são desenhadas para
+  /// dentro desse mesmo canvas, sem substituir a proporção definida em
+  /// "Formato da janela" nem aumentar as dimensões finais.
+  (int, int) outputDimensions(VideoInfo video) {
+    if (frame.imageFrame != null) return imageFrameCanvasDimensions(video);
+
+    final (contentWidth, contentHeight) = contentDimensions(video);
+    if (frame.style == FrameStyle.none) return (contentWidth, contentHeight);
+
+    return (contentWidth, contentHeight);
+  }
+
+  /// Canvas final quando a moldura é uma arte de imagem ([FrameSettings.imageFrame]):
+  /// a largura do conteúdo (vídeo, já escolhida em "Resolução") deve ocupar
+  /// exatamente a fração [ImageFrameAsset.contentRect]'s largura do canvas,
+  /// e a altura do canvas segue a proporção nativa da arte — nunca a
+  /// proporção do conteúdo isolado, para a arte nunca ser distorcida.
+  (int, int) imageFrameCanvasDimensions(VideoInfo video) {
+    final art = frame.imageFrame!;
+    final double canvasWidth;
+    switch (frame.frameResolutionMode) {
+      case ImageFrameResolutionMode.matchAjustar:
+        final (contentWidth, _) = contentDimensions(video);
+        canvasWidth = contentWidth / art.contentRect.width;
+      case ImageFrameResolutionMode.nativeMax:
+        canvasWidth = art.nativeReferenceWidth
+            .clamp(2, maxImageFrameNativeWidth)
+            .toDouble();
+    }
+    final canvasHeight = canvasWidth / art.nativeAspectRatio;
+    final w = _evenFromDouble(canvasWidth);
+    final h = _evenFromDouble(canvasHeight);
+    return (w < 2 ? 2 : w, h < 2 ? 2 : h);
+  }
+
+  /// Retângulo em pixels, dentro do canvas de [imageFrameCanvasDimensions],
+  /// onde o vídeo deve aparecer — única fonte de verdade compartilhada
+  /// entre [ffmpeg_service.dart] (que usa os mesmos números para montar o
+  /// grafo de composição) e a prévia ao vivo, para as duas contas nunca
+  /// ficarem fora de sincronia (mesmo princípio de [frameAreaDimensions]).
+  (int x, int y, int width, int height) imageFrameContentAreaPx(
+    VideoInfo video,
+  ) {
+    final (canvasWidth, canvasHeight) = imageFrameCanvasDimensions(video);
+    final r = frame.imageFrame!.contentRect;
+    return (
+      (canvasWidth * r.left).round(),
+      (canvasHeight * r.top).round(),
+      _evenFromDouble(canvasWidth * r.width),
+      _evenFromDouble(canvasHeight * r.height),
+    );
+  }
+
+  /// Arredonda para o inteiro par mais próximo, exigido pelos filtros de
+  /// crop/scale do FFmpeg.
+  static int _evenFromDouble(double value) {
+    final rounded = value.round();
+    return rounded - (rounded % 2);
+  }
+
+  /// Quanto a imagem é reduzida em relação ao tamanho de origem (recortado),
+  /// usado pelo estimador de tamanho para ponderar o efeito da escala. Usa
+  /// [contentDimensions] (não [outputDimensions]) para não misturar o
+  /// espaço ocupado pela moldura — praticamente estática — no fator de
+  /// escala calibrado a partir do conteúdo do vídeo.
+  double scaleRatio(VideoInfo video) {
+    final srcWidth = crop?.width ?? video.width;
+    if (srcWidth <= 0) return 1;
+    final (w, _) = contentDimensions(video);
+    return (w / srcWidth).clamp(0.05, 1.0).toDouble();
+  }
+
+  /// Cria uma cópia substituindo apenas os campos informados.
+  /// [clearCrop] remove o recorte mesmo que [crop] não seja passado.
+  ConversionSettings copyWith({
+    double? startSeconds,
+    double? endSeconds,
+    double? speed,
+    int? fps,
+    int? targetWidth,
+    CropRect? crop,
+    bool clearCrop = false,
+    int? colors,
+    DitherMode? dither,
+    PaletteMode? palette,
+    bool? loop,
+    FrameSettings? frame,
+    OutputFormat? format,
+    int? webpQuality,
+    ColorAdjustments? adjustments,
+  }) {
+    return ConversionSettings(
+      startSeconds: startSeconds ?? this.startSeconds,
+      endSeconds: endSeconds ?? this.endSeconds,
+      speed: speed ?? this.speed,
+      fps: fps ?? this.fps,
+      targetWidth: targetWidth ?? this.targetWidth,
+      crop: clearCrop ? null : (crop ?? this.crop),
+      colors: colors ?? this.colors,
+      dither: dither ?? this.dither,
+      palette: palette ?? this.palette,
+      loop: loop ?? this.loop,
+      frame: frame ?? this.frame,
+      format: format ?? this.format,
+      webpQuality: webpQuality ?? this.webpQuality,
+      adjustments: adjustments ?? this.adjustments,
+    );
+  }
+
+  /// Configurações iniciais sugeridas para um vídeo recém-carregado: corta
+  /// em até 10 segundos e mantém a largura original do vídeo (100%) — quem
+  /// quiser um arquivo mais leve reduz manualmente no slider de "Resolução",
+  /// em vez de a tela já abrir com uma largura menor escolhida sozinha.
+  ///
+  /// [format] não entra nessa recomendação: continua GIF por padrão (valor
+  /// default do construtor) — WebP é uma escolha explícita do usuário na
+  /// tela de edição, não um recomendado automático.
+  factory ConversionSettings.recommendedFor(VideoInfo video) {
+    const maxSeconds = 10.0;
+    final end = video.durationSeconds < maxSeconds
+        ? video.durationSeconds
+        : maxSeconds;
+
+    return ConversionSettings(
+      startSeconds: 0,
+      endSeconds: end,
+      targetWidth: video.width,
+    );
+  }
+
+  /// Menor porcentagem que o slider de "Resolução" aceita — abaixo disso o
+  /// vídeo fica pequeno demais para valer a pena.
+  static const minResolutionPercent = 10;
+
+  /// Largura e altura, em pixels, para [percent]% da resolução de [video].
+  ///
+  /// Usado pelo slider de "Resolução" tanto em "Editar GIF" quanto em
+  /// "Converter formato", para as duas telas nunca divergirem na conta.
+  /// Arredonda para um número par (exigência do FFmpeg, mesma regra de
+  /// [contentDimensions]) e nunca deixa a largura cair a zero, mesmo no
+  /// piso do slider com um vídeo bem estreito.
+  static (int width, int height) dimensionsForPercent(
+    VideoInfo video,
+    int percent,
+  ) {
+    final rawWidth = (video.width * percent / 100).round();
+    final width = math.max(2, rawWidth - rawWidth % 2);
+    final rawHeight = video.width == 0
+        ? 0
+        : (width * video.height / video.width).round();
+    final height = math.max(2, rawHeight - rawHeight % 2);
+    return (width, height);
+  }
+
+  /// Porcentagem da largura de [video] que [targetWidth] representa — o
+  /// inverso de [dimensionsForPercent], usado para posicionar o slider a
+  /// partir de um `targetWidth` já salvo (por exemplo, ao reabrir o editor).
+  static int percentForWidth(VideoInfo video, int targetWidth) {
+    if (video.width <= 0) return 100;
+    final percent = (targetWidth / video.width * 100).round();
+    return percent.clamp(minResolutionPercent, 100);
+  }
+}

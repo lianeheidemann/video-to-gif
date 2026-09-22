@@ -6,9 +6,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/eraser_mask.dart';
-import 'package:video_to_gif/models/photo_info.dart';
-import 'package:video_to_gif/services/magic_eraser.dart';
+import 'package:video_to_gif/features/photo/models/eraser_mask.dart';
+import 'package:video_to_gif/core/models/photo_info.dart';
+import 'package:video_to_gif/features/photo/services/magic_eraser.dart';
 
 /// Escreve um PNG de fundo listrado com um quadrado vermelho no meio — o
 /// "objeto" a ser apagado. Listras porque cor chapada esconderia um

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-import 'licenses.dart';
-import 'models/collage_text.dart';
-import 'preview_background_controller.dart';
-import 'services/bundled_font_store.dart';
-import 'services/bundled_frame_store.dart';
-import 'services/bundled_sticker_store.dart';
-import 'theme.dart';
-import 'theme_controller.dart';
-import 'ui/home_page.dart';
+import 'app/licenses.dart';
+import 'core/models/collage_text.dart';
+import 'app/preview_background_controller.dart';
+import 'core/services/bundled_font_store.dart';
+import 'core/services/bundled_frame_store.dart';
+import 'core/services/bundled_sticker_store.dart';
+import 'app/theme.dart';
+import 'app/theme_controller.dart';
+import 'features/home/home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

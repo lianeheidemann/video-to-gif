@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/services/mp4_rotation.dart';
+import 'package:video_to_gif/core/ffmpeg/mp4_rotation.dart';
 
 /// Monta uma caixa do MP4: tamanho de 32 bits, tipo e conteúdo.
 Uint8List _box(String type, List<int> payload) {

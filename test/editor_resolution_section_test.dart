@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_to_gif/models/conversion_settings.dart';
-import 'package:video_to_gif/models/video_info.dart';
-import 'package:video_to_gif/ui/editor_page.dart';
-import 'package:video_to_gif/ui/widgets/editor_tabs_footer.dart';
+import 'package:video_to_gif/core/models/conversion_settings.dart';
+import 'package:video_to_gif/core/models/video_info.dart';
+import 'package:video_to_gif/features/video/editor_page.dart';
+import 'package:video_to_gif/core/ui/editor_tabs_footer.dart';
 
 // A aba "Resolução" virou um slider de porcentagem (ver
 // conversion_settings_test.dart para a conta pixel↔porcentagem). Estes

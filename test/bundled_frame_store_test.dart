@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/image_frame.dart';
-import 'package:video_to_gif/services/bundled_frame_store.dart';
+import 'package:video_to_gif/core/models/image_frame.dart';
+import 'package:video_to_gif/core/services/bundled_frame_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

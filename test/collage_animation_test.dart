@@ -4,11 +4,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart' show Canvas, Color, Paint, Rect;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/models/collage_cell.dart';
-import 'package:video_to_gif/models/collage_export.dart';
-import 'package:video_to_gif/models/collage_layout.dart';
-import 'package:video_to_gif/models/collage_settings.dart';
-import 'package:video_to_gif/services/collage_animation.dart';
+import 'package:video_to_gif/features/collage/models/collage_cell.dart';
+import 'package:video_to_gif/features/collage/models/collage_export.dart';
+import 'package:video_to_gif/features/collage/models/collage_layout.dart';
+import 'package:video_to_gif/features/collage/models/collage_settings.dart';
+import 'package:video_to_gif/features/collage/services/collage_animation.dart';
 
 /// PNG sólido: uma foto parada de verdade em disco.
 Future<void> _writeSolidPng(String path, Color color) async {

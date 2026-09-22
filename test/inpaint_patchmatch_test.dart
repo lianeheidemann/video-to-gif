@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:video_to_gif/services/inpaint_patchmatch.dart';
+import 'package:video_to_gif/features/photo/services/inpaint_patchmatch.dart';
 
 /// Imagem RGBA opaca gerada por uma função de cor — o jeito mais direto de
 /// montar um caso com "gabarito": o original é conhecido, então dá para medir
