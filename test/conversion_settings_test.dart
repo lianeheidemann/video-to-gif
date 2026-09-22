@@ -469,4 +469,186 @@ void main() {
       );
     });
   });
+
+  group('aba "Girar": rotação do conteúdo', () {
+    test('valores padrão: sem rotação nem espelhamento', () {
+      final settings = ConversionSettings(startSeconds: 0, endSeconds: 5);
+      expect(settings.rotationQuarterTurns, 0);
+      expect(settings.flipHorizontal, isFalse);
+      expect(settings.flipVertical, isFalse);
+    });
+
+    test('copyWith muda cada campo independentemente', () {
+      final base = ConversionSettings(startSeconds: 0, endSeconds: 5);
+      final rotated = base.copyWith(rotationQuarterTurns: 1);
+      expect(rotated.rotationQuarterTurns, 1);
+      expect(rotated.flipHorizontal, isFalse);
+
+      final flipped = base.copyWith(flipHorizontal: true, flipVertical: true);
+      expect(flipped.flipHorizontal, isTrue);
+      expect(flipped.flipVertical, isTrue);
+      expect(flipped.rotationQuarterTurns, 0);
+    });
+
+    test('contentDimensions troca largura/altura só em giros ímpares', () {
+      // targetWidth bem acima de largura e altura do vídeo, para nenhum
+      // giro esbarrar no teto de "Resolução" e disfarçar a troca.
+      final base = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 4000,
+      );
+      final (baseW, baseH) = base.contentDimensions(_video);
+
+      for (final turns in [0, 1, 2, 3]) {
+        final rotated = base.copyWith(rotationQuarterTurns: turns);
+        final (w, h) = rotated.contentDimensions(_video);
+        if (turns.isOdd) {
+          expect(w, baseH, reason: 'turns=$turns largura');
+          expect(h, baseW, reason: 'turns=$turns altura');
+        } else {
+          expect(w, baseW, reason: 'turns=$turns largura');
+          expect(h, baseH, reason: 'turns=$turns altura');
+        }
+      }
+    });
+
+    test('outputDimensions/frameAreaDimensions herdam a troca (via '
+        'contentDimensions)', () {
+      // Sem moldura procedural de propósito: seu upscale até targetWidth
+      // (ver "moldura procedural: canvas segue a Resolução em vídeos
+      // pequenos" acima) já não depende da orientação, então misturar os
+      // dois comportamentos aqui só disfarçaria a troca sob teste. O que
+      // importa é que outputDimensions/frameAreaDimensions DERIVAM de
+      // contentDimensions (já coberto para giros ímpares), não que a
+      // moldura procedural também rode nesta conta.
+      final base = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 4000,
+      );
+      final rotated = base.copyWith(rotationQuarterTurns: 1);
+
+      final (baseW, baseH) = base.outputDimensions(_video);
+      final (rotW, rotH) = rotated.outputDimensions(_video);
+      expect(rotW, baseH);
+      expect(rotH, baseW);
+      expect(
+        rotated.outputDimensions(_video),
+        rotated.contentDimensions(_video),
+      );
+
+      final (baseAreaW, baseAreaH, _) = base.frameAreaDimensions(_video);
+      final (rotAreaW, rotAreaH, _) = rotated.frameAreaDimensions(_video);
+      expect(rotAreaW, baseAreaH);
+      expect(rotAreaH, baseAreaW);
+    });
+
+    test('imageFrameCanvasDimensions: a arte nunca é distorcida pela rotação '
+        'do conteúdo', () {
+      final art = ImageFrameLibrary.bundled.first;
+      final base = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 4000,
+        frame: FrameSettings(imageFrame: art),
+      );
+      final rotated = base.copyWith(rotationQuarterTurns: 1);
+
+      for (final settings in [base, rotated]) {
+        final (canvasWidth, canvasHeight) = settings.imageFrameCanvasDimensions(
+          _video,
+        );
+        expect(
+          canvasWidth / canvasHeight,
+          closeTo(art.nativeAspectRatio, 0.01),
+          reason: 'rotationQuarterTurns=${settings.rotationQuarterTurns}',
+        );
+      }
+
+      // A largura do CANVAS (não a proporção da arte) muda: o conteúdo
+      // girado é mais estreito, então a arte encolhe para caber nele.
+      final (baseCanvasW, _) = base.imageFrameCanvasDimensions(_video);
+      final (rotCanvasW, _) = rotated.imageFrameCanvasDimensions(_video);
+      expect(rotCanvasW, isNot(baseCanvasW));
+    });
+  });
+
+  group('aba "Moldura": girar resultado inteiro', () {
+    test('FrameSettings: valor padrão é zero', () {
+      const frame = FrameSettings();
+      expect(frame.groupRotationQuarterTurns, 0);
+    });
+
+    test('FrameSettings.copyWith muda só o campo pedido', () {
+      const base = FrameSettings(style: FrameStyle.thin);
+      final rotated = base.copyWith(groupRotationQuarterTurns: 2);
+      expect(rotated.groupRotationQuarterTurns, 2);
+      expect(rotated.style, FrameStyle.thin);
+    });
+
+    test('finalOutputDimensions troca largura/altura só em giros ímpares', () {
+      final base = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: _video.width,
+      );
+      final (baseW, baseH) = base.outputDimensions(_video);
+
+      for (final turns in [0, 1, 2, 3]) {
+        final settings = base.copyWith(
+          frame: base.frame.copyWith(groupRotationQuarterTurns: turns),
+        );
+        final (w, h) = settings.finalOutputDimensions(_video);
+        if (turns.isOdd) {
+          expect(w, baseH, reason: 'turns=$turns largura');
+          expect(h, baseW, reason: 'turns=$turns altura');
+        } else {
+          expect(w, baseW, reason: 'turns=$turns largura');
+          expect(h, baseH, reason: 'turns=$turns altura');
+        }
+      }
+    });
+
+    test('outputDimensions (o canvas que a exportação realmente monta) nunca '
+        'muda com a rotação do resultado', () {
+      final base = ConversionSettings(startSeconds: 0, endSeconds: 5);
+      final rotated = base.copyWith(
+        frame: base.frame.copyWith(groupRotationQuarterTurns: 1),
+      );
+      expect(rotated.outputDimensions(_video), base.outputDimensions(_video));
+    });
+
+    test('rotação de conteúdo e rotação do resultado são independentes e '
+        'compõem sem se cancelar', () {
+      final base = ConversionSettings(
+        startSeconds: 0,
+        endSeconds: 5,
+        targetWidth: 4000,
+      );
+      final (baseW, baseH) = base.outputDimensions(_video);
+
+      // Só conteúdo girado (ímpar): outputDimensions já reflete a troca,
+      // finalOutputDimensions é igual (groupRotation par).
+      final onlyContent = base.copyWith(rotationQuarterTurns: 1);
+      expect(onlyContent.finalOutputDimensions(_video), (baseH, baseW));
+
+      // Só o resultado girado (ímpar): outputDimensions continua igual ao
+      // caso base, finalOutputDimensions troca por cima dele.
+      final onlyGroup = base.copyWith(
+        frame: base.frame.copyWith(groupRotationQuarterTurns: 1),
+      );
+      expect(onlyGroup.outputDimensions(_video), (baseW, baseH));
+      expect(onlyGroup.finalOutputDimensions(_video), (baseH, baseW));
+
+      // As duas ímpares ao mesmo tempo: as trocas se aplicam em
+      // sequência (conteúdo primeiro, resultado depois) e voltam à
+      // orientação original — não se confundem numa só troca.
+      final both = base.copyWith(
+        rotationQuarterTurns: 1,
+        frame: base.frame.copyWith(groupRotationQuarterTurns: 1),
+      );
+      expect(both.finalOutputDimensions(_video), (baseW, baseH));
+    });
+  });
 }

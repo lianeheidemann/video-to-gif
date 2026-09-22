@@ -107,6 +107,7 @@ class FrameSettings {
     this.adjustments = ColorAdjustments.neutral,
     this.crop,
     this.texts = const [],
+    this.groupRotationQuarterTurns = 0,
   });
 
   final FrameStyle style;
@@ -173,6 +174,14 @@ class FrameSettings {
   /// (ver `CollageTextItem`), com o centro normalizado ao canvas final
   /// (incluindo moldura e fundo), não só à foto.
   final List<CollageTextItem> texts;
+
+  /// Gira a moldura inteira (arte + conteúdo já compostos), como uma peça só
+  /// — diferente da rotação do conteúdo (ver `ConversionSettings.
+  /// rotationQuarterTurns`, aba "Girar"), que só afeta o vídeo e nunca esta
+  /// arte. 0 a 3, cada unidade = 90° no sentido horário. Aplicada por último,
+  /// depois de moldura, conteúdo e texto já estarem compostos — ver
+  /// `EditorPage._framedPreview` e `FfmpegService._applyGroupRotation`.
+  final int groupRotationQuarterTurns;
 
   /// Zoom que realmente deve ser aplicado pela prévia e pela exportação.
   /// Manter o valor escolhido em [contentZoom] permite recuperá-lo quando o
@@ -241,6 +250,7 @@ class FrameSettings {
     CropRect? crop,
     bool clearCrop = false,
     List<CollageTextItem>? texts,
+    int? groupRotationQuarterTurns,
   }) {
     return FrameSettings(
       style: style ?? this.style,
@@ -257,6 +267,8 @@ class FrameSettings {
       adjustments: adjustments ?? this.adjustments,
       crop: clearCrop ? null : (crop ?? this.crop),
       texts: texts ?? this.texts,
+      groupRotationQuarterTurns:
+          groupRotationQuarterTurns ?? this.groupRotationQuarterTurns,
     );
   }
 }

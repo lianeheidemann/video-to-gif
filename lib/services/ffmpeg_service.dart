@@ -194,13 +194,41 @@ class FfmpegService {
     return normalized;
   }
 
+  /// Fragmento `transpose`/`hflip`/`vflip` para [quarterTurns] (0-3, sentido
+  /// horário) e os dois espelhamentos — `null` quando não há nada a fazer.
+  /// `transpose=1` é 90° horário puro e `transpose=2` é 90° anti-horário
+  /// puro; `transpose=0`/`transpose=3` embutem um flip vertical extra e por
+  /// isso NÃO servem aqui. 180° é `transpose=1` duas vezes: duas rotações
+  /// puras de 90° no mesmo sentido compõem 180° sem espelhar nada.
+  String? _rotateFlipFragment(
+    int quarterTurns, {
+    bool flipHorizontal = false,
+    bool flipVertical = false,
+  }) {
+    final parts = <String>[];
+    switch (quarterTurns % 4) {
+      case 1:
+        parts.add('transpose=1');
+      case 2:
+        parts.add('transpose=1,transpose=1');
+      case 3:
+        parts.add('transpose=2');
+    }
+    if (flipHorizontal) parts.add('hflip');
+    if (flipVertical) parts.add('vflip');
+    return parts.isEmpty ? null : parts.join(',');
+  }
+
   // ------------------------------------------------------------------
   // Montagem dos filtros
   // ------------------------------------------------------------------
 
   /// Cadeia de filtros de vídeo, na única ordem que dá o resultado certo:
   ///
-  ///  1. `crop`   — em pixels do vídeo original, então tem que vir primeiro;
+  ///  1. `crop`      — em pixels do vídeo original, então tem que vir
+  ///                   primeiro;
+  ///  1.5. `transpose`/`hflip`/`vflip` — rotação/espelhamento do CONTEÚDO
+  ///                   (aba "Girar"), sobre o já recortado;
   ///  2. `setpts` — muda a velocidade reescrevendo os tempos dos quadros;
   ///  3. `fps`    — reamostra para a taxa final (depois da velocidade, senão
   ///                o cálculo de quadros sai errado);
@@ -212,6 +240,16 @@ class FfmpegService {
     if (crop != null) {
       parts.add('crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}');
     }
+
+    // Rotação/espelhamento do CONTEÚDO (aba "Girar") — depois do recorte,
+    // antes de qualquer outra coisa, mesma ordem de `svg_xml_editor.dart`
+    // ("recorte → girar → espelhar"). Nunca toca a moldura.
+    final rotateFlip = _rotateFlipFragment(
+      settings.rotationQuarterTurns,
+      flipHorizontal: settings.flipHorizontal,
+      flipVertical: settings.flipVertical,
+    );
+    if (rotateFlip != null) parts.add(rotateFlip);
 
     if (settings.speed != 1.0) {
       parts.add('setpts=PTS/${settings.speed}');
@@ -716,6 +754,120 @@ class FfmpegService {
     } finally {
       _deleteQuietly(layerPath);
       _deleteQuietly(mergedPath);
+    }
+  }
+
+  /// Argumentos completos do FFmpeg para girar 90°×N o arquivo já pronto em
+  /// [inputPath] (moldura + conteúdo + texto já compostos) como uma unidade
+  /// rígida ("Girar resultado", aba "Moldura"), escrevendo em [outputPath].
+  /// Só deve ser chamado quando
+  /// `settings.frame.groupRotationQuarterTurns` é diferente de zero.
+  ///
+  /// Um passe final e separado — não um filtro a mais dentro de
+  /// [_framedGraph]/[_imageFramedGraph] — porque [_applyTextOverlay] já
+  /// desenhou o texto usando coordenadas normalizadas contra o canvas ANTES
+  /// desta rotação; girar antes do texto deixaria as coordenadas erradas.
+  ///
+  /// Público (sem `_`) só para dar acesso direto aos testes de unidade —
+  /// [convert] continua sendo o único ponto de entrada em uso normal.
+  @visibleForTesting
+  List<String> groupRotateArgs({
+    required ConversionSettings settings,
+    required String inputPath,
+    required String outputPath,
+  }) {
+    final fragment = _rotateFlipFragment(
+      settings.frame.groupRotationQuarterTurns,
+    )!;
+    final isWebp = settings.format == OutputFormat.webp;
+    // Mesma condição de [_applyTextOverlay]/[webpArgs]/[_paletteGenArgs]:
+    // só há transparência de verdade a preservar com uma moldura que a
+    // deixou ligada.
+    final transparent =
+        settings.frame.transparentBackground &&
+        (settings.frame.hasImageFrame ||
+            settings.frame.style != FrameStyle.none);
+
+    if (isWebp) {
+      return [
+        '-y',
+        '-i',
+        inputPath,
+        '-lavfi',
+        '[0:v]format=rgba,$fragment[out]',
+        '-map',
+        '[out]',
+        '-c:v',
+        'libwebp',
+        '-quality',
+        '${settings.webpQuality}',
+        '-compression_level',
+        '2',
+        '-pix_fmt',
+        transparent ? 'yuva420p' : 'yuv420p',
+        '-loop',
+        settings.loop ? '0' : '1',
+        '-an',
+        '-f',
+        'webp',
+        outputPath,
+      ];
+    }
+
+    final newPalette = settings.palette == PaletteMode.perFrame ? ':new=1' : '';
+    return [
+      '-y',
+      '-i',
+      inputPath,
+      '-lavfi',
+      '[0:v]format=rgba,$fragment,split=2[palette_source][gif_source];'
+          '[palette_source]palettegen=max_colors=${settings.colors}'
+          ':stats_mode=${settings.palette.statsMode}'
+          '${transparent ? ':reserve_transparent=1' : ''}[palette];'
+          '[gif_source][palette]paletteuse=dither=${settings.dither.ffmpegValue}'
+          ':diff_mode=rectangle$newPalette'
+          '${transparent ? ':alpha_threshold=128' : ''}[out]',
+      '-map',
+      '[out]',
+      '-loop',
+      settings.loop ? '0' : '-1',
+      '-an',
+      outputPath,
+    ];
+  }
+
+  /// Aplica [groupRotateArgs] sobre o arquivo já pronto em [outputPath],
+  /// substituindo-o pelo resultado girado — sem efeito nenhum (nem um
+  /// arquivo temporário criado) quando `groupRotationQuarterTurns` é zero.
+  /// Mesmo padrão de arquivo temporário + cópia por cima de
+  /// [_applyTextOverlay], e deve rodar sempre DEPOIS dele (ver
+  /// [groupRotateArgs]).
+  Future<void> _applyGroupRotation({
+    required String outputPath,
+    required ConversionSettings settings,
+    required Directory dir,
+    required String stamp,
+  }) async {
+    if (settings.frame.groupRotationQuarterTurns == 0) return;
+
+    final rotatedPath =
+        '${dir.path}/girado_$stamp.${settings.format.extension}';
+    try {
+      await _run(
+        groupRotateArgs(
+          settings: settings,
+          inputPath: outputPath,
+          outputPath: rotatedPath,
+        ),
+        step: 'girar o ${settings.format.shortLabel} resultado',
+      );
+      final rotated = File(rotatedPath);
+      if (!rotated.existsSync() || rotated.lengthSync() == 0) {
+        throw FfmpegException('Não foi possível girar o resultado.');
+      }
+      await rotated.copy(outputPath);
+    } finally {
+      _deleteQuietly(rotatedPath);
     }
   }
 
@@ -1279,10 +1431,16 @@ class FfmpegService {
           dir: dir,
           stamp: '$stamp',
         );
+        await _applyGroupRotation(
+          outputPath: outputPath,
+          settings: settings,
+          dir: dir,
+          stamp: '$stamp',
+        );
         output = File(outputPath);
         onProgress?.call(1.0);
 
-        final (width, height) = settings.outputDimensions(video);
+        final (width, height) = settings.finalOutputDimensions(video);
         return ConversionResult(
           file: output,
           bytes: output.lengthSync(),
@@ -1363,10 +1521,16 @@ class FfmpegService {
         dir: dir,
         stamp: '$stamp',
       );
+      await _applyGroupRotation(
+        outputPath: outputPath,
+        settings: settings,
+        dir: dir,
+        stamp: '$stamp',
+      );
       output = File(outputPath);
       onProgress?.call(1.0);
 
-      final (width, height) = settings.outputDimensions(video);
+      final (width, height) = settings.finalOutputDimensions(video);
       return ConversionResult(
         file: output,
         bytes: output.lengthSync(),

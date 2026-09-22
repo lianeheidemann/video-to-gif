@@ -101,6 +101,9 @@ class ConversionSettings {
     this.format = OutputFormat.gif,
     this.webpQuality = defaultWebpQuality,
     this.adjustments = ColorAdjustments.neutral,
+    this.rotationQuarterTurns = 0,
+    this.flipHorizontal = false,
+    this.flipVertical = false,
   });
 
   final double startSeconds;
@@ -116,6 +119,15 @@ class ConversionSettings {
   final FrameSettings frame;
   final OutputFormat format;
   final int webpQuality;
+
+  /// Rotação do CONTEÚDO (vídeo), aplicada depois do recorte e antes de
+  /// qualquer moldura — independente da moldura escolhida, ver aba "Girar".
+  /// 0 a 3, cada unidade = 90° no sentido horário. Mesmo padrão de
+  /// `SvgEditSettings.rotationQuarterTurns`.
+  final int rotationQuarterTurns;
+
+  final bool flipHorizontal;
+  final bool flipVertical;
 
   /// Ajustes de cor aplicados ao conteúdo do vídeo (não à moldura nem ao
   /// fundo) — o FFmpeg os reproduz na cadeia de filtros, e a prévia usa o
@@ -188,8 +200,13 @@ class ConversionSettings {
   /// Nesse caso o canvas acompanha a largura escolhida (`targetWidth`)
   /// diretamente, para a moldura sempre refletir a Resolução selecionada.
   (int, int) contentDimensions(VideoInfo video) {
-    final srcWidth = crop?.width ?? video.width;
-    final srcHeight = crop?.height ?? video.height;
+    var srcWidth = crop?.width ?? video.width;
+    var srcHeight = crop?.height ?? video.height;
+    if (rotationQuarterTurns.isOdd) {
+      final swap = srcWidth;
+      srcWidth = srcHeight;
+      srcHeight = swap;
+    }
     if (srcWidth <= 0 || srcHeight <= 0) return (2, 2);
 
     var w = targetWidth > srcWidth ? srcWidth : targetWidth;
@@ -258,6 +275,18 @@ class ConversionSettings {
     return (contentWidth, contentHeight);
   }
 
+  /// Como [outputDimensions], mas já considerando a rotação de 90° do
+  /// resultado inteiro ([FrameSettings.groupRotationQuarterTurns]) — o
+  /// tamanho final que a pessoa recebe. [outputDimensions] continua sendo o
+  /// canvas ANTES dessa rotação, que é o que `_framedGraph`/
+  /// `_imageFramedGraph`/`_prepareMaskFile` realmente constroem (ver
+  /// `FfmpegService`); ele não muda com ela, porque a rotação do resultado é
+  /// aplicada só depois, como um passe final sobre o arquivo já composto.
+  (int, int) finalOutputDimensions(VideoInfo video) {
+    final (w, h) = outputDimensions(video);
+    return frame.groupRotationQuarterTurns.isOdd ? (h, w) : (w, h);
+  }
+
   /// Canvas final quando a moldura é uma arte de imagem ([FrameSettings.imageFrame]):
   /// a largura do conteúdo (vídeo, já escolhida em "Resolução") deve ocupar
   /// exatamente a fração [ImageFrameAsset.contentRect]'s largura do canvas,
@@ -312,7 +341,8 @@ class ConversionSettings {
   /// espaço ocupado pela moldura — praticamente estática — no fator de
   /// escala calibrado a partir do conteúdo do vídeo.
   double scaleRatio(VideoInfo video) {
-    final srcWidth = crop?.width ?? video.width;
+    var srcWidth = crop?.width ?? video.width;
+    if (rotationQuarterTurns.isOdd) srcWidth = crop?.height ?? video.height;
     if (srcWidth <= 0) return 1;
     final (w, _) = contentDimensions(video);
     return (w / srcWidth).clamp(0.05, 1.0).toDouble();
@@ -336,6 +366,9 @@ class ConversionSettings {
     OutputFormat? format,
     int? webpQuality,
     ColorAdjustments? adjustments,
+    int? rotationQuarterTurns,
+    bool? flipHorizontal,
+    bool? flipVertical,
   }) {
     return ConversionSettings(
       startSeconds: startSeconds ?? this.startSeconds,
@@ -352,6 +385,9 @@ class ConversionSettings {
       format: format ?? this.format,
       webpQuality: webpQuality ?? this.webpQuality,
       adjustments: adjustments ?? this.adjustments,
+      rotationQuarterTurns: rotationQuarterTurns ?? this.rotationQuarterTurns,
+      flipHorizontal: flipHorizontal ?? this.flipHorizontal,
+      flipVertical: flipVertical ?? this.flipVertical,
     );
   }
 

@@ -261,7 +261,7 @@ class _EditorPageState extends State<EditorPage> {
   /// horizontal, é o mesmo padrão da tela de montagem.
   List<EditorSection> _sections() {
     final isWebp = _settings.format == OutputFormat.webp;
-    final (width, height) = _settings.outputDimensions(_video);
+    final (width, height) = _settings.finalOutputDimensions(_video);
     final baseSummary =
         '$width×$height px · ${_settings.fps} FPS · '
         '${_settings.outputDurationSeconds.toStringAsFixed(1)} s';
@@ -270,6 +270,7 @@ class _EditorPageState extends State<EditorPage> {
       EditorSection.fromLabeled(_formatSection(), label: 'Formato'),
       EditorSection.fromLabeled(_durationSection(), label: 'Duração'),
       EditorSection.fromLabeled(_aspectSection(), label: 'Janela'),
+      EditorSection.fromLabeled(_rotateSection(), label: 'Girar'),
       EditorSection.fromLabeled(_speedSection(), label: 'Velocidade'),
       EditorSection.fromLabeled(_resolutionSection(), label: 'Resolução'),
       EditorSection.fromLabeled(_fpsSection(), label: 'FPS'),
@@ -613,7 +614,7 @@ class _EditorPageState extends State<EditorPage> {
   /// selecionada.
   Widget _framedPreview(bool textTabActive) {
     final frame = _settings.frame;
-    final Widget framedVideo;
+    Widget framedVideo;
 
     if (frame.imageFrame != null) {
       framedVideo = _withTextOverlay(
@@ -661,6 +662,16 @@ class _EditorPageState extends State<EditorPage> {
       );
     }
 
+    // "Girar resultado" (aba "Moldura"): gira moldura + conteúdo já
+    // compostos como uma peça só, por cima de qualquer um dos três ramos
+    // acima — nunca toca `asset.nativeAspectRatio` nem o conteúdo isolado.
+    if (frame.groupRotationQuarterTurns != 0) {
+      framedVideo = RotatedBox(
+        quarterTurns: frame.groupRotationQuarterTurns,
+        child: framedVideo,
+      );
+    }
+
     return _timelined(framedVideo);
   }
 
@@ -681,8 +692,10 @@ class _EditorPageState extends State<EditorPage> {
   /// recorte quando há uma, senão a do vídeo inteiro. É a mesma base de
   /// [ConversionSettings.contentDimensions], que a exportação usa — sem
   /// isso a prévia e o GIF divergem sempre que há recorte.
-  double get _contentAspectRatio =>
-      _settings.crop?.aspectRatio ?? _video.aspectRatio;
+  double get _contentAspectRatio {
+    final base = _settings.crop?.aspectRatio ?? _video.aspectRatio;
+    return _settings.rotationQuarterTurns.isOdd ? 1 / base : base;
+  }
 
   /// Prévia ao vivo de uma moldura de imagem: a arte (SVG das prontas do
   /// app ou importado pelo usuário, ou PNG importado no formato legado)
@@ -791,6 +804,8 @@ class _EditorPageState extends State<EditorPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _frameStyleThumbnails(),
+          const SizedBox(height: 18),
+          _sectionCard(children: [_groupRotateRow()]),
           if (style != FrameStyle.none) ...[
             const SizedBox(height: 18),
             _sectionCard(
@@ -1283,6 +1298,38 @@ class _EditorPageState extends State<EditorPage> {
         _updateFrame(_settings.frame.copyWith(clearImageFrame: true));
       }
     });
+  }
+
+  /// "Girar resultado": gira moldura + conteúdo já compostos como uma peça
+  /// só (ver [_framedPreview]) — diferente da aba "Girar", que só afeta o
+  /// vídeo. Fica fora do `if (style != FrameStyle.none)` de
+  /// [_frameStyleSection] de propósito: continua visível com "Sem moldura",
+  /// moldura procedural ou moldura de imagem.
+  Widget _groupRotateRow() {
+    final turns = _settings.frame.groupRotationQuarterTurns;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Girar resultado',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          OutlinedButton.icon(
+            key: const ValueKey('groupRotateButton'),
+            onPressed: () => _updateFrame(
+              _settings.frame.copyWith(
+                groupRotationQuarterTurns: (turns + 1) % 4,
+              ),
+            ),
+            icon: const Icon(Icons.rotate_right_rounded),
+            label: Text(turns == 0 ? 'Girar 90°' : '${turns * 90}°'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _frameColorRow() => _colorPickerRow(
@@ -1789,8 +1836,37 @@ class _EditorPageState extends State<EditorPage> {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(children: [content, _playPauseOverlay(player)]),
+      child: Stack(
+        children: [_rotatedContent(content), _playPauseOverlay(player)],
+      ),
     );
+  }
+
+  /// Aplica a rotação/espelhamento do CONTEÚDO (aba "Girar") a [content] —
+  /// mesma ordem (girar, depois espelhar) que a exportação usa em
+  /// `FfmpegService.buildVideoFilter` e que `svg_xml_editor.dart` já usa para
+  /// a moldura de imagem. Independente de qualquer moldura: quem chama
+  /// [_croppedPreview] é que decide o que desenhar ao redor do resultado.
+  Widget _rotatedContent(Widget content) {
+    var rotated = content;
+    if (_settings.rotationQuarterTurns != 0) {
+      rotated = RotatedBox(
+        quarterTurns: _settings.rotationQuarterTurns,
+        child: rotated,
+      );
+    }
+    if (_settings.flipHorizontal || _settings.flipVertical) {
+      rotated = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.diagonal3Values(
+          _settings.flipHorizontal ? -1.0 : 1.0,
+          _settings.flipVertical ? -1.0 : 1.0,
+          1.0,
+        ),
+        child: rotated,
+      );
+    }
+    return rotated;
   }
 
   /// Botão central de play/pause, compartilhado pelas duas prévias. Voltar
@@ -2387,6 +2463,111 @@ class _EditorPageState extends State<EditorPage> {
   int _even(int value) {
     if (value <= 2) return 2;
     return value.isEven ? value : value - 1;
+  }
+
+  // ---------------------------------------------------------------------
+  // Seção "Girar/Espelhar" — gira/espelha só o CONTEÚDO (vídeo), sem
+  // nenhum efeito sobre a moldura (ver "Girar resultado" na aba "Moldura",
+  // em [_groupRotateRow]). Mesmo padrão de `SvgEditPage._rotateFlipSection`.
+  // ---------------------------------------------------------------------
+
+  String get _rotateFlipLabel {
+    final parts = <String>[
+      if (_settings.rotationQuarterTurns != 0)
+        '${_settings.rotationQuarterTurns * 90}°',
+      if (_settings.flipHorizontal) 'Espelho H',
+      if (_settings.flipVertical) 'Espelho V',
+    ];
+    return parts.isEmpty ? 'Nenhum' : parts.join(' · ');
+  }
+
+  LabeledSection _rotateSection() {
+    return LabeledSection(
+      icon: Icons.rotate_90_degrees_ccw_rounded,
+      title: 'Girar/Espelhar',
+      value: _rotateFlipLabel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _update(
+                    _settings.copyWith(
+                      rotationQuarterTurns:
+                          (_settings.rotationQuarterTurns + 3) % 4,
+                    ),
+                  ),
+                  icon: const Icon(Icons.rotate_left_rounded),
+                  label: const Text('90° à esquerda'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _update(
+                    _settings.copyWith(
+                      rotationQuarterTurns:
+                          (_settings.rotationQuarterTurns + 1) % 4,
+                    ),
+                  ),
+                  icon: const Icon(Icons.rotate_right_rounded),
+                  label: const Text('90° à direita'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _flipToggleButton(
+                  label: 'Horizontal',
+                  icon: Icons.swap_horiz_rounded,
+                  selected: _settings.flipHorizontal,
+                  onTap: () => _update(
+                    _settings.copyWith(
+                      flipHorizontal: !_settings.flipHorizontal,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _flipToggleButton(
+                  label: 'Vertical',
+                  icon: Icons.swap_vert_rounded,
+                  selected: _settings.flipVertical,
+                  onTap: () => _update(
+                    _settings.copyWith(flipVertical: !_settings.flipVertical),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _flipToggleButton({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return selected
+        ? FilledButton.tonalIcon(
+            onPressed: onTap,
+            icon: Icon(icon),
+            label: Text(label),
+          )
+        : OutlinedButton.icon(
+            onPressed: onTap,
+            icon: Icon(icon),
+            label: Text(label),
+          );
   }
 
   /// Seção de velocidade de reprodução do GIF.

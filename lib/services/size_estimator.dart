@@ -194,7 +194,10 @@ class SizeEstimator {
     required VideoInfo video,
     ComplexityProfile profile = ComplexityProfile.fallback,
   }) {
-    final (width, height) = settings.outputDimensions(video);
+    // `finalOutputDimensions` (não `outputDimensions`) porque é o tamanho
+    // exibido para a pessoa; a contagem de pixels (`pixels`) é a mesma nos
+    // dois, já que girar 90° só troca largura por altura.
+    final (width, height) = settings.finalOutputDimensions(video);
     final frames = settings.frameCount;
     final pixels = width * height;
     final contentPixels = pixels - _frameBorderPixels(settings, video);
