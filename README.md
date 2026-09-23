@@ -101,6 +101,11 @@ both use, so what you see is what gets encoded.
   inpainting, written in plain Dart: **no model, no extra dependency and no
   growth in APK size**
 - Pinch to zoom the preview for precise work; one finger paints, two zoom
+- Compact bottom panel sized for 360dp phones: a header with a badge that
+  shows whether a selection is ready, tool buttons with icons, brush size on
+  a single row, a three-way quality picker, and pill-shaped **Erase** /
+  **Clear** actions with "Undo stroke" underneath. Labels never truncate —
+  they shrink slightly to fit instead
 - Quality picker trades time for resolution. Small erases (a watermark, a
   sign, someone far away) run at native resolution whatever you pick,
   because only a window around the selection is processed
