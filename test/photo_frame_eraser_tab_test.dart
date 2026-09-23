@@ -7,6 +7,7 @@ import 'package:video_to_gif/features/photo/models/eraser_mask.dart';
 import 'package:video_to_gif/core/models/photo_info.dart';
 import 'package:video_to_gif/features/photo/photo_frame_page.dart';
 import 'package:video_to_gif/features/photo/widgets/eraser_mask_overlay.dart';
+import 'package:video_to_gif/features/photo/widgets/eraser_option_button.dart';
 
 Future<void> _writeSolidPng(String path, int width, int height) async {
   final recorder = ui.PictureRecorder();
@@ -88,7 +89,14 @@ void main() {
 
     // O estado da seleção fica no selo do cabeçalho do painel.
     expect(find.text('Nenhuma seleção'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Pincel'), findsOneWidget);
+    expect(find.widgetWithText(EraserOptionButton, 'Pincel'), findsOneWidget);
+    // "Apagar seleção" e a nota sobre a qualidade não estão no mockup, mas
+    // continuam no painel.
+    expect(
+      find.widgetWithText(EraserOptionButton, 'Apagar seleção'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Mais qualidade demora mais'), findsOneWidget);
     expect(find.byType(EraserCanvas), findsOneWidget);
     // Fora da aba a prévia é a normal; aqui a foto aparece crua, para a
     // seleção ficar em coordenadas da foto.
@@ -146,7 +154,10 @@ void main() {
     // Pincel: o tamanho importa.
     expect(find.text('Tamanho do pincel'), findsOneWidget);
 
-    await tapInPanel(tester, find.widgetWithText(ChoiceChip, 'Retângulo'));
+    await tapInPanel(
+      tester,
+      find.widgetWithText(EraserOptionButton, 'Retângulo'),
+    );
 
     // Retângulo desenha área fechada — espessura não quer dizer nada.
     expect(find.text('Tamanho do pincel'), findsNothing);
@@ -158,7 +169,10 @@ void main() {
   ) async {
     await pumpPage(tester);
     await openEraserTab(tester);
-    await tapInPanel(tester, find.widgetWithText(ChoiceChip, 'Retângulo'));
+    await tapInPanel(
+      tester,
+      find.widgetWithText(EraserOptionButton, 'Retângulo'),
+    );
 
     await paintStroke(tester);
 
@@ -172,7 +186,10 @@ void main() {
     await openEraserTab(tester);
     await paintStroke(tester);
 
-    await tapInPanel(tester, find.widgetWithText(ChoiceChip, 'Apagar seleção'));
+    await tapInPanel(
+      tester,
+      find.widgetWithText(EraserOptionButton, 'Apagar seleção'),
+    );
     await paintStroke(tester);
 
     final strokes = canvas(tester).mask.strokes;
@@ -187,10 +204,10 @@ void main() {
     await pumpPage(tester);
     await openEraserTab(tester);
 
-    await tapInPanel(tester, find.widgetWithText(ChoiceChip, 'Alta'));
+    await tapInPanel(tester, find.widgetWithText(EraserOptionButton, 'Alta'));
 
-    final chip = tester.widget<ChoiceChip>(
-      find.widgetWithText(ChoiceChip, 'Alta'),
+    final chip = tester.widget<EraserOptionButton>(
+      find.widgetWithText(EraserOptionButton, 'Alta'),
     );
     expect(chip.selected, isTrue);
   });
