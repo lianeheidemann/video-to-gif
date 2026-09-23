@@ -86,8 +86,7 @@ void main() {
     await pumpPage(tester);
     await openEraserTab(tester);
 
-    // O rodapé mostra o resumo da seção, não o título — ver
-    // `EditorTabsFooter._panel`.
+    // O estado da seleção fica no selo do cabeçalho do painel.
     expect(find.text('Nenhuma seleção'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Pincel'), findsOneWidget);
     expect(find.byType(EraserCanvas), findsOneWidget);
@@ -111,6 +110,8 @@ void main() {
 
     expect(canvas(tester).mask.strokes, hasLength(1));
     expect(tester.widget<FilledButton>(erase).onPressed, isNotNull);
+    expect(find.text('Seleção pronta'), findsOneWidget);
+    expect(find.text('Nenhuma seleção'), findsNothing);
   });
 
   testWidgets('"Limpar" esvazia a seleção inteira', (tester) async {
