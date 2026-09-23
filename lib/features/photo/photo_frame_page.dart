@@ -33,6 +33,7 @@ import '../../core/ui/crop/cropped_view.dart';
 import '../../core/ui/editor_tabs_footer.dart';
 import '../collage/widgets/export_progress_dialog.dart';
 import 'widgets/eraser_mask_overlay.dart';
+import 'widgets/eraser_option_button.dart';
 import '../../core/ui/labeled_section.dart';
 import '../../core/ui/preview_settings_panel.dart';
 import '../../core/ui/rotate_flip_panel.dart';
@@ -322,7 +323,8 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       icon: Icons.auto_fix_high_rounded,
       title: 'Borracha mágica',
       label: 'Borracha',
-      value: _eraserMask.isEmpty ? 'Nenhuma seleção' : 'Seleção pronta',
+      // Sem `value`: o painel desenha o próprio cabeçalho, com o estado da
+      // seleção num selo ao lado do título (ver `_eraserHeader`).
       builder: (_) => _eraserSection(),
     ),
     EditorSection(
@@ -1113,122 +1115,177 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
   // ---------------------------------------------------------------------
 
   /// O painel da borracha. A ordem segue o uso: escolher a ferramenta,
-  /// ajustar o pincel, apagar — e só depois os botões de arrependimento.
+  /// ajustar o pincel e a qualidade, apagar — e só depois os botões de
+  /// arrependimento. Divisórias separam os três blocos.
+  ///
+  /// Tudo é compacto de propósito (rótulos de 13sp, botões de escolha de
+  /// 34dp) para caber numa tela de 360dp, e nenhum texto usa reticências:
+  /// o que não cabe encolhe um pouco em vez de virar "Nor…".
   Widget _eraserSection() {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final canvas = _eraserCanvasKey.currentState;
     final radius = brushRadiusFor(_brushPercent, _photo.width, _photo.height);
+    final divider = Divider(
+      height: 20,
+      color: scheme.outlineVariant.withValues(alpha: 0.5),
+    );
+    final rowLabel = theme.textTheme.bodyMedium?.copyWith(fontSize: 13);
+    final actionText = theme.textTheme.titleSmall?.copyWith(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+    );
+    final linkText = theme.textTheme.labelLarge?.copyWith(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+    );
+    final linkStyle = TextButton.styleFrom(
+      textStyle: linkText,
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Pinte o que quer tirar da foto. Um dedo pinta, dois dão zoom.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 12),
+        _eraserHeader(theme),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final tool in EraserTool.values)
-              ChoiceChip(
-                label: Text(tool.label),
+            // Pincel, Retângulo e Laço na primeira linha, como no mockup;
+            // "Apagar seleção" (que não está nele) vem por último e cai na
+            // linha de baixo nas telas estreitas.
+            for (final tool in const [
+              EraserTool.brush,
+              EraserTool.rectangle,
+              EraserTool.lasso,
+              EraserTool.unbrush,
+            ])
+              EraserOptionButton(
+                label: tool.label,
+                icon: _eraserToolIcon(tool),
                 selected: _eraserTool == tool,
-                onSelected: _erasing
+                onPressed: _erasing
                     ? null
-                    : (_) => setState(() => _eraserTool = tool),
+                    : () => setState(() => _eraserTool = tool),
               ),
           ],
         ),
+        divider,
         // O slider só faz sentido para as ferramentas que têm espessura; o
         // laço e o retângulo desenham área fechada.
         if (!_eraserTool.isArea) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Tamanho do pincel',
-                  style: theme.textTheme.bodyMedium,
+          SizedBox(
+            height: 36,
+            child: Row(
+              children: [
+                Text('Tamanho do pincel', style: rowLabel),
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 4,
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 14,
+                      ),
+                    ),
+                    child: Slider(
+                      min: 0.5,
+                      max: 20,
+                      divisions: 39,
+                      value: _brushPercent,
+                      label: '${radius.round() * 2}px',
+                      onChanged: _erasing
+                          ? null
+                          : (v) => setState(() => _brushPercent = v),
+                    ),
+                  ),
                 ),
-              ),
-              Text(
-                '${radius.round() * 2}px',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.primary,
+                Text(
+                  '${radius.round() * 2}px',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        Row(
+          children: [
+            Text('Qualidade', style: rowLabel),
+            const SizedBox(width: 12),
+            for (final (i, quality) in EraserQuality.values.indexed) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: EraserOptionButton(
+                  label: quality.label,
+                  selected: _eraserQuality == quality,
+                  showCheck: true,
+                  expand: true,
+                  onPressed: _erasing
+                      ? null
+                      : () => setState(() => _eraserQuality = quality),
                 ),
               ),
             ],
-          ),
-          Slider(
-            min: 0.5,
-            max: 20,
-            divisions: 39,
-            value: _brushPercent,
-            label: '${radius.round() * 2}px',
-            onChanged: _erasing
-                ? null
-                : (v) => setState(() => _brushPercent = v),
-          ),
-        ],
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Text('Qualidade', style: theme.textTheme.bodyMedium),
-            ),
-            const SizedBox(width: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final quality in EraserQuality.values)
-                  ChoiceChip(
-                    label: Text(quality.label),
-                    selected: _eraserQuality == quality,
-                    onSelected: _erasing
-                        ? null
-                        : (_) => setState(() => _eraserQuality = quality),
-                  ),
-              ],
-            ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           'Mais qualidade demora mais. Áreas pequenas saem em resolução '
           'cheia em qualquer opção.',
           style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+            fontSize: 11,
+            color: scheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 12),
+        divider,
         Row(
           children: [
             Expanded(
+              flex: 72,
               child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(40),
+                  shape: const StadiumBorder(),
+                  textStyle: actionText,
+                ),
                 onPressed: (_eraserMask.isEmpty || _erasing) ? null : _erase,
-                icon: const Icon(Icons.auto_fix_high_rounded),
+                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
                 label: const Text('Apagar'),
               ),
             ),
             const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: (_eraserMask.isEmpty || _erasing)
-                  ? null
-                  : () => setState(() => _eraserMask = EraserMask.empty),
-              child: const Text('Limpar'),
+            Expanded(
+              flex: 28,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(40),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  shape: const StadiumBorder(),
+                  side: BorderSide(color: scheme.outline),
+                  textStyle: actionText,
+                ),
+                onPressed: (_eraserMask.isEmpty || _erasing)
+                    ? null
+                    : () => setState(() => _eraserMask = EraserMask.empty),
+                child: const Text('Limpar'),
+              ),
             ),
           ],
         ),
+        const SizedBox(height: 4),
         Wrap(
-          spacing: 8,
+          spacing: 4,
           children: [
             if (_eraserMask.strokes.isNotEmpty && !_erasing)
               TextButton.icon(
+                style: linkStyle,
                 onPressed: () =>
                     setState(() => _eraserMask = _eraserMask.removeLast()),
                 icon: const Icon(Icons.undo_rounded, size: 18),
@@ -1239,12 +1296,14 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             // primeiro preenchimento não convence.
             if (_canRetryErase && !_erasing)
               TextButton.icon(
+                style: linkStyle,
                 onPressed: _retryErase,
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('Tentar de novo'),
               ),
             if (canvas?.isZoomed ?? false)
               TextButton.icon(
+                style: linkStyle,
                 onPressed: canvas!.resetZoom,
                 icon: const Icon(Icons.zoom_out_map_rounded, size: 18),
                 label: const Text('Enquadrar'),
@@ -1254,6 +1313,84 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
       ],
     );
   }
+
+  /// Cabeçalho do painel: ícone, título e a dica de uso, com o estado da
+  /// seleção num selo à direita — é o resumo que as outras abas mostram na
+  /// linha de valor do rodapé.
+  Widget _eraserHeader(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final ready = !_eraserMask.isEmpty;
+    // O selo fica só na altura do título; a dica corre por baixo dos dois,
+    // alinhada ao texto do título, numa linha só (encolhe se não couber).
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.auto_fix_normal_rounded,
+              size: 20,
+              color: scheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Borracha',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              height: 24,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: ready
+                    ? scheme.primaryContainer
+                    : scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                ready ? 'Seleção pronta' : 'Nenhuma seleção',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: ready
+                      ? scheme.onPrimaryContainer
+                      : scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 28, top: 2),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Pinte o que quer tirar da foto. Um dedo pinta, dois dão zoom.',
+              maxLines: 1,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11.5,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  IconData _eraserToolIcon(EraserTool tool) => switch (tool) {
+    EraserTool.brush => Icons.brush_rounded,
+    EraserTool.unbrush => Icons.remove_circle_outline_rounded,
+    EraserTool.rectangle => Icons.crop_square_rounded,
+    EraserTool.lasso => Icons.highlight_alt_rounded,
+  };
 
   /// Apaga a seleção atual. Cada apagada é um passo de desfazer inteiro: a
   /// foto anterior continua no disco, então voltar é imediato.
