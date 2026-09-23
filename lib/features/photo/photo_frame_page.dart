@@ -1116,36 +1116,43 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
 
   /// O painel da borracha. A ordem segue o uso: escolher a ferramenta,
   /// ajustar o pincel e a qualidade, apagar — e só depois os botões de
-  /// arrependimento. Divisórias separam os três blocos. Os tamanhos seguem
-  /// o mockup da aba: rótulos de 14sp, botões de escolha de 38dp e as ações
-  /// principais um pouco maiores (46dp, 17sp).
+  /// arrependimento. Divisórias separam os três blocos.
+  ///
+  /// Tudo é compacto de propósito (rótulos de 13sp, botões de escolha de
+  /// 34dp) para caber numa tela de 360dp, e nenhum texto usa reticências:
+  /// o que não cabe encolhe um pouco em vez de virar "Nor…".
   Widget _eraserSection() {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final canvas = _eraserCanvasKey.currentState;
     final radius = brushRadiusFor(_brushPercent, _photo.width, _photo.height);
     final divider = Divider(
-      height: 28,
+      height: 20,
       color: scheme.outlineVariant.withValues(alpha: 0.5),
     );
-    final rowLabel = theme.textTheme.bodyMedium?.copyWith(fontSize: 14);
-    final actionText = theme.textTheme.titleMedium?.copyWith(
-      fontSize: 17,
+    final rowLabel = theme.textTheme.bodyMedium?.copyWith(fontSize: 13);
+    final actionText = theme.textTheme.titleSmall?.copyWith(
+      fontSize: 15,
       fontWeight: FontWeight.w600,
     );
-    final linkText = theme.textTheme.titleSmall?.copyWith(
-      fontSize: 16,
+    final linkText = theme.textTheme.labelLarge?.copyWith(
+      fontSize: 14,
       fontWeight: FontWeight.w600,
+    );
+    final linkStyle = TextButton.styleFrom(
+      textStyle: linkText,
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
     );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _eraserHeader(theme),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         Wrap(
-          spacing: 10,
-          runSpacing: 10,
+          spacing: 8,
+          runSpacing: 8,
           children: [
             // Pincel, Retângulo e Laço na primeira linha, como no mockup;
             // "Apagar seleção" (que não está nele) vem por último e cai na
@@ -1170,47 +1177,50 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         // O slider só faz sentido para as ferramentas que têm espessura; o
         // laço e o retângulo desenham área fechada.
         if (!_eraserTool.isArea) ...[
-          Row(
-            children: [
-              SizedBox(
-                width: 132,
-                child: Text(
-                  'Tamanho do pincel',
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.visible,
-                  style: rowLabel,
+          SizedBox(
+            height: 36,
+            child: Row(
+              children: [
+                Text('Tamanho do pincel', style: rowLabel),
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 4,
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 14,
+                      ),
+                    ),
+                    child: Slider(
+                      min: 0.5,
+                      max: 20,
+                      divisions: 39,
+                      value: _brushPercent,
+                      label: '${radius.round() * 2}px',
+                      onChanged: _erasing
+                          ? null
+                          : (v) => setState(() => _brushPercent = v),
+                    ),
+                  ),
                 ),
-              ),
-              Expanded(
-                child: Slider(
-                  min: 0.5,
-                  max: 20,
-                  divisions: 39,
-                  value: _brushPercent,
-                  label: '${radius.round() * 2}px',
-                  onChanged: _erasing
-                      ? null
-                      : (v) => setState(() => _brushPercent = v),
+                Text(
+                  '${radius.round() * 2}px',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.primary,
+                  ),
                 ),
-              ),
-              Text(
-                '${radius.round() * 2}px',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: scheme.primary,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
         ],
         Row(
           children: [
-            SizedBox(width: 132, child: Text('Qualidade', style: rowLabel)),
+            Text('Qualidade', style: rowLabel),
+            const SizedBox(width: 12),
             for (final (i, quality) in EraserQuality.values.indexed) ...[
-              if (i > 0) const SizedBox(width: 8),
+              if (i > 0) const SizedBox(width: 6),
               Expanded(
                 child: EraserOptionButton(
                   label: quality.label,
@@ -1225,12 +1235,12 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             ],
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           'Mais qualidade demora mais. Áreas pequenas saem em resolução '
           'cheia em qualquer opção.',
           style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 12,
+            fontSize: 11,
             color: scheme.onSurfaceVariant,
           ),
         ),
@@ -1238,24 +1248,24 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
         Row(
           children: [
             Expanded(
-              flex: 74,
+              flex: 72,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(46),
+                  minimumSize: const Size.fromHeight(40),
                   shape: const StadiumBorder(),
                   textStyle: actionText,
                 ),
                 onPressed: (_eraserMask.isEmpty || _erasing) ? null : _erase,
-                icon: const Icon(Icons.auto_fix_high_rounded, size: 20),
+                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
                 label: const Text('Apagar'),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
-              flex: 26,
+              flex: 28,
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(46),
+                  minimumSize: const Size.fromHeight(40),
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   shape: const StadiumBorder(),
                   side: BorderSide(color: scheme.outline),
@@ -1269,16 +1279,16 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Wrap(
-          spacing: 8,
+          spacing: 4,
           children: [
             if (_eraserMask.strokes.isNotEmpty && !_erasing)
               TextButton.icon(
-                style: TextButton.styleFrom(textStyle: linkText),
+                style: linkStyle,
                 onPressed: () =>
                     setState(() => _eraserMask = _eraserMask.removeLast()),
-                icon: const Icon(Icons.undo_rounded, size: 22),
+                icon: const Icon(Icons.undo_rounded, size: 18),
                 label: const Text('Desfazer traço'),
               ),
             // Só aparece depois de uma apagada: outra semente dá outro
@@ -1286,16 +1296,16 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
             // primeiro preenchimento não convence.
             if (_canRetryErase && !_erasing)
               TextButton.icon(
-                style: TextButton.styleFrom(textStyle: linkText),
+                style: linkStyle,
                 onPressed: _retryErase,
-                icon: const Icon(Icons.refresh_rounded, size: 22),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('Tentar de novo'),
               ),
             if (canvas?.isZoomed ?? false)
               TextButton.icon(
-                style: TextButton.styleFrom(textStyle: linkText),
+                style: linkStyle,
                 onPressed: canvas!.resetZoom,
-                icon: const Icon(Icons.zoom_out_map_rounded, size: 22),
+                icon: const Icon(Icons.zoom_out_map_rounded, size: 18),
                 label: const Text('Enquadrar'),
               ),
           ],
@@ -1311,7 +1321,7 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
     final scheme = theme.colorScheme;
     final ready = !_eraserMask.isEmpty;
     // O selo fica só na altura do título; a dica corre por baixo dos dois,
-    // alinhada ao texto do título, para não ser espremida pelo selo.
+    // alinhada ao texto do título, numa linha só (encolhe se não couber).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1319,34 +1329,34 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           children: [
             Icon(
               Icons.auto_fix_normal_rounded,
-              size: 22,
+              size: 20,
               color: scheme.primary,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 'Borracha',
                 style: theme.textTheme.titleMedium?.copyWith(
-                  fontSize: 17,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ),
             const SizedBox(width: 8),
             Container(
-              height: 28,
+              height: 24,
               alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
                 color: ready
                     ? scheme.primaryContainer
                     : scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
                 ready ? 'Seleção pronta' : 'Nenhuma seleção',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontSize: 12.5,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: ready
                       ? scheme.onPrimaryContainer
@@ -1357,12 +1367,17 @@ class _PhotoFramePageState extends State<PhotoFramePage> {
           ],
         ),
         Padding(
-          padding: const EdgeInsets.only(left: 32, top: 2),
-          child: Text(
-            'Pinte o que quer tirar da foto. Um dedo pinta, dois dão zoom.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 11.5,
-              color: scheme.onSurfaceVariant,
+          padding: const EdgeInsets.only(left: 28, top: 2),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Pinte o que quer tirar da foto. Um dedo pinta, dois dão zoom.',
+              maxLines: 1,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11.5,
+                color: scheme.onSurfaceVariant,
+              ),
             ),
           ),
         ),

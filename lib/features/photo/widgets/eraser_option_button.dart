@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 ///
 /// Substitui o [ChoiceChip]: o chip do Material 3 fixa altura, padding e
 /// fonte pelo tema, e o painel precisa das proporções do mockup (botões de
-/// 38dp, cantos de 10dp, rótulo de 14sp).
+/// 34dp, cantos de 10dp, rótulo de 13sp). O rótulo nunca vira reticências:
+/// numa célula estreita o conteúdo inteiro encolhe até caber.
 class EraserOptionButton extends StatelessWidget {
   const EraserOptionButton({
     super.key,
@@ -32,7 +33,7 @@ class EraserOptionButton extends StatelessWidget {
   /// qualidade, que dividem a linha em partes iguais.
   final bool expand;
 
-  static const double height = 38;
+  static const double height = 34;
   static const double radius = 10;
 
   @override
@@ -58,28 +59,30 @@ class EraserOptionButton extends StatelessWidget {
       side: border,
     );
 
-    final content = Row(
-      mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         if (leading != null) ...[
-          Icon(leading, size: expand ? 16 : 18, color: foreground),
-          SizedBox(width: expand ? 4 : 8),
+          Icon(leading, size: 16, color: foreground),
+          SizedBox(width: expand ? 4 : 6),
         ],
-        Flexible(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontSize: 14,
-              color: foreground,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            ),
+        Text(
+          label,
+          maxLines: 1,
+          softWrap: false,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontSize: 13,
+            color: foreground,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
           ),
         ),
       ],
     );
+    final content = expand
+        ? Center(
+            child: FittedBox(fit: BoxFit.scaleDown, child: row),
+          )
+        : row;
 
     return Semantics(
       button: true,
@@ -98,8 +101,8 @@ class EraserOptionButton extends StatelessWidget {
               height: height,
               child: Padding(
                 // Os de qualidade dividem a linha em três: margem menor para
-                // "✓ Alta" caber inteiro.
-                padding: EdgeInsets.symmetric(horizontal: expand ? 6 : 14),
+                // "✓ Normal" caber inteiro.
+                padding: EdgeInsets.symmetric(horizontal: expand ? 4 : 12),
                 child: content,
               ),
             ),
