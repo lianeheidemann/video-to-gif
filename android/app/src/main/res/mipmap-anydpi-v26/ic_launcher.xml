@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Ícone adaptativo (Android 8.0+). O sistema recorta a camada da frente na
-  forma que o launcher usar (círculo, quadrado arredondado, gota), por isso
-  a marca é desenhada menor nessa camada do que no ícone legado das pastas
-  mipmap-*dpi.
--->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
-    <monochrome android:drawable="@mipmap/ic_launcher_foreground" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>
