@@ -1,73 +1,135 @@
 #!/usr/bin/env python3
-"""Gera o ícone do GitBat em todas as densidades Android e na ficha da loja.
+"""Gera os recursos vetoriais do launcher e as imagens da ficha da Play Store.
 
 Rode a partir da raiz do projeto:
     pip install Pillow
     python3 tool/gerar_icones.py
 
-O mestre transparente de 1024x1024 fica em
-``assets/icon/icon-v3/gitbat-mark.webp``. A partir dele, o script compõe o
-fundo e gera os ícones legados, adaptativos, de abertura e da Play Store.
+A arte vetorial 1024×1024 é a fonte única do ícone. O Android usa VectorDrawable
+em diferentes densidades e recortes; o script também atualiza PNGs de fallback.
 """
 
 from pathlib import Path
+import re
+import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageDraw, ImageFont
 
 RAIZ = Path(__file__).resolve().parent.parent
-ICONE_FONTE = RAIZ / 'assets/icon/icon-v3/gitbat-mark.webp'
-
-AZUL_NOITE = (17, 25, 41)  # fundo do ícone, #111929
-AZUL_MARINHO = (12, 72, 168)
-AZUL_GELO = (176, 221, 252)
-CIANO = (34, 216, 238)
-BRANCO = (255, 255, 255)
-
-DENSIDADES = {
-    'mdpi': 48,
-    'hdpi': 72,
-    'xhdpi': 96,
-    'xxhdpi': 144,
-    'xxxhdpi': 192,
-}
+ICONE_FONTE = RAIZ / 'assets/icon/icon-v3/gitbat-mark.svg'
+AZUL_NOITE = '#111929'
+AZUL_MARINHO = '#0C48A8'
+AZUL_GELO = '#B0DDFC'
+CIANO = '#22D8EE'
+BRANCO = '#FFFFFF'
+COR_MARCA = '#E8F2FF'
 
 
-def icone_transparente(tamanho):
-    """Redimensiona o mestre RGBA sem distorcer nem preencher transparência."""
-    with Image.open(ICONE_FONTE) as fonte:
-        imagem = fonte.convert('RGBA')
-    imagem.thumbnail((tamanho, tamanho), Image.Resampling.LANCZOS)
-    tela = Image.new('RGBA', (tamanho, tamanho), (0, 0, 0, 0))
-    tela.alpha_composite(imagem, ((tamanho - imagem.width) // 2,
-                                  (tamanho - imagem.height) // 2))
-    return tela
+def dados_do_svg():
+    raiz = ET.parse(ICONE_FONTE).getroot()
+    caminho = raiz.find('{http://www.w3.org/2000/svg}path')
+    if caminho is None or not caminho.get('d'):
+        raise ValueError(f'Não encontrei o path da marca em {ICONE_FONTE}')
+    return caminho.get('d')
 
 
-def icone_completo(tamanho):
-    """Ícone quadrado com fundo, para launcher legado e ficha da loja."""
-    tela = Image.new('RGBA', (tamanho, tamanho), (*AZUL_NOITE, 255))
-    tela.alpha_composite(icone_transparente(tamanho))
-    return tela
+def vetor(width_dp, height_dp, path_data, fill, background=None, safe=False):
+    partes = [
+        '<?xml version="1.0" encoding="utf-8"?>',
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"',
+        f'    android:width="{width_dp}dp" android:height="{height_dp}dp"',
+        '    android:viewportWidth="1024" android:viewportHeight="1024">',
+    ]
+    if background:
+        partes.append(
+            f'    <path android:fillColor="{background}" android:pathData="M0,0h1024v1024H0z" />'
+        )
+    if safe:
+        partes.extend([
+            '    <group android:scaleX="0.56" android:scaleY="0.56"',
+            '        android:translateX="225.28" android:translateY="225.28">',
+            f'        <path android:fillColor="{fill}" android:fillType="evenOdd" android:pathData="{path_data}" />',
+            '    </group>',
+        ])
+    else:
+        partes.append(
+            f'    <path android:fillColor="{fill}" android:fillType="evenOdd" android:pathData="{path_data}" />'
+        )
+    partes.append('</vector>')
+    return '\n'.join(partes) + '\n'
 
 
-def icone_adaptativo_frente(tamanho):
-    """Camada da frente. Android pode recortá-la em círculo, quadrado ou gota."""
-    camada = Image.new('RGBA', (tamanho, tamanho), (0, 0, 0, 0))
-    # O ícone fica em 2/3 da tela; mantém a marca dentro da área segura.
-    lado = round(tamanho * 2 / 3)
-    arte = icone_transparente(lado)
-    camada.alpha_composite(arte, ((tamanho - lado) // 2,
-                                  (tamanho - lado) // 2))
-    return camada
+def adaptive_icon():
+    return '''<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>
+'''
 
 
-def icone_abertura():
-    """Ícone de abertura do Android 12+, em canvas transparente de 960 px."""
-    tamanho = 960
-    camada = Image.new('RGBA', (tamanho, tamanho), (0, 0, 0, 0))
-    lado = tamanho // 2
-    camada.alpha_composite(icone_completo(lado), ((tamanho - lado) // 2,) * 2)
-    return camada
+def splash_vector(path_data):
+    # Mantém o mesmo enquadramento seguro do splash anterior: marca e fundo
+    # ocupam o quadrado central de 50% do canvas transparente.
+    return f'''<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp" android:height="288dp"
+    android:viewportWidth="1024" android:viewportHeight="1024">
+    <group android:scaleX="0.5" android:scaleY="0.5"
+        android:translateX="256" android:translateY="256">
+        <path android:fillColor="{AZUL_NOITE}" android:pathData="M0,0h1024v1024H0z" />
+        <path android:fillColor="{COR_MARCA}" android:fillType="evenOdd" android:pathData="{path_data}" />
+    </group>
+</vector>
+'''
+
+
+def poligono(path_data):
+    tokens = re.findall(r'[MLZ]|-?(?:\d+(?:\.\d*)?|\.\d+)', path_data)
+    loops = []
+    current = []
+    command = None
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if token in ('M', 'L'):
+            command = token
+            i += 1
+            continue
+        if token == 'Z':
+            if current:
+                loops.append(current)
+            current = []
+            command = None
+            i += 1
+            continue
+        if command not in ('M', 'L'):
+            raise ValueError(f'Coordenada SVG inesperada: {token}')
+        x = float(tokens[i]); y = float(tokens[i + 1]); i += 2
+        current.append((x, y))
+        # SVG treats coordinate pairs following M as implicit L commands.
+        command = 'L'
+    if current:
+        loops.append(current)
+    return loops
+
+
+def icone_completo(tamanho, loops):
+    # Renderiza em 4x para bordas suaves mesmo nos PNGs de fallback.
+    escala = 4
+    mask = Image.new('1', (tamanho * escala, tamanho * escala), 0)
+    desenho = ImageDraw.Draw(mask)
+    for loop in loops:
+        desenho.polygon([(round(x * tamanho / 1024 * escala),
+                          round(y * tamanho / 1024 * escala)) for x, y in loop],
+                        fill=1)
+    mask = mask.resize((tamanho, tamanho), Image.Resampling.LANCZOS)
+    imagem = Image.new('RGBA', (tamanho, tamanho), (*bytes.fromhex(AZUL_NOITE[1:]), 255))
+    marca = Image.new('RGBA', (tamanho, tamanho), (*bytes.fromhex(COR_MARCA[1:]), 0))
+    marca.putalpha(mask.convert('L'))
+    imagem.alpha_composite(marca)
+    return imagem
 
 
 def fonte(tamanho, negrito=True):
@@ -75,18 +137,17 @@ def fonte(tamanho, negrito=True):
     return ImageFont.truetype(f'/usr/share/fonts/truetype/dejavu/{nome}', tamanho)
 
 
-def grafico_destaque():
-    """Banner 1024x500 da ficha da Play Store."""
+def grafico_destaque(loops):
     largura, altura = 1024, 500
     imagem = Image.new('RGB', (largura, altura))
     pixels = imagem.load()
+    inicio = tuple(bytes.fromhex(AZUL_NOITE[1:]))
+    fim = tuple(bytes.fromhex(AZUL_MARINHO[1:]))
     for y in range(altura):
         for x in range(largura):
             t = (x / (largura - 1) + y / (altura - 1)) / 2
-            pixels[x, y] = tuple(round(AZUL_NOITE[c] +
-                (AZUL_MARINHO[c] - AZUL_NOITE[c]) * t) for c in range(3))
-
-    imagem.paste(icone_completo(300).convert('RGB'), (70, 100))
+            pixels[x, y] = tuple(round(inicio[c] + (fim[c] - inicio[c]) * t) for c in range(3))
+    imagem.paste(icone_completo(300, loops).convert('RGB'), (70, 100))
     desenho = ImageDraw.Draw(imagem)
     desenho.text((410, 165), 'GitBat', font=fonte(64), fill=BRANCO)
     desenho.text((412, 250), 'Saiba o peso antes de converter',
@@ -97,22 +158,34 @@ def grafico_destaque():
 
 
 def main():
+    path_data = dados_do_svg()
+    loops = poligono(path_data)
     res = RAIZ / 'android/app/src/main/res'
+    (res / 'mipmap-anydpi-v24').mkdir(parents=True, exist_ok=True)
+    (res / 'mipmap-anydpi-v26').mkdir(parents=True, exist_ok=True)
+    (res / 'drawable').mkdir(parents=True, exist_ok=True)
+    (res / 'drawable-anydpi-v31').mkdir(parents=True, exist_ok=True)
+    (res / 'mipmap-anydpi-v24/ic_launcher.xml').write_text(
+        vetor(48, 48, path_data, COR_MARCA, background=AZUL_NOITE))
+    (res / 'mipmap-anydpi-v26/ic_launcher.xml').write_text(adaptive_icon())
+    (res / 'drawable/ic_launcher_foreground.xml').write_text(
+        vetor(108, 108, path_data, COR_MARCA, safe=True))
+    (res / 'drawable/ic_launcher_monochrome.xml').write_text(
+        vetor(108, 108, path_data, '#FFFFFFFF', safe=True))
+    (res / 'drawable-anydpi-v31/splash_icon.xml').write_text(
+        splash_vector(path_data))
+
     loja = RAIZ / 'loja'
     loja.mkdir(exist_ok=True)
-
-    icone_completo(512).convert('RGB').save(loja / 'icone_512.png')
-    for densidade, px in DENSIDADES.items():
+    icone_completo(512, loops).convert('RGB').save(loja / 'icone_512.png')
+    grafico_destaque(loops).save(loja / 'grafico_destaque_1024x500.png')
+    # Mantém os PNGs de densidade como fallback para qualquer ferramenta que
+    # não consuma o VectorDrawable anydpi.
+    for densidade, tamanho in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96,
+                               'xxhdpi': 144, 'xxxhdpi': 192}.items():
         pasta = res / f'mipmap-{densidade}'
         pasta.mkdir(parents=True, exist_ok=True)
-        icone_completo(px).save(pasta / 'ic_launcher.png')
-        icone_adaptativo_frente(round(px * 2.25)).save(
-            pasta / 'ic_launcher_foreground.png')
-
-    pasta_splash = res / 'drawable-nodpi'
-    pasta_splash.mkdir(parents=True, exist_ok=True)
-    icone_abertura().save(pasta_splash / 'splash_icon.png')
-    grafico_destaque().save(loja / 'grafico_destaque_1024x500.png')
+        icone_completo(tamanho, loops).save(pasta / 'ic_launcher.png')
 
 
 if __name__ == '__main__':
