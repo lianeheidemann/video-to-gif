@@ -111,14 +111,17 @@ android/app/src/main/res/mipmap-*/ic_launcher.png
 android/app/src/main/res/mipmap-*/ic_launcher_foreground.png
 android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 android/app/src/main/res/drawable-nodpi/splash_icon.png
-assets/icon/icon-v2/morceguinho-icone-simples.png  (mestre, o morceguinho)
+assets/icon/icon-v3/gitbat-mark.webp  (mestre transparente, 1024×1024)
 ```
 
-O ícone anterior, com tudo o que era gerado a partir dele, fica guardado em
-`assets/icon/icon-v1/`. A logo do topo do README (sem fundo) é
+As versões anteriores do ícone continuam guardadas em `assets/icon/icon-v1/`
+e `assets/icon/icon-v2/`. A logo do topo do README (sem fundo) é
 `assets/readme/gitbat-logo.png`.
 
-Se quiser mudar o desenho ou as cores, edite `tool/gerar_icones.py` e rode:
+Para trocar a arte, substitua `assets/icon/icon-v3/gitbat-mark.webp` por uma
+imagem transparente quadrada de 1024×1024. O script gera todos os tamanhos
+Android a partir desse mestre. Para alterar cores de fundo ou banners, edite
+`tool/gerar_icones.py` e rode:
 
 ```bash
 pip install Pillow
