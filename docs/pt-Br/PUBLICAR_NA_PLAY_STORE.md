@@ -103,34 +103,34 @@ podem mudar à vontade.
 
 ### 3.3 O ícone
 
-**Já está pronto.** O repositório traz um ícone próprio (não o do Flutter) em
-todas as densidades, mais a versão adaptativa do Android 8+:
+**O ícone é vetorial no Android 7+**, então o launcher pode renderizá-lo
+nítido em diferentes densidades. No Android 8+, também usa uma camada
+adaptativa e mantém a marca dentro da área segura dos recortes:
 
 ```
-android/app/src/main/res/mipmap-*/ic_launcher.png
-android/app/src/main/res/mipmap-*/ic_launcher_foreground.png
-android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-android/app/src/main/res/drawable-nodpi/splash_icon.png
-assets/icon/icon-v3/gitbat-mark.webp  (mestre transparente, 1024×1024)
+android/app/src/main/res/mipmap-anydpi-v24/ic_launcher.xml  (vetorial, Android 7+)
+android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml  (adaptativo, Android 8+)
+android/app/src/main/res/drawable/ic_launcher_foreground.xml  (camada vetorial)
+android/app/src/main/res/drawable/ic_launcher_monochrome.xml  (tema monocromático)
+assets/icon/icon-v3/gitbat-mark.svg  (mestre vetorial, 1024×1024)
 ```
 
 As versões anteriores do ícone continuam guardadas em `assets/icon/icon-v1/`
 e `assets/icon/icon-v2/`. A logo do topo do README (sem fundo) é
 `assets/readme/gitbat-logo.png`.
 
-Para trocar a arte, substitua `assets/icon/icon-v3/gitbat-mark.webp` por uma
-imagem transparente quadrada de 1024×1024. O script gera todos os tamanhos
-Android a partir desse mestre. Para alterar cores de fundo ou banners, edite
-`tool/gerar_icones.py` e rode:
+Para trocar a arte, edite `assets/icon/icon-v3/gitbat-mark.svg`. O script
+`tool/gerar_icones.py` gera os recursos vetoriais do launcher e os PNGs de
+fallback e da ficha da loja:
 
 ```bash
 pip install Pillow
 python3 tool/gerar_icones.py
 ```
 
-O script regera o ícone em todas as densidades **e** as duas imagens da ficha
-da loja (`loja/icone_512.png` e `loja/grafico_destaque_1024x500.png`), o que
-mantém tudo coerente.
+Assim, Android 7+ usa o desenho vetorial em qualquer densidade; as variantes
+adaptativas e monocromáticas são geradas separadamente para os recursos do
+Android 8+ e Android 13+.
 
 ---
 
