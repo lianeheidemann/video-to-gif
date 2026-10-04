@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
-"""Gera o ícone do app e as imagens da ficha da Play Store.
+"""Gera o ícone do GitBat em todas as densidades Android e na ficha da loja.
 
 Rode a partir da raiz do projeto:
-
     pip install Pillow
     python3 tool/gerar_icones.py
 
-Produz:
-  android/app/src/main/res/mipmap-*/ic_launcher.png   ícone legado
-  android/app/src/main/res/mipmap-*/ic_launcher_foreground.png
-  android/app/src/main/res/drawable-nodpi/splash_icon.png
-  loja/icone_512.png                                  ícone da ficha da loja
-  loja/grafico_destaque_1024x500.png                  gráfico de destaque
-
-O ícone é o morceguinho de ``assets/icon/icon-v2/morceguinho-icone-simples.png``
-(identidade visual v2). O ícone anterior, com tudo o que era gerado a partir
-dele, está guardado em ``assets/icon/icon-v1/``.
+O mestre transparente de 1024x1024 fica em
+``assets/icon/icon-v3/gitbat-mark.webp``. A partir dele, o script compõe o
+fundo e gera os ícones legados, adaptativos, de abertura e da Play Store.
 """
 
 from pathlib import Path
@@ -23,14 +15,12 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 RAIZ = Path(__file__).resolve().parent.parent
-ICONE_FONTE = RAIZ / 'assets/icon/icon-v2/morceguinho-icone-simples.png'
+ICONE_FONTE = RAIZ / 'assets/icon/icon-v3/gitbat-mark.webp'
 
-# Cores da identidade do morceguinho (as mesmas da paleta oficial em
-# lib/app/palettes/bat_palette.dart).
 AZUL_NOITE = (17, 25, 41)  # fundo do ícone, #111929
-AZUL_MARINHO = (12, 72, 168)  # contorno do mascote, #0C48A8
-AZUL_GELO = (176, 221, 252)  # corpo do mascote, #B0DCFC
-CIANO = (34, 216, 238)  # fone de ouvido, #22D8EE
+AZUL_MARINHO = (12, 72, 168)
+AZUL_GELO = (176, 221, 252)
+CIANO = (34, 216, 238)
 BRANCO = (255, 255, 255)
 
 DENSIDADES = {
@@ -42,72 +32,37 @@ DENSIDADES = {
 }
 
 
-def gradiente(largura, altura, inicio, fim):
-    """Gradiente diagonal, do canto superior esquerdo ao inferior direito."""
-    base = Image.new('RGB', (largura, altura))
-    pixels = base.load()
-    for y in range(altura):
-        for x in range(largura):
-            t = (x / max(largura - 1, 1) + y / max(altura - 1, 1)) / 2
-            pixels[x, y] = tuple(
-                round(inicio[c] + (fim[c] - inicio[c]) * t) for c in range(3)
-            )
-    return base
+def icone_transparente(tamanho):
+    """Redimensiona o mestre RGBA sem distorcer nem preencher transparência."""
+    with Image.open(ICONE_FONTE) as fonte:
+        imagem = fonte.convert('RGBA')
+    imagem.thumbnail((tamanho, tamanho), Image.Resampling.LANCZOS)
+    tela = Image.new('RGBA', (tamanho, tamanho), (0, 0, 0, 0))
+    tela.alpha_composite(imagem, ((tamanho - imagem.width) // 2,
+                                  (tamanho - imagem.height) // 2))
+    return tela
 
 
 def icone_completo(tamanho):
-    """Ícone quadrado com fundo, para o launcher legado e para a loja."""
-    with Image.open(ICONE_FONTE) as fonte:
-        return fonte.convert('RGBA').resize((tamanho, tamanho), Image.LANCZOS)
-
-
-def morcego_sem_fundo(tamanho):
-    """Só o morceguinho, com o azul-noite do fundo trocado por transparência.
-
-    Os pixels perto de [AZUL_NOITE] (o fundo e os contornos do fone) somem aos
-    poucos, sem serrilhado. Sobre o fundo azul-noite do ícone adaptativo o
-    resultado fica idêntico ao original, e a versão monocromática (ícones
-    temáticos do Android 13+) ganha a silhueta do morcego em vez de um
-    quadrado cheio.
-    """
-    with Image.open(ICONE_FONTE) as fonte:
-        icone = fonte.convert('RGBA').resize((tamanho, tamanho), Image.LANCZOS)
-    pixels = icone.load()
-    for y in range(tamanho):
-        for x in range(tamanho):
-            r, g, b, a = pixels[x, y]
-            distancia = max(
-                abs(r - AZUL_NOITE[0]),
-                abs(g - AZUL_NOITE[1]),
-                abs(b - AZUL_NOITE[2]),
-            )
-            opacidade = min(max((distancia - 12) / 48, 0), 1)
-            pixels[x, y] = (r, g, b, round(a * opacidade))
-    return icone
+    """Ícone quadrado com fundo, para launcher legado e ficha da loja."""
+    tela = Image.new('RGBA', (tamanho, tamanho), (*AZUL_NOITE, 255))
+    tela.alpha_composite(icone_transparente(tamanho))
+    return tela
 
 
 def icone_adaptativo_frente(tamanho):
-    """Camada da frente do ícone adaptativo (fundo transparente).
-
-    O Android pode recortar o ícone em círculo, quadrado ou gota. Só os 66%
-    centrais são garantidos, então a marca fica menor aqui do que no ícone
-    legado. O fundo vem da cor `ic_launcher_background` (o mesmo azul-noite).
-    """
+    """Camada da frente. Android pode recortá-la em círculo, quadrado ou gota."""
     camada = Image.new('RGBA', (tamanho, tamanho), (0, 0, 0, 0))
-    # O centro de 66% é a área segura do ícone adaptativo: as pontas das asas
-    # ficam dentro dela com o ícone em 2/3 do tamanho.
+    # O ícone fica em 2/3 da tela; mantém a marca dentro da área segura.
     lado = round(tamanho * 2 / 3)
-    margem = (tamanho - lado) // 2
-    camada.alpha_composite(morcego_sem_fundo(lado), (margem, margem))
+    arte = icone_transparente(lado)
+    camada.alpha_composite(arte, ((tamanho - lado) // 2,
+                                  (tamanho - lado) // 2))
     return camada
 
 
 def icone_abertura():
-    """Ícone da splash do Android 12+ (960 px, logo na metade central).
-
-    O sistema recorta o ícone da abertura num círculo de 2/3 do tamanho; com
-    a logo na metade central, o quadrado arredondado cabe inteiro nele.
-    """
+    """Ícone de abertura do Android 12+, em canvas transparente de 960 px."""
     tamanho = 960
     camada = Image.new('RGBA', (tamanho, tamanho), (0, 0, 0, 0))
     lado = tamanho // 2
@@ -121,54 +76,43 @@ def fonte(tamanho, negrito=True):
 
 
 def grafico_destaque():
-    """Banner 1024x500 exigido pela ficha da Play Store."""
+    """Banner 1024x500 da ficha da Play Store."""
     largura, altura = 1024, 500
-    imagem = gradiente(largura, altura, AZUL_NOITE, AZUL_MARINHO).convert('RGBA')
+    imagem = Image.new('RGB', (largura, altura))
+    pixels = imagem.load()
+    for y in range(altura):
+        for x in range(largura):
+            t = (x / (largura - 1) + y / (altura - 1)) / 2
+            pixels[x, y] = tuple(round(AZUL_NOITE[c] +
+                (AZUL_MARINHO[c] - AZUL_NOITE[c]) * t) for c in range(3))
 
-    imagem.alpha_composite(icone_completo(300), (70, 100))
-
+    imagem.paste(icone_completo(300).convert('RGB'), (70, 100))
     desenho = ImageDraw.Draw(imagem)
     desenho.text((410, 165), 'GitBat', font=fonte(64), fill=BRANCO)
-    desenho.text(
-        (412, 250),
-        'Saiba o peso antes de converter',
-        font=fonte(30, negrito=False),
-        fill=AZUL_GELO,
-    )
-    desenho.text(
-        (412, 296),
-        'Corte · proporção · velocidade · FPS',
-        font=fonte(26, negrito=False),
-        fill=CIANO,
-    )
-
-    return imagem.convert('RGB')
+    desenho.text((412, 250), 'Saiba o peso antes de converter',
+                 font=fonte(30, negrito=False), fill=AZUL_GELO)
+    desenho.text((412, 296), 'Corte · proporção · velocidade · FPS',
+                 font=fonte(26, negrito=False), fill=CIANO)
+    return imagem
 
 
 def main():
-    (RAIZ / 'assets').mkdir(exist_ok=True)
-    (RAIZ / 'loja').mkdir(exist_ok=True)
     res = RAIZ / 'android/app/src/main/res'
+    loja = RAIZ / 'loja'
+    loja.mkdir(exist_ok=True)
 
-    icone_completo(512).convert('RGB').save(RAIZ / 'loja/icone_512.png')
-    print('loja/icone_512.png')
-
+    icone_completo(512).convert('RGB').save(loja / 'icone_512.png')
     for densidade, px in DENSIDADES.items():
         pasta = res / f'mipmap-{densidade}'
         pasta.mkdir(parents=True, exist_ok=True)
         icone_completo(px).save(pasta / 'ic_launcher.png')
-        # A camada adaptativa é desenhada num canvas 2,25x maior que o ícone
-        # final, conforme a especificação de ícones adaptativos do Android.
         icone_adaptativo_frente(round(px * 2.25)).save(
-            pasta / 'ic_launcher_foreground.png'
-        )
-        print(f'mipmap-{densidade}/  ({px}px)')
+            pasta / 'ic_launcher_foreground.png')
 
-    icone_abertura().save(res / 'drawable-nodpi/splash_icon.png')
-    print('drawable-nodpi/splash_icon.png')
-
-    grafico_destaque().save(RAIZ / 'loja/grafico_destaque_1024x500.png')
-    print('loja/grafico_destaque_1024x500.png')
+    pasta_splash = res / 'drawable-nodpi'
+    pasta_splash.mkdir(parents=True, exist_ok=True)
+    icone_abertura().save(pasta_splash / 'splash_icon.png')
+    grafico_destaque().save(loja / 'grafico_destaque_1024x500.png')
 
 
 if __name__ == '__main__':
